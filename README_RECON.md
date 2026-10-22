@@ -23,6 +23,16 @@ Status C/D, unknown status, unreviewed and unit-conflict quantities are shown se
 A MIR is an inspection request: the figure is NOT proof of delivery/installation/invoicing.
 Over-BOQ quantities are never capped; remaining may be negative and is flagged.
 
+## Document/page coverage warnings
+The reconciliation exceptions list now reports MIR documents whose OCR status is not `done` (including not-run, interrupted, and error states). It also reports each PDF page with no extracted or manually added MIR line. These warnings require a reviewer to inspect the scan; they do not claim that the page is blank and do not add quantities automatically.
+
+## Regression tests
+Run from the repository root:
+```bash
+python -m unittest discover -s tests -v
+```
+The tests use synthetic in-memory state and do not require customer MIR PDFs, BOQ workbooks, credentials, or project databases.
+
 ## Update 2 (OCR fixes) - what changed
 * OCR reads each page 3 times (gray / shadow-removed / contrast-enhanced) and votes; English only (Arabic pass was injecting garbage into descriptions).
 * Stray punctuation/noise removed from descriptions; garbled text is flagged "description looks garbled" instead of silently trusted.
@@ -46,7 +56,7 @@ Over-BOQ quantities are never capped; remaining may be negative and is flagged.
 
 **Files modified:** `recon_module.py`, `recon_ui.py`, `server.py` (2 small edits in `_recon_dispatch`: async `ocr`, `dup` accepts `duplicate`). **New:** `recon_vision.py`. Originals: `*.pkg1_original`.
 
-**Verified on the real files (tests/test_recon.py: 40 PASS, 0 FAIL; export opened in LibreOffice: 0 formula errors)**
+**Validation note:** earlier project notes recorded a successful run on the original MIR sample files. During this repository audit, the referenced `tests/test_recon.py` was not present on `main`; this branch adds focused synthetic regression tests, which must be run with `python -m unittest discover -s tests -v` before merging. No test execution is claimed by this change.
 CAT6A, BOQ row R41 = 955 rolls @ 6,500 (BOQ unit and currency are not stated in the Excel, so they are flagged):
 | Scenario | Approved (A/B) | Remaining | % |
 |---|---|---|---|
