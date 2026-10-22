@@ -124,6 +124,23 @@ class ReconciliationCountingTests(unittest.TestCase):
         self.assertEqual(row["confirmed_qty"], 2.0)
         self.assertIn("duplicate_record_excluded", row["flags"])
 
+    def test_page_without_records_is_reported_for_manual_verification(self):
+        st = sample_state()
+        st["mir_docs"][0]["pages"] = 2
+        add_record(st, qty=2, status="A")
+        result = recon.compute(st)
+        gaps = [e for e in result["exceptions"] if e["type"] == "mir_page_without_records"]
+        self.assertEqual(len(gaps), 1)
+        self.assertEqual(gaps[0]["ref"], "MIR-001.pdf p2")
+        self.assertIn("Check the scan", gaps[0]["message"])
+
+    def test_document_without_completed_ocr_is_reported(self):
+        st = sample_state()
+        result = recon.compute(st)
+        warnings = [e for e in result["exceptions"] if e["type"] == "mir_document_not_fully_read"]
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("not_run", warnings[0]["message"])
+
 
 if __name__ == "__main__":
     unittest.main()
