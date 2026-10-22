@@ -1232,6 +1232,29 @@ def compute(st):
     def exc(sev, typ, ref, msg):
         exceptions.append({'severity': sev, 'type': typ, 'ref': ref, 'message': msg})
 
+    # Make document/page coverage explicit. A page with no extracted line may be
+    # blank or may have been missed by OCR; never silently assume either.
+    records_by_doc_page = {}
+    for record in st.get('records', []):
+        records_by_doc_page.setdefault((record.get('doc_id'), int(record.get('page') or 1)), 0)
+        records_by_doc_page[(record.get('doc_id'), int(record.get('page') or 1))] += 1
+    for doc in st.get('mir_docs', []):
+        doc_id = doc.get('id')
+        filename = doc.get('filename') or doc_id or '(unknown MIR file)'
+        ocr_status = doc.get('ocr_status') or 'not_run'
+        if ocr_status != 'done':
+            severity = 'error' if ocr_status == 'error' else 'warning'
+            detail = ('OCR failed: %s' % (doc.get('ocr_error') or 'no error details')) if ocr_status == 'error' else ('OCR status is %s' % ocr_status)
+            exc(severity, 'mir_document_not_fully_read', str(filename), '%s: %s. Verify every page manually; unread documents are not assumed empty.' % (filename, detail))
+        try:
+            page_count = max(0, int(doc.get('pages') or 0))
+        except (TypeError, ValueError):
+            page_count = 0
+        for page_no in range(1, page_count + 1):
+            if not records_by_doc_page.get((doc_id, page_no), 0):
+                exc('warning', 'mir_page_without_records', '%s p%d' % (filename, page_no),
+                    '%s page %d has no extracted or manually added MIR lines. Check the scan; if a line was missed, add it manually.' % (filename, page_no))
+
     for w in boq.get('warnings', []):
         exc(w.get('severity', 'info'), 'boq_' + w.get('type', ''), w.get('ref', ''), w.get('message', ''))
 
