@@ -121,8 +121,8 @@ function renderRecs(){
   const run=async(fn,ok)=>{try{await fn();msg(ok,'success');box.removeAttribute('data-dirty');await load()}catch(e){msg(e.message,'error')}};
   box.querySelector('[data-scan]').onclick=e=>{const sc=box.querySelector('.rc-scan');if(sc.hidden){sc.innerHTML='<img loading="lazy" alt="scanned MIR page" src="/api/recon/page?doc='+box.dataset.doc+'&page='+box.dataset.page+'&w=1100">';sc.hidden=false;e.target.textContent='Hide scan'}else{sc.hidden=true;sc.innerHTML='';e.target.textContent='Show scan'}};
   box.querySelector('[data-tot]').onclick=()=>{const t=box.querySelector('[data-f=total]').value;if(t==='')return msg('TOTAL is empty - read it from the scan first.','error');const qf=box.querySelector('[data-f=qty]');qf.value=t;qf.classList.remove('rc-guess');box.dataset.dirty='1'};
-  box.querySelector('[data-save]').onclick=()=>run(()=>act('update_record',{id,fields:get(),mark_reviewed:false}),'Saved (review status reset until you mark it reviewed).');
-  box.querySelector('[data-rev]').onclick=()=>run(()=>act('update_record',{id,fields:get(),mark_reviewed:true}),'Marked as reviewed.');
+  box.querySelector('[data-save]').onclick=()=>run(async()=>{await act('update_record',{id,fields:get(),mark_reviewed:false});await act('match_run')},'Saved and BOQ auto-match refreshed. Check the suggested row and score; it is not approved automatically.');
+  box.querySelector('[data-rev]').onclick=()=>run(async()=>{await act('update_record',{id,fields:get(),mark_reviewed:true});await act('match_run')},'Reviewed and BOQ auto-match refreshed. Check the suggested row and score; it is not approved automatically.');
   box.querySelector('[data-appr]').onclick=()=>run(()=>act('match_decide',{id,decision:'approve',boq_id:box.querySelector('[data-boq]').value}),'Match approved.');
   box.querySelector('[data-rej]').onclick=()=>run(()=>act('match_decide',{id,decision:'reject',boq_id:box.querySelector('[data-boq]').value}),'Match rejected.');
   const idp=box.querySelector('[data-isdup]');if(idp)idp.onclick=()=>run(()=>act('dup',{id,value:'duplicate'}),'Line excluded as duplicate.');
