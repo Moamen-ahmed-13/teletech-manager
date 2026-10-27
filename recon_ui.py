@@ -72,8 +72,8 @@ RECON_HTML = r'''
 @media(max-width:720px){#reconPanel .rc-upload-grid{grid-template-columns:1fr}#reconPanel .cardHead{flex-direction:column}#reconPanel .rc-tabs button{flex:1 1 auto;padding:8px 10px}#reconPanel .rc-source-list{grid-template-columns:1fr}#reconPanel .rc-rec{padding:10px}}
 </style>
 <div class="card" id="reconPanel" style="margin-top:16px">
- <div class="cardHead"><div><h3>BOQ vs. MIR reconciliation</h3><div class="sub">Compare contract BOQ quantities with MIR documents of this project. OCR is only a draft: nothing counts until you review, match and approve it.</div></div><span id="rcBadge" class="badge neutral">Loading</span></div>
- <div class="rc-tabs" id="rcTabs"><button data-t="src" class="on">1. Sources</button><button data-t="rev">2. Review MIR lines</button><button data-t="rec">3. Reconciliation</button><button data-t="brd">4. Brands</button><button data-t="exp">5. Export &amp; log</button></div>
+ <div class="cardHead"><div><h3>Materials &amp; delivery tracker</h3><div class="sub">Track submitted MIR documents against the contract BOQ. Review OCR suggestions before any quantities are counted as confirmed.</div></div><span id="rcBadge" class="badge neutral">Loading</span></div>
+ <div class="rc-tabs" id="rcTabs"><button data-t="src" class="on">Files</button><button data-t="rev">Review MIR</button><button data-t="rec">BOQ overview</button><button data-t="brd">Brand progress</button><button data-t="exp">Reports &amp; audit</button></div>
  <div id="rcMsg" class="status" role="status">&nbsp;</div>
  <div class="rc-pane on" id="rcP-src">
   <div class="rc-section-intro"><div><h4>Project source files</h4><p>Start by uploading the contract BOQ, then add the MIR PDFs you want to reconcile. Original files stay in project Documents.</p></div><div id="rcOcr" class="sub"></div></div>
