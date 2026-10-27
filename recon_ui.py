@@ -8,7 +8,7 @@ RECON_HTML = r'''
 #reconPanel .cardHead h3{font-size:22px;letter-spacing:-.45px;margin:0 0 6px}
 #reconPanel .cardHead .sub{max-width:760px;line-height:1.55}
 #reconPanel #rcBadge{white-space:nowrap;border-radius:999px;padding:7px 11px}
-#reconPanel .rc-tabs{display:flex;gap:7px;flex-wrap:wrap;margin:18px 0 14px;padding:5px;background:rgba(247,249,252,.97);border:1px solid var(--rc-line);border-radius:13px;position:sticky;top:8px;z-index:120;box-shadow:0 6px 18px rgba(16,24,40,.09);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);scroll-margin-top:12px}
+#reconPanel .rc-tabs{display:flex;gap:7px;flex-wrap:wrap;margin:18px 0 14px;padding:5px;background:rgba(247,249,252,.97);border:1px solid var(--rc-line);border-radius:13px;position:sticky;top:76px;z-index:120;box-shadow:0 6px 18px rgba(16,24,40,.09);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);scroll-margin-top:12px}
 #reconPanel .rc-tabs button{background:transparent;color:#475467;border:1px solid transparent;border-radius:9px;padding:9px 13px;font-weight:650}
 #reconPanel .rc-tabs button:hover{background:#edf2f8}
 #reconPanel .rc-tabs button.on{background:#203c65;color:#fff;border-color:#203c65;box-shadow:0 2px 5px #203c651c}
