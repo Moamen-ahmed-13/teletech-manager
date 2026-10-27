@@ -137,9 +137,10 @@ def norm_alnum(s):
     return re.sub(r'[^a-z0-9\u0600-\u06ff]', '', str(s or '').lower())
 
 
-UNIT_ALIASES = {'pc': 'PC', 'pcs': 'PC', 'piece': 'PC', 'pieces': 'PC', 'ea': 'PC', 'each': 'PC', 'no': 'PC', 'nos': 'PC',
-                'roll': 'ROLL', 'rolls': 'ROLL', 'm': 'M', 'mtr': 'M', 'meter': 'M', 'metre': 'M', 'meters': 'M',
-                'set': 'SET', 'sets': 'SET', 'lot': 'LOT', 'box': 'BOX', 'boxes': 'BOX', 'ls': 'LS', 'unit': 'UNIT', 'units': 'UNIT'}
+UNIT_ALIASES = {'pc': 'PC', 'pcs': 'PC', 'piece': 'PC', 'pieces': 'PC', 'ea': 'PC', 'each': 'PC', 'no': 'PC', 'nos': 'PC', 'number': 'PC', 'numbers': 'PC',
+                'roll': 'ROLL', 'rolls': 'ROLL', 'm': 'M', 'mtr': 'M', 'meter': 'M', 'metre': 'M', 'meters': 'M', 'metres': 'M',
+                'set': 'SET', 'sets': 'SET', 'lot': 'LOT', 'box': 'BOX', 'boxes': 'BOX', 'ls': 'LS', 'unit': 'UNIT', 'units': 'UNIT',
+                'قطعة': 'PC', 'قطع': 'PC', 'عدد': 'PC', 'متر': 'M', 'مترطولي': 'M', 'لفة': 'ROLL', 'لفات': 'ROLL', 'طقم': 'SET', 'علبة': 'BOX', 'علب': 'BOX'}
 
 
 def canon_unit(u):
@@ -326,29 +327,35 @@ def stored_path(project_dir, kind, meta):
 # BOQ parsing
 # ----------------------------------------------------------------------------
 HEADER_SYNS = {
-    'sn': {'s.n', 'sn', 's n', 'no', 'no.', '#', 'item no', 'item no.', 'م'},
-    'item': {'item', 'description', 'item description', 'البند', 'بيان الاعمال'},
-    'reference': {'reference', 'ref', 'ref.', 'spec', 'specification', 'specifications'},
-    'part': {'part #', 'part#', 'part no', 'part no.', 'part number', 'part', 'model', 'p/n', 'pn'},
-    'qty': {'qty', 'qty.', 'quantity', 'الكمية'},
-    'unit': {'unit', 'uom', 'unit of measure', 'الوحدة'},
-    'brand': {'brand', 'manufacturer', 'make'},
-    'unit_price': {'unit price', 'unit rate', 'rate', 'price', 'سعر الوحدة'},
-    'total_price': {'total price', 'total', 'amount', 'total value', 'الاجمالي', 'الاجمالى'},
+    'sn': {'s.n', 'sn', 's n', 'no', 'no.', '#', 'item no', 'item no.', 'item number', 'serial no', 'م'},
+    'item': {'item', 'description', 'item description', 'description of material', 'material description', 'scope of work', 'البند', 'بيان الاعمال', 'بيان الأعمال', 'وصف البند', 'الصنف'},
+    'reference': {'reference', 'ref', 'ref.', 'spec', 'specification', 'specifications', 'technical specification'},
+    'part': {'part #', 'part#', 'part no', 'part no.', 'part number', 'part', 'model', 'model no', 'p/n', 'pn', 'sku'},
+    'qty': {'qty', 'qty.', 'quantity', 'quantities', 'total qty', 'boq qty', 'الكمية', 'الكميه', 'كمية'},
+    'unit': {'unit', 'units', 'uom', 'u.o.m', 'u/m', 'um', 'unit of measure', 'unit of measurement', 'measurement unit', 'uom.', 'الوحدة', 'وحدة القياس', 'وحده القياس', 'وحدة'},
+    'brand': {'brand', 'manufacturer', 'make', 'vendor', 'الماركة', 'الماركه', 'الشركة المصنعة'},
+    'unit_price': {'unit price', 'unit rate', 'rate', 'price', 'price per unit', 'unit cost', 'سعر الوحدة', 'سعر الوحده'},
+    'total_price': {'total price', 'total', 'amount', 'total value', 'line total', 'extended price', 'اجمالي السعر', 'الاجمالي', 'الاجمالى', 'الإجمالي', 'القيمة الاجمالية'},
 }
 
 
 def _hnorm(v):
-    return re.sub(r'\s+', ' ', str(v or '').strip().lower())
+    return re.sub(r'\\s+', ' ', str(v or '').strip().lower())
+
+
+def _header_key(v):
+    # Normalize punctuation and spacing (U.O.M == UOM, Qty. == Qty).
+    return re.sub(r'[^a-z0-9\\u0600-\\u06ff]+', '', _hnorm(v))
 
 
 def _map_header(values):
     cmap, dups = {}, []
+    normalized = {field: {_header_key(s) for s in syns} for field, syns in HEADER_SYNS.items()}
     for i, v in enumerate(values):
-        h = _hnorm(v)
+        h = _header_key(v)
         if not h:
             continue
-        for field, syns in HEADER_SYNS.items():
+        for field, syns in normalized.items():
             if h in syns:
                 if field in cmap:
                     dups.append('%s (column %d ignored)' % (field, i + 1))
