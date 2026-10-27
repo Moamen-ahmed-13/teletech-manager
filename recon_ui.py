@@ -3,41 +3,87 @@
 
 RECON_HTML = r'''
 <style>
-#reconPanel .rc-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
-#reconPanel .rc-tabs button{background:#eef1f6;color:#223;border:1px solid #d5dbe6}
-#reconPanel .rc-tabs button.on{background:#1f3a5f;color:#fff;border-color:#1f3a5f}
+#reconPanel{--rc-ink:#172b4d;--rc-muted:#667085;--rc-line:#e4e9f0;--rc-soft:#f7f9fc;color:var(--text,#172b4d)}
+#reconPanel .cardHead{align-items:flex-start;gap:14px;padding-bottom:16px;border-bottom:1px solid var(--rc-line)}
+#reconPanel .cardHead h3{font-size:22px;letter-spacing:-.45px;margin:0 0 6px}
+#reconPanel .cardHead .sub{max-width:760px;line-height:1.55}
+#reconPanel #rcBadge{white-space:nowrap;border-radius:999px;padding:7px 11px}
+#reconPanel .rc-tabs{display:flex;gap:7px;flex-wrap:wrap;margin:18px 0 14px;padding:5px;background:rgba(247,249,252,.97);border:1px solid var(--rc-line);border-radius:13px;position:sticky;top:76px;z-index:120;box-shadow:0 6px 18px rgba(16,24,40,.09);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);scroll-margin-top:12px}
+#reconPanel .rc-tabs button{background:transparent;color:#475467;border:1px solid transparent;border-radius:9px;padding:9px 13px;font-weight:650}
+#reconPanel .rc-tabs button:hover{background:#edf2f8}
+#reconPanel .rc-tabs button.on{background:#203c65;color:#fff;border-color:#203c65;box-shadow:0 2px 5px #203c651c}
 #reconPanel .rc-pane{display:none}#reconPanel .rc-pane.on{display:block}
-#reconPanel table.rc{width:100%;border-collapse:collapse;font-size:12.5px}
-#reconPanel table.rc th{background:#1f3a5f;color:#fff;padding:6px 8px;text-align:left;position:sticky;top:0;cursor:pointer;white-space:nowrap}
-#reconPanel table.rc td{padding:5px 8px;border-bottom:1px solid #e6e9ef;vertical-align:top}
+#reconPanel .rc-section-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin:4px 0 16px}
+#reconPanel .rc-section-intro h4{font-size:16px;margin:0 0 5px}
+#reconPanel .rc-section-intro p{font-size:12.5px;line-height:1.55;color:var(--rc-muted);margin:0}
+#reconPanel .rc-upload-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:14px 0}
+#reconPanel .rc-upload-card{border:1px solid var(--rc-line);border-radius:14px;padding:17px;background:linear-gradient(180deg,#fff,#fbfcfe);min-width:0}
+#reconPanel .rc-upload-top{display:flex;align-items:center;gap:11px;margin-bottom:12px}
+#reconPanel .rc-upload-icon{width:40px;height:40px;display:grid;place-items:center;border-radius:12px;background:#edf3ff;color:#3157a4;font-size:16px;font-weight:800;flex:0 0 40px}
+#reconPanel .rc-upload-top h4{font-size:15px;margin:0 0 3px}
+#reconPanel .rc-upload-top p{font-size:12px;color:var(--rc-muted);margin:0;line-height:1.4}
+#reconPanel .rc-file-row{display:flex;flex-direction:column;gap:10px}
+#reconPanel .rc-file-row input[type=file]{width:100%;max-width:100%;box-sizing:border-box;font-size:12px;padding:9px;border:1px dashed #cbd5e1;border-radius:9px;background:#fff}
+#reconPanel .rc-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
+#reconPanel .rc-bar input:not([type=file]),#reconPanel .rc-bar select{min-height:38px}
+#reconPanel button{border-radius:9px;font-weight:600;transition:filter .15s ease}
+#reconPanel button:hover{filter:brightness(.97)}
+#reconPanel button:disabled{opacity:.55;cursor:not-allowed}
+#reconPanel input,#reconPanel select,#reconPanel textarea{border:1px solid #d0d7e2;border-radius:8px;padding:8px 9px;background:var(--input-bg,#fff);color:inherit}
+#reconPanel input:focus,#reconPanel select:focus,#reconPanel textarea:focus{outline:2px solid #9ab8f7;outline-offset:1px;border-color:#6389d7}
+#reconPanel .rc-source-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(285px,1fr));gap:12px;margin-top:10px}
+#reconPanel .rc-source-card{border:1px solid var(--rc-line);border-radius:13px;padding:14px;background:var(--card-bg,#fff);min-width:0}
+#reconPanel .rc-source-head{display:flex;align-items:flex-start;gap:10px}
+#reconPanel .rc-file-icon{width:38px;height:42px;display:grid;place-items:center;flex:0 0 38px;border-radius:9px;background:#fff0ed;color:#b54735;font-size:11px;font-weight:800;border:1px solid #f8d8d1}
+#reconPanel .rc-source-name{font-weight:700;font-size:13px;overflow-wrap:anywhere;line-height:1.45}
+#reconPanel .rc-source-meta{font-size:11px;color:var(--rc-muted);margin-top:4px}
+#reconPanel .rc-source-stats{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}
+#reconPanel .rc-stat-pill{border-radius:7px;padding:5px 8px;background:var(--rc-soft);font-size:11px;color:#475467}
+#reconPanel .rc-source-actions{display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid #eef1f5;padding-top:10px}
+#reconPanel .rc-source-actions button,#reconPanel .rc-source-actions a{font-size:11px;padding:7px 9px}
+#reconPanel .rc-boq-summary{border:1px solid #cbdcf8;background:#f5f8ff;border-radius:13px;padding:15px;margin:8px 0 18px}
+#reconPanel .rc-boq-file{font-size:15px;font-weight:750;overflow-wrap:anywhere}
+#reconPanel .rc-boq-meta{font-size:12px;color:#52627a;margin-top:5px;line-height:1.6}
+#reconPanel .rc-doc-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:22px 0 8px}
+#reconPanel .rc-doc-heading h4{margin:0;font-size:16px}
+#reconPanel .rc-empty{border:1px dashed #cbd5e1;background:var(--rc-soft);border-radius:12px;padding:22px;text-align:center;color:var(--rc-muted);font-size:13px;line-height:1.6}
+#reconPanel table.rc{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
+#reconPanel table.rc th{background:#f0f3f8;color:#344054;padding:10px 9px;text-align:left;position:sticky;top:0;cursor:pointer;white-space:nowrap;border-bottom:1px solid #dfe5ed}
+#reconPanel table.rc td{padding:9px;border-bottom:1px solid #edf0f4;vertical-align:top}
+#reconPanel table.rc tbody tr:hover{background:#fafbfd}
 #reconPanel .num{text-align:right;font-variant-numeric:tabular-nums}
-#reconPanel .rc-chip{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;margin:1px 2px 1px 0;background:#e8ecf3;color:#223}
-#reconPanel .c-ok{background:#d4edda;color:#155724}#reconPanel .c-warn{background:#fff3cd;color:#7a5b00}
-#reconPanel .c-bad{background:#f8d7da;color:#7b1c26}#reconPanel .c-info{background:#dbe9ff;color:#143a73}#reconPanel .c-mute{background:#eee;color:#555}
+#reconPanel .rc-chip{display:inline-block;padding:3px 8px;border-radius:999px;font-size:10.5px;font-weight:650;margin:2px 3px 2px 0;background:#edf0f5;color:#344054}
+#reconPanel .c-ok{background:#e0f5e9;color:#067647}#reconPanel .c-warn{background:#fff4d6;color:#8a6100}
+#reconPanel .c-bad{background:#fee4e2;color:#b42318}#reconPanel .c-info{background:#e8efff;color:#284da0}#reconPanel .c-mute{background:#f0f1f3;color:#596273}
 #reconPanel .rc-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:10px 0}
-#reconPanel .rc-card{background:#f6f8fb;border:1px solid #e1e6ee;border-radius:8px;padding:10px}
-#reconPanel .rc-card b{display:block;font-size:19px;margin-top:2px}
-#reconPanel .rc-rec{border:1px solid #dfe4ec;border-radius:8px;padding:10px;margin:10px 0;background:#fff}
-#reconPanel .rc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-top:6px}
-#reconPanel .rc-grid label{font-size:11px;color:#555;display:block}
+#reconPanel .rc-card{background:#fff;border:1px solid var(--rc-line);border-radius:12px;padding:14px;box-shadow:0 1px 2px #10182808}
+#reconPanel .rc-card b{display:block;font-size:21px;margin-top:5px;letter-spacing:-.4px}
+#reconPanel .rc-rec{border:1px solid var(--rc-line);border-radius:13px;padding:14px;margin:12px 0;background:var(--card-bg,#fff);box-shadow:0 1px 2px #10182808}
+#reconPanel .rc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-top:10px}
+#reconPanel .rc-grid label{font-size:11px;color:#667085;display:block;margin-bottom:4px;font-weight:650}
 #reconPanel .rc-grid input,#reconPanel .rc-grid select,#reconPanel .rc-grid textarea{width:100%;box-sizing:border-box}
-#reconPanel .rc-ocr{font-size:11px;color:#777;margin-top:4px}
+#reconPanel .rc-ocr{font-size:11px;color:#667085;line-height:1.55;margin:8px 0 12px;padding:9px 11px;background:#f8fafc;border-radius:8px}
 #reconPanel .rc-guess{background:#fff8e1;border-color:#e0a800!important}
-#reconPanel .rc-scan img{max-width:100%;border:1px solid #cfd6e2;border-radius:6px;margin-top:8px}
-#reconPanel .rc-scroll{overflow:auto;max-height:620px;border:1px solid #e1e6ee;border-radius:8px}
-#reconPanel .rc-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}
+#reconPanel .rc-scan img{max-width:100%;border:1px solid #cfd6e2;border-radius:8px;margin-top:8px}
+#reconPanel .rc-scroll{overflow:auto;max-height:620px;border:1px solid var(--rc-line);border-radius:10px}
+#reconPanel #rcMsg{border-radius:9px;margin:10px 0;padding:8px 11px;min-height:16px}
+#reconPanel .advanced{border:1px solid var(--rc-line);border-radius:10px;padding:11px 13px;background:#fafbfd;margin:10px 0}
+#reconPanel .advanced summary{cursor:pointer;font-size:12px;font-weight:650;color:#475467}
+@media(max-width:720px){#reconPanel .rc-upload-grid{grid-template-columns:1fr}#reconPanel .cardHead{flex-direction:column}#reconPanel .rc-tabs button{flex:1 1 auto;padding:8px 10px}#reconPanel .rc-source-list{grid-template-columns:1fr}#reconPanel .rc-rec{padding:10px}}
 </style>
 <div class="card" id="reconPanel" style="margin-top:16px">
- <div class="cardHead"><div><h3>BOQ vs. MIR reconciliation</h3><div class="sub">Compare contract BOQ quantities with MIR documents of this project. OCR is only a draft: nothing counts until you review, match and approve it.</div></div><span id="rcBadge" class="badge neutral">Loading</span></div>
- <div class="rc-tabs" id="rcTabs"><button data-t="src" class="on">1. Sources</button><button data-t="rev">2. Review MIR lines</button><button data-t="rec">3. Reconciliation</button><button data-t="brd">4. Brands</button><button data-t="exp">5. Export &amp; log</button></div>
+ <div class="cardHead"><div><h3>Materials &amp; delivery tracker</h3><div class="sub">Track submitted MIR documents against the contract BOQ. Review OCR suggestions before any quantities are counted as confirmed.</div></div><span id="rcBadge" class="badge neutral">Loading</span></div>
+ <div class="rc-tabs" id="rcTabs"><button data-t="src" class="on">Files</button><button data-t="rev">Review MIR</button><button data-t="rec">BOQ overview</button><button data-t="brd">Brand progress</button><button data-t="exp">Reports &amp; audit</button></div>
  <div id="rcMsg" class="status" role="status">&nbsp;</div>
  <div class="rc-pane on" id="rcP-src">
-  <div id="rcOcr" class="sub"></div>
-  <div class="rc-bar"><b>BOQ workbook (.xlsx)</b><input id="rcBoqFile" type="file" accept=".xlsx,.xlsm"><button id="rcBoqUp">Upload BOQ</button></div>
-  <div class="rc-bar"><b>MIR PDFs</b><input id="rcMirFiles" type="file" accept=".pdf" multiple><button id="rcMirUp">Upload MIR PDFs</button></div>
-  <details class="advanced"><summary>Use files already saved in Documents</summary><div class="advInner"><div id="rcDocPick" class="sub">Loading...</div><div class="rc-bar"><button id="rcImport" class="alt">Import selected</button></div></div></details>
-  <h4 style="margin:14px 0 6px">BOQ</h4><div id="rcBoqInfo" class="sub">No BOQ yet.</div>
-  <h4 style="margin:14px 0 6px">MIR documents</h4><div id="rcDocs"></div>
+  <div class="rc-section-intro"><div><h4>Project source files</h4><p>Start by uploading the contract BOQ, then add the MIR PDFs you want to reconcile. Original files stay in project Documents.</p></div><div id="rcOcr" class="sub"></div></div>
+  <div class="rc-upload-grid">
+   <div class="rc-upload-card"><div class="rc-upload-top"><div class="rc-upload-icon">XLS</div><div><h4>BOQ workbook</h4><p>Excel · .xlsx or .xlsm · source of truth</p></div></div><div class="rc-file-row"><input id="rcBoqFile" type="file" accept=".xlsx,.xlsm"><button id="rcBoqUp">Upload BOQ workbook</button></div></div>
+   <div class="rc-upload-card"><div class="rc-upload-top"><div class="rc-upload-icon">PDF</div><div><h4>MIR documents</h4><p>Scanned PDFs · select multiple files</p></div></div><div class="rc-file-row"><input id="rcMirFiles" type="file" accept=".pdf" multiple><button id="rcMirUp">Upload MIR PDFs</button></div></div>
+  </div>
+  <details class="advanced"><summary>Import files already saved in project Documents</summary><div class="advInner"><div id="rcDocPick" class="sub">Loading...</div><div class="rc-bar"><button id="rcImport" class="alt">Import selected files</button></div></div></details>
+  <div class="rc-doc-heading"><h4>Current BOQ</h4><span class="small sub">Excel reference</span></div><div id="rcBoqInfo" class="sub">No BOQ yet.</div>
+  <div class="rc-doc-heading"><h4>MIR library</h4><span id="rcMirCount" class="small sub">0 documents</span></div><div id="rcDocs"></div>
  </div>
  <div class="rc-pane" id="rcP-rev">
   <div class="rc-bar"><button id="rcMatch">Run matching</button><button id="rcApproveExact" class="good">Approve all "exact" matches</button>
@@ -71,11 +117,11 @@ const fq=v=>v==null?'N/A':Number(v).toLocaleString('en-US',{maximumFractionDigit
 const pc=v=>v==null?'N/A':Number(v).toFixed(1)+'%';
 const role=()=>((window.currentUser&&window.currentUser.role)||'');
 const canEdit=()=>['ADMIN','ENGINEER'].includes(role())||!role();
-let D=null,sortKey='code',sortDir=1,dirty=false;
+let D=null,sortKey='code',sortDir=1,dirty=false,autoMatchBusy=false;
 const msg=(t,k)=>{const m=q('rcMsg');m.textContent=t;m.className='status '+(k||'')};
 async function api(path,opt){const r=await fetch(path,Object.assign({credentials:'same-origin',cache:'no-store'},opt||{}));let j={};try{j=await r.json()}catch(e){}if(!r.ok||j.error)throw Error(j.error||('Request failed ('+r.status+')'));return j}
 const act=(a,body)=>api('/api/recon/action',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({action:a},body||{}))});
-async function load(keep){try{D=await api('/api/recon/data');render();clearTimeout(window._rcPoll);if((D.docs||[]).some(d=>d.ocr_status==='running'))window._rcPoll=setTimeout(()=>load(true),4000)}catch(e){q('rcBadge').textContent='Unavailable';q('rcBadge').className='badge neutral';msg(e.message,'error')}}
+async function load(keep){try{D=await api('/api/recon/data');const pending=(D.boq&&D.comp&&D.comp.records||[]).some(r=>{const m=r.match||{};return !!(r.eff&&r.eff.description)&&m.state==null&&m.method!=='manual'&&m.state!=='approved'});if(pending&&!autoMatchBusy){autoMatchBusy=true;try{await act('match_run');D=await api('/api/recon/data')}finally{autoMatchBusy=false}}render();clearTimeout(window._rcPoll);if((D.docs||[]).some(d=>d.ocr_status==='running'))window._rcPoll=setTimeout(()=>load(true),4000)}catch(e){q('rcBadge').textContent='Unavailable';q('rcBadge').className='badge neutral';msg(e.message,'error')}}
 const chip=(t,k)=>`<span class="rc-chip ${k||''}">${esc(t)}</span>`;
 const FL={not_reviewed:['not reviewed','c-warn'],qty_missing:['qty missing','c-bad'],status_missing:['status missing','c-warn'],unit_missing:['unit missing','c-warn'],duplicate:['duplicate','c-bad'],unit_conflict:['unit conflict','c-bad'],over_boq:['over BOQ','c-bad'],unit_unverified:['BOQ unit unverified','c-warn'],ref_no_conflict:['MIR no. on 2 PDFs','c-warn'],low_ocr_confidence:['low OCR conf.','c-warn'],qty_total_differ:['Q.T ≠ TOTAL','c-warn'],qty_blank_total_only:['Q.T blank, TOTAL only','c-warn'],qty_not_read:['qty not read','c-warn'],ocr_no_lines:['OCR found no lines','c-warn'],unit_fuzzy:['unit guessed by OCR','c-warn'],manual_entry:['manual entry','c-info'],status_not_counted_C:['status C - not counted','c-mute'],status_not_counted_D:['status D - not counted','c-mute'],ref_no_missing:['MIR no. missing','c-warn'],sn_missing:['no S.N','c-mute'],price_missing:['no price','c-bad'],total_mismatch:['qty×price ≠ sheet total','c-warn'],duplicate_record_excluded:['duplicate excluded','c-mute'],ref_from_filename:['MIR no. taken from file name','c-warn'],qty_variants_disagree:['Q.T readings disagree','c-bad'],total_variants_disagree:['TOTAL readings disagree','c-bad'],qty_single_reading:['Q.T read once only','c-warn'],total_single_reading:['TOTAL read once only','c-warn'],description_unreliable:['description looks garbled','c-bad'],part_repeated:['part # repeated','c-mute'],brand_missing:['no brand','c-warn'],description_missing:['no description','c-warn'],date_uncertain:['date uncertain','c-warn'],status_from_ocr:['status read by OCR - confirm','c-warn'],status_unclear:['MIR status not read','c-warn'],old_form_partial:['old form: check every field','c-warn'],possible_resubmission:['same item on another MIR','c-warn'],rows_from_variant_vote:['rows from plain OCR','c-warn'],table_header_not_found:['table not located','c-warn']};
 const flags=a=>(a||[]).map(f=>{const x=FL[f]||[f.replace(/_/g,' '),'c-mute'];return chip(x[0],x[1])}).join('');
@@ -84,8 +130,22 @@ const MS={exact:['exact','c-ok'],suggested:['suggested','c-info'],ambiguous:['am
 function render(){
  const s=D.comp.summary;q('rcBadge').textContent=D.boq?`${s.boq_items} BOQ items · ${s.mir_docs} MIR PDFs`:'No BOQ';q('rcBadge').className='badge'+(D.boq?'':' neutral');
  q('rcOcr').innerHTML=D.ocr.available?chip('OCR: '+D.ocr.backend+' ('+(D.ocr.langs||[]).join(', ')+')','c-ok')+' <span class="small">OCR output is a draft only; handwriting and check-boxes are often misread.</span>':chip('OCR unavailable','c-bad')+' '+esc(D.ocr.message);
- const b=D.boq;q('rcBoqInfo').innerHTML=b?`<b>${esc(b.filename)}</b> · sheet “${esc(b.sheet)}” · header row ${b.header_row} · ${b.items} items<div class="small sub">Columns: ${Object.entries(b.columns).map(([k,v])=>esc(k)+' = '+esc(v)).join(' · ')}</div><div class="small sub">${(b.sheets_considered||[]).map(x=>esc(x.sheet)+(x.header_row?' (score '+x.score+')':' (no BOQ header)')).join(' · ')}</div>${b.warnings.filter(w=>w.severity!=='info').slice(0,6).map(w=>'<div class="small">⚠ '+esc(w.message)+'</div>').join('')}`:'<div class="sub">Upload the BOQ workbook first.</div>';
- q('rcDocs').innerHTML=D.docs.length?'<table class="rc"><thead><tr><th>PDF</th><th>Pages</th><th>OCR</th><th>Lines</th><th></th></tr></thead><tbody>'+D.docs.map(d=>{const n=D.comp.records.filter(r=>r.doc_id===d.id).length;return `<tr><td>${esc(d.filename)}<div class="small sub">sha ${esc(d.sha256.slice(0,10))} · by ${esc(d.uploaded_by)}</div></td><td>${d.pages}</td><td>${d.ocr_status==='done'?chip('done','c-ok'):d.ocr_status==='running'?chip('running '+((d.ocr_progress&&d.ocr_progress.page)||0)+'/'+d.pages,'c-info'):d.ocr_status==='error'?chip('failed','c-bad')+'<div class="small">'+esc(d.ocr_error||'')+'</div>':d.ocr_status==='interrupted'?chip('interrupted - run again','c-warn'):chip('not run','c-mute')}</td><td>${n}</td><td style="white-space:nowrap"><button class="alt" data-ocr="${d.id}">Run OCR</button> <button class="alt" data-addline="${d.id}">Add line</button> <a href="/api/recon/page?doc=${d.id}&page=1" target="_blank">View p1</a> <button class="alt" data-rmdoc="${d.id}">Remove</button></td></tr>`}).join('')+'</tbody></table>':'<div class="sub">No MIR PDFs yet.</div>';
+ const b=D.boq;
+ q('rcBoqInfo').innerHTML=b
+  ? '<div class="rc-boq-summary"><div class="rc-boq-file">▤ '+esc(b.filename)+'</div><div class="rc-boq-meta">Sheet: <b>'+esc(b.sheet)+'</b> · Header row: '+b.header_row+' · <b>'+b.items+'</b> BOQ items<br>Columns detected: '+Object.entries(b.columns).map(([k,v])=>esc(k)+' → '+esc(v)).join(' · ')+'<br>'+(b.sheets_considered||[]).map(x=>esc(x.sheet)+(x.header_row?' (score '+x.score+')':' (no BOQ header)')).join(' · ')+'</div>'+b.warnings.filter(w=>w.severity!=='info').slice(0,6).map(w=>'<div class="small" style="color:#9a6700;margin-top:5px">⚠ '+esc(w.message)+'</div>').join('')+'</div>'
+  : '<div class="rc-empty">No BOQ workbook uploaded yet.<br>Upload the contract Excel file above to begin reconciliation.</div>';
+ q('rcMirCount').textContent=D.docs.length+' document(s) · '+D.docs.reduce((n,d)=>n+d.pages,0)+' pages';
+ q('rcDocs').innerHTML=D.docs.length
+  ? '<div class="rc-source-list">'+D.docs.map(d=>{
+    const n=D.comp.records.filter(r=>r.doc_id===d.id).length;
+    let status=d.ocr_status==='done'?chip('OCR complete','c-ok')
+      :d.ocr_status==='running'?chip('OCR running '+((d.ocr_progress&&d.ocr_progress.page)||0)+'/'+d.pages,'c-info')
+      :d.ocr_status==='error'?chip('OCR failed','c-bad')+'<div class="small" style="color:#b42318;margin-top:5px">'+esc(d.ocr_error||'Please run OCR again.')+'</div>'
+      :d.ocr_status==='interrupted'?chip('Interrupted · retry OCR','c-warn')
+      :chip('OCR not started','c-mute');
+    return '<div class="rc-source-card"><div class="rc-source-head"><div class="rc-file-icon">PDF</div><div style="min-width:0;flex:1"><div class="rc-source-name">'+esc(d.filename)+'</div><div class="rc-source-meta">Uploaded by '+esc(d.uploaded_by||'project user')+' · '+esc(d.sha256.slice(0,10))+'</div></div></div><div class="rc-source-stats"><span class="rc-stat-pill">'+d.pages+' page(s)</span><span class="rc-stat-pill">'+n+' extracted line(s)</span>'+status+'</div><div class="rc-source-actions"><button data-ocr="'+d.id+'">'+(d.ocr_status==='running'?'OCR running…':'Run OCR')+'</button><button class="alt" data-addline="'+d.id+'">Add line</button><a class="alt" href="/api/recon/page?doc='+d.id+'&page=1" target="_blank">View first page ↗</a><button class="alt" data-rmdoc="'+d.id+'">Remove</button></div></div>';
+   }).join('')+'</div>'
+  : '<div class="rc-empty">No MIR PDFs yet.<br>Upload one or more scanned MIR files above.</div>';
  renderRecs();renderRec();renderBrands();renderExp();
  document.querySelectorAll('#rcDocs [data-ocr]').forEach(b=>b.onclick=async()=>{b.disabled=true;msg('Running OCR... (the server is busy until it finishes)','info');try{await act('ocr',{doc_id:b.dataset.ocr});msg('OCR started in the background (about 15 s per page). This list refreshes automatically.','info');await load()}catch(e){msg(e.message,'error');b.disabled=false}});
  document.querySelectorAll('#rcDocs [data-addline]').forEach(b=>b.onclick=async()=>{const p=prompt('PDF page number for the new line:','1');if(!p)return;try{await act('add_line',{doc_id:b.dataset.addline,page:+p});msg('Line added - fill it in under step 2.','success');await load();tab('rev')}catch(e){msg(e.message,'error')}});
@@ -121,8 +181,8 @@ function renderRecs(){
   const run=async(fn,ok)=>{try{await fn();msg(ok,'success');box.removeAttribute('data-dirty');await load()}catch(e){msg(e.message,'error')}};
   box.querySelector('[data-scan]').onclick=e=>{const sc=box.querySelector('.rc-scan');if(sc.hidden){sc.innerHTML='<img loading="lazy" alt="scanned MIR page" src="/api/recon/page?doc='+box.dataset.doc+'&page='+box.dataset.page+'&w=1100">';sc.hidden=false;e.target.textContent='Hide scan'}else{sc.hidden=true;sc.innerHTML='';e.target.textContent='Show scan'}};
   box.querySelector('[data-tot]').onclick=()=>{const t=box.querySelector('[data-f=total]').value;if(t==='')return msg('TOTAL is empty - read it from the scan first.','error');const qf=box.querySelector('[data-f=qty]');qf.value=t;qf.classList.remove('rc-guess');box.dataset.dirty='1'};
-  box.querySelector('[data-save]').onclick=()=>run(()=>act('update_record',{id,fields:get(),mark_reviewed:false}),'Saved (review status reset until you mark it reviewed).');
-  box.querySelector('[data-rev]').onclick=()=>run(()=>act('update_record',{id,fields:get(),mark_reviewed:true}),'Marked as reviewed.');
+  box.querySelector('[data-save]').onclick=()=>run(async()=>{await act('update_record',{id,fields:get(),mark_reviewed:false});await act('match_run')},'Saved and BOQ auto-match refreshed. Check the suggested row and score; it is not approved automatically.');
+  box.querySelector('[data-rev]').onclick=()=>run(async()=>{await act('update_record',{id,fields:get(),mark_reviewed:true});await act('match_run')},'Reviewed and BOQ auto-match refreshed. Check the suggested row and score; it is not approved automatically.');
   box.querySelector('[data-appr]').onclick=()=>run(()=>act('match_decide',{id,decision:'approve',boq_id:box.querySelector('[data-boq]').value}),'Match approved.');
   box.querySelector('[data-rej]').onclick=()=>run(()=>act('match_decide',{id,decision:'reject',boq_id:box.querySelector('[data-boq]').value}),'Match rejected.');
   const idp=box.querySelector('[data-isdup]');if(idp)idp.onclick=()=>run(()=>act('dup',{id,value:'duplicate'}),'Line excluded as duplicate.');
@@ -145,7 +205,23 @@ function renderRec(){
  q('rcTable').querySelectorAll('th').forEach(th=>th.onclick=()=>{const k=th.dataset.s;if(sortKey===k)sortDir*=-1;else{sortKey=k;sortDir=1}renderRec()});
  q('rcTable').querySelectorAll('[data-unit]').forEach(i=>i.onchange=async()=>{try{await act('boq_unit',{item_id:i.dataset.unit,unit:i.value});await load()}catch(e){msg(e.message,'error')}})}
 function renderBrands(){
- q('rcBrands').innerHTML='<div class="rc-scroll"><table class="rc"><thead><tr><th>Brand</th><th>BOQ items</th><th>Quantities by unit<br><span class="small">BOQ / confirmed / remaining</span></th><th>Items w/ confirmed</th><th>BOQ value</th><th>MIR value</th><th>Remaining value</th><th>Fin %</th><th>Missing MIR</th><th>Over BOQ</th><th>Awaiting review</th><th>Unmatched MIR lines</th></tr></thead><tbody>'+D.comp.brands.map(b=>`<tr><td><b>${esc(b.brand)}</b></td><td class="num">${b.items}</td><td class="small">${Object.entries(b.qty_by_unit).map(([u,v])=>`${esc(u)}: ${fq(v.boq)} / ${fq(v.confirmed)} / ${fq(v.remaining)} (${pc(v.pct)})`).join('<br>')||'—'}${b.unspecified_unit_items?`<div class="sub">${b.unspecified_unit_items} item(s) with unspecified unit – quantities not summed</div>`:''}</td><td class="num">${b.items_with_confirmed} (${pc(b.item_coverage_pct)})</td><td class="num">${fmt(b.boq_value)}</td><td class="num">${fmt(b.mir_value)}</td><td class="num">${fmt(b.remaining_value)}</td><td class="num">${pc(b.fin_pct)}</td><td class="num">${b.missing_mir.length}</td><td class="num">${b.over_boq.length}</td><td class="num">${b.awaiting_review.length}</td><td class="num">${b.unmatched_mir_records}</td></tr>`).join('')+'</tbody></table></div><div class="sub" style="margin-top:6px">Brands are never merged; quantities in different units are never added. Value totals include only items with a valid price.</div>'}
+ const brands=D.comp.brands||[];
+ const cards=brands.map(b=>{
+  const units=Object.entries(b.qty_by_unit||{});
+  const rings=units.map(([u,v])=>{
+   const boq=Number(v.boq)||0,delivered=Number(v.confirmed)||0,remaining=Math.max(boq-delivered,0);
+   const rawPct=boq>0?(delivered/boq*100):null;
+   const ringPct=rawPct==null?0:Math.max(0,Math.min(100,rawPct));
+   const remPct=rawPct==null?null:Math.max(0,100-ringPct);
+   const circumference=2*Math.PI*42;
+   const dash=rawPct==null?0:(circumference*ringPct/100);
+   const ringColor=rawPct==null?'#d9dee7':'#14805e';
+   return `<div class="rc-brand-unit"><div class="rc-donut"><svg class="rc-donut-svg" viewBox="0 0 100 100" role="img" aria-label="${rawPct==null?'BOQ quantity unavailable':pc(rawPct)+' delivered'}"><circle class="rc-donut-track" cx="50" cy="50" r="42" fill="none" stroke="#e6e9ef" stroke-width="11"></circle><circle class="rc-donut-progress" cx="50" cy="50" r="42" fill="none" stroke="${ringColor}" stroke-width="11" stroke-linecap="round" stroke-dasharray="${dash} ${circumference}" transform="rotate(-90 50 50)"></circle></svg><div class="rc-donut-hole"><b>${rawPct==null?'—':pc(rawPct)}</b><span>delivered</span></div></div><div class="rc-brand-unit-info"><b>${esc(u)}</b><div class="rc-brand-legend"><span><i style="background:#14805e"></i> Delivered: ${fq(delivered)}</span><span><i style="background:#e6e9ef"></i> Remaining: ${fq(remaining)}</span></div><div class="small sub">BOQ: ${fq(boq)} ${esc(u)}</div>${rawPct!=null&&rawPct>100?'<div class="small" style="color:#b42318;font-weight:700">Over BOQ by '+fq(delivered-boq)+' '+esc(u)+'</div>':''}<div class="small sub">${rawPct==null?'BOQ quantity unavailable':pc(remPct)+' remaining'}</div></div></div>`;
+  }).join('');
+  return `<div class="rc-brand-card"><div class="rc-brand-head"><div><b>${esc(b.brand)}</b><div class="small sub">${b.items} BOQ item(s) · ${units.length} unit type(s)</div></div><div class="rc-brand-fin"><span>Financial consumption</span><b>${pc(b.fin_pct)}</b></div></div><div class="rc-brand-rings">${rings||'<div class="sub">No usable BOQ quantities for this brand.</div>'}</div>${b.unspecified_unit_items?'<div class="small sub" style="margin-top:8px">'+b.unspecified_unit_items+' item(s) have no verified unit and are excluded from quantity totals.</div>':''}<div class="rc-brand-foot"><span>Items with confirmed delivery: <b>${b.items_with_confirmed}</b> / ${b.items}</span><span>Remaining value: <b>${fmt(b.remaining_value)}</b></span><span>Unmatched MIR lines: <b>${b.unmatched_mir_records}</b></span></div>${b.over_boq.length?'<div class="small" style="color:#b42318;margin-top:6px;font-weight:700">Over-BOQ items: '+b.over_boq.length+'</div>':''}</div>`;
+ }).join('');
+ q('rcBrands').innerHTML='<style>#rcBrands .rc-brand-card{border:1px solid var(--border,#d9dee7);border-radius:14px;padding:16px;margin:0 0 14px;background:var(--card-bg,#fff)}#rcBrands .rc-brand-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:1px solid #e6e9ef;padding-bottom:10px}#rcBrands .rc-brand-head>b,#rcBrands .rc-brand-head>div:first-child>b{font-size:16px}#rcBrands .rc-brand-fin{display:flex;gap:10px;align-items:center;font-size:12px;color:var(--muted,#667085)}#rcBrands .rc-brand-fin b{font-size:16px;color:var(--text,#101828)}#rcBrands .rc-brand-rings{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;padding-top:14px}#rcBrands .rc-brand-unit{display:flex;align-items:center;gap:12px;border:1px solid #edf0f4;border-radius:12px;padding:12px;min-width:0}#rcBrands .rc-donut{width:100px;height:100px;flex:0 0 100px;display:grid;place-items:center;position:relative;border-radius:50%;isolation:isolate}#rcBrands .rc-donut-svg{position:absolute;inset:0;width:100%;height:100%;display:block;overflow:visible;z-index:0}#rcBrands .rc-donut-track{stroke:#e6e9ef}#rcBrands .rc-donut-progress{stroke:#14805e;transition:stroke-dasharray .25s ease}#rcBrands .rc-donut-hole{position:relative;z-index:1;width:72px;height:72px;border:1px solid rgba(217,222,231,.75);border-radius:50%;background:var(--card-bg,#fff);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;box-shadow:inset 0 1px 3px rgba(16,24,40,.05);pointer-events:none}#rcBrands .rc-donut-hole b{font-size:16px;line-height:1.2;font-variant-numeric:tabular-nums}#rcBrands .rc-donut-hole span{font-size:10px;color:var(--muted,#667085)}#rcBrands .rc-brand-unit-info{min-width:0;overflow-wrap:anywhere}#rcBrands .rc-brand-legend{display:flex;flex-direction:column;gap:4px;font-size:12px;margin:5px 0}#rcBrands .rc-brand-legend span{display:flex;align-items:center;gap:5px}#rcBrands .rc-brand-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;flex:0 0 9px}#rcBrands .rc-brand-foot{display:flex;gap:8px 18px;flex-wrap:wrap;border-top:1px solid #e6e9ef;margin-top:12px;padding-top:10px;font-size:12px;color:var(--muted,#667085)}@media(max-width:600px){#rcBrands .rc-brand-unit{align-items:flex-start}#rcBrands .rc-donut{width:82px;height:82px;flex-basis:82px}#rcBrands .rc-donut-hole{width:58px;height:58px}#rcBrands .rc-donut-hole b{font-size:12px}}</style>'+cards+'<div class="sub" style="margin-top:6px">Each circle is calculated separately per unit. Green = confirmed delivered; grey = remaining BOQ quantity. Only reviewed, approved MIR quantities are counted. Values may be unavailable when BOQ prices are missing.</div>';
+}
 function renderExp(){
  q('rcExc').innerHTML=D.comp.exceptions.length?'<div class="rc-scroll" style="max-height:300px"><table class="rc"><thead><tr><th>Severity</th><th>Type</th><th>Message</th></tr></thead><tbody>'+D.comp.exceptions.slice(0,300).map(e=>`<tr><td>${chip(e.severity,e.severity==='error'?'c-bad':e.severity==='warning'?'c-warn':'c-info')}</td><td>${esc(e.type)}</td><td>${esc(e.message)}</td></tr>`).join('')+'</tbody></table></div>':'<div class="sub">None.</div>';
  q('rcAudit').innerHTML=D.audit.length?D.audit.map(a=>`${esc(a.ts)} · <b>${esc(a.user)}</b> · ${esc(a.action)} · ${esc(a.detail)}`).join('<br>'):'No actions yet.'}

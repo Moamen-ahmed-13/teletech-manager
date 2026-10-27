@@ -137,9 +137,10 @@ def norm_alnum(s):
     return re.sub(r'[^a-z0-9\u0600-\u06ff]', '', str(s or '').lower())
 
 
-UNIT_ALIASES = {'pc': 'PC', 'pcs': 'PC', 'piece': 'PC', 'pieces': 'PC', 'ea': 'PC', 'each': 'PC', 'no': 'PC', 'nos': 'PC',
-                'roll': 'ROLL', 'rolls': 'ROLL', 'm': 'M', 'mtr': 'M', 'meter': 'M', 'metre': 'M', 'meters': 'M',
-                'set': 'SET', 'sets': 'SET', 'lot': 'LOT', 'box': 'BOX', 'boxes': 'BOX', 'ls': 'LS', 'unit': 'UNIT', 'units': 'UNIT'}
+UNIT_ALIASES = {'pc': 'PC', 'pcs': 'PC', 'piece': 'PC', 'pieces': 'PC', 'ea': 'PC', 'each': 'PC', 'no': 'PC', 'nos': 'PC', 'number': 'PC', 'numbers': 'PC',
+                'roll': 'ROLL', 'rolls': 'ROLL', 'm': 'M', 'mtr': 'M', 'meter': 'M', 'metre': 'M', 'meters': 'M', 'metres': 'M',
+                'set': 'SET', 'sets': 'SET', 'lot': 'LOT', 'box': 'BOX', 'boxes': 'BOX', 'ls': 'LS', 'unit': 'UNIT', 'units': 'UNIT',
+                'قطعة': 'PC', 'قطع': 'PC', 'عدد': 'PC', 'متر': 'M', 'مترطولي': 'M', 'لفة': 'ROLL', 'لفات': 'ROLL', 'طقم': 'SET', 'علبة': 'BOX', 'علب': 'BOX'}
 
 
 def canon_unit(u):
@@ -326,29 +327,35 @@ def stored_path(project_dir, kind, meta):
 # BOQ parsing
 # ----------------------------------------------------------------------------
 HEADER_SYNS = {
-    'sn': {'s.n', 'sn', 's n', 'no', 'no.', '#', 'item no', 'item no.', 'م'},
-    'item': {'item', 'description', 'item description', 'البند', 'بيان الاعمال'},
-    'reference': {'reference', 'ref', 'ref.', 'spec', 'specification', 'specifications'},
-    'part': {'part #', 'part#', 'part no', 'part no.', 'part number', 'part', 'model', 'p/n', 'pn'},
-    'qty': {'qty', 'qty.', 'quantity', 'الكمية'},
-    'unit': {'unit', 'uom', 'unit of measure', 'الوحدة'},
-    'brand': {'brand', 'manufacturer', 'make'},
-    'unit_price': {'unit price', 'unit rate', 'rate', 'price', 'سعر الوحدة'},
-    'total_price': {'total price', 'total', 'amount', 'total value', 'الاجمالي', 'الاجمالى'},
+    'sn': {'s.n', 'sn', 's n', 'no', 'no.', '#', 'item no', 'item no.', 'item number', 'serial no', 'م'},
+    'item': {'item', 'description', 'item description', 'description of material', 'material description', 'scope of work', 'البند', 'بيان الاعمال', 'بيان الأعمال', 'وصف البند', 'الصنف'},
+    'reference': {'reference', 'ref', 'ref.', 'spec', 'specification', 'specifications', 'technical specification'},
+    'part': {'part #', 'part#', 'part no', 'part no.', 'part number', 'part', 'model', 'model no', 'p/n', 'pn', 'sku'},
+    'qty': {'qty', 'qty.', 'quantity', 'quantities', 'total qty', 'boq qty', 'الكمية', 'الكميه', 'كمية'},
+    'unit': {'unit', 'units', 'uom', 'u.o.m', 'u/m', 'um', 'unit of measure', 'unit of measurement', 'measurement unit', 'uom.', 'الوحدة', 'وحدة القياس', 'وحده القياس', 'وحدة'},
+    'brand': {'brand', 'manufacturer', 'make', 'vendor', 'الماركة', 'الماركه', 'الشركة المصنعة'},
+    'unit_price': {'unit price', 'unit rate', 'rate', 'price', 'price per unit', 'unit cost', 'سعر الوحدة', 'سعر الوحده'},
+    'total_price': {'total price', 'total', 'amount', 'total value', 'line total', 'extended price', 'اجمالي السعر', 'الاجمالي', 'الاجمالى', 'الإجمالي', 'القيمة الاجمالية'},
 }
 
 
 def _hnorm(v):
-    return re.sub(r'\s+', ' ', str(v or '').strip().lower())
+    return re.sub(r'\\s+', ' ', str(v or '').strip().lower())
+
+
+def _header_key(v):
+    # Normalize punctuation and spacing (U.O.M == UOM, Qty. == Qty).
+    return re.sub(r'[^a-z0-9\u0600-\u06ff]+', '', _hnorm(v))
 
 
 def _map_header(values):
     cmap, dups = {}, []
+    normalized = {field: {_header_key(s) for s in syns} for field, syns in HEADER_SYNS.items()}
     for i, v in enumerate(values):
-        h = _hnorm(v)
+        h = _header_key(v)
         if not h:
             continue
-        for field, syns in HEADER_SYNS.items():
+        for field, syns in normalized.items():
             if h in syns:
                 if field in cmap:
                     dups.append('%s (column %d ignored)' % (field, i + 1))
@@ -1231,6 +1238,29 @@ def compute(st):
 
     def exc(sev, typ, ref, msg):
         exceptions.append({'severity': sev, 'type': typ, 'ref': ref, 'message': msg})
+
+    # Make document/page coverage explicit. A page with no extracted line may be
+    # blank or may have been missed by OCR; never silently assume either.
+    records_by_doc_page = {}
+    for record in st.get('records', []):
+        records_by_doc_page.setdefault((record.get('doc_id'), int(record.get('page') or 1)), 0)
+        records_by_doc_page[(record.get('doc_id'), int(record.get('page') or 1))] += 1
+    for doc in st.get('mir_docs', []):
+        doc_id = doc.get('id')
+        filename = doc.get('filename') or doc_id or '(unknown MIR file)'
+        ocr_status = doc.get('ocr_status') or 'not_run'
+        if ocr_status != 'done':
+            severity = 'error' if ocr_status == 'error' else 'warning'
+            detail = ('OCR failed: %s' % (doc.get('ocr_error') or 'no error details')) if ocr_status == 'error' else ('OCR status is %s' % ocr_status)
+            exc(severity, 'mir_document_not_fully_read', str(filename), '%s: %s. Verify every page manually; unread documents are not assumed empty.' % (filename, detail))
+        try:
+            page_count = max(0, int(doc.get('pages') or 0))
+        except (TypeError, ValueError):
+            page_count = 0
+        for page_no in range(1, page_count + 1):
+            if not records_by_doc_page.get((doc_id, page_no), 0):
+                exc('warning', 'mir_page_without_records', '%s p%d' % (filename, page_no),
+                    '%s page %d has no extracted or manually added MIR lines. Check the scan; if a line was missed, add it manually.' % (filename, page_no))
 
     for w in boq.get('warnings', []):
         exc(w.get('severity', 'info'), 'boq_' + w.get('type', ''), w.get('ref', ''), w.get('message', ''))
