@@ -345,7 +345,7 @@ def _hnorm(v):
 
 def _header_key(v):
     # Normalize punctuation and spacing (U.O.M == UOM, Qty. == Qty).
-    return re.sub(r'[^a-z0-9\\u0600-\\u06ff]+', '', _hnorm(v))
+    return re.sub(r'[^a-z0-9\u0600-\u06ff]+', '', _hnorm(v))
 
 
 def _map_header(values):
