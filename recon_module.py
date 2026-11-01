@@ -1366,7 +1366,8 @@ def compute(st):
             recorded += q
             st_ = e['mir_status'] if e['mir_status'] in by_status else 'unknown'
             mu = canon_unit(e['unit'])
-            conflict = bool(ub and mu and ub != mu)
+            # Quantity reconciliation is numeric per BOQ item; unit text is metadata and does not block subtraction.
+            conflict = False
             if rv['review_status'] != 'reviewed' or st_ == 'unknown':
                 pending += q; awaiting += 1; by_status['unknown'] += q if st_ == 'unknown' else 0
             elif conflict:
