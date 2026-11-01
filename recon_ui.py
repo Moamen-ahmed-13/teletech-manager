@@ -72,38 +72,38 @@ RECON_HTML = r'''
 @media(max-width:720px){#reconPanel .rc-upload-grid{grid-template-columns:1fr}#reconPanel .cardHead{flex-direction:column}#reconPanel .rc-tabs button{flex:1 1 auto;padding:8px 10px}#reconPanel .rc-source-list{grid-template-columns:1fr}#reconPanel .rc-rec{padding:10px}}
 </style>
 <div class="card" id="reconPanel" style="margin-top:16px">
- <div class="cardHead"><div><h3>Materials &amp; delivery tracker</h3><div class="sub">Track submitted MIR documents against the contract BOQ. Review OCR suggestions before any quantities are counted as confirmed.</div></div><span id="rcBadge" class="badge neutral">Loading</span></div>
- <div class="rc-tabs" id="rcTabs"><button data-t="src" class="on">Files</button><button data-t="rev">Review MIR</button><button data-t="rec">BOQ overview</button><button data-t="brd">Brand progress</button><button data-t="exp">Reports &amp; audit</button></div>
+ <div class="cardHead"><div><h3>متابعة الخامات والتوريدات</h3><div class="sub">قارن أذونات فحص الخامات MIR بالعقد والمقايسة BOQ، وراجع نتائج القراءة قبل اعتماد الكميات.</div></div><span id="rcBadge" class="badge neutral">Loading</span></div>
+ <div class="rc-tabs" id="rcTabs"><button data-t="src" class="on">الملفات</button><button data-t="rev">مراجعة MIR</button><button data-t="rec">ملخص المقايسة</button><button data-t="brd">تقدم البراندات</button><button data-t="exp">التقارير وسجل المراجعة</button></div>
  <div id="rcMsg" class="status" role="status">&nbsp;</div>
  <div class="rc-pane on" id="rcP-src">
-  <div class="rc-section-intro"><div><h4>Project source files</h4><p>Start by uploading the contract BOQ, then add the MIR PDFs you want to reconcile. Original files stay in project Documents.</p></div><div id="rcOcr" class="sub"></div></div>
+  <div class="rc-section-intro"><div><h4>ملفات المشروع</h4><p>Start by uploading the contract BOQ, then add the MIR PDFs you want to reconcile. Original files stay in project Documents.</p></div><div id="rcOcr" class="sub"></div></div>
   <div class="rc-upload-grid">
-   <div class="rc-upload-card"><div class="rc-upload-top"><div class="rc-upload-icon">XLS</div><div><h4>BOQ workbook</h4><p>Excel · .xlsx or .xlsm · source of truth</p></div></div><div class="rc-file-row"><input id="rcBoqFile" type="file" accept=".xlsx,.xlsm"><button id="rcBoqUp">Upload BOQ workbook</button></div></div>
-   <div class="rc-upload-card"><div class="rc-upload-top"><div class="rc-upload-icon">PDF</div><div><h4>MIR documents</h4><p>Scanned PDFs · select multiple files</p></div></div><div class="rc-file-row"><input id="rcMirFiles" type="file" accept=".pdf" multiple><button id="rcMirUp">Upload MIR PDFs</button></div></div>
+   <div class="rc-upload-card"><div class="rc-upload-top"><div class="rc-upload-icon">XLS</div><div><h4>ملف المقايسة BOQ</h4><p>Excel · .xlsx or .xlsm · source of truth</p></div></div><div class="rc-file-row"><input id="rcBoqFile" type="file" accept=".xlsx,.xlsm"><button id="rcBoqUp">Upload ملف المقايسة BOQ</button></div></div>
+   <div class="rc-upload-card"><div class="rc-upload-top"><div class="rc-upload-icon">PDF</div><div><h4>مستندات MIR</h4><p>Scanned PDFs · select multiple files</p></div></div><div class="rc-file-row"><input id="rcMirFiles" type="file" accept=".pdf" multiple><button id="rcMirUp">رفع ملفات MIR</button></div></div>
   </div>
   <details class="advanced"><summary>Import files already saved in project Documents</summary><div class="advInner"><div id="rcDocPick" class="sub">Loading...</div><div class="rc-bar"><button id="rcImport" class="alt">Import selected files</button></div></div></details>
-  <div class="rc-doc-heading"><h4>Current BOQ</h4><span class="small sub">Excel reference</span></div><div id="rcBoqInfo" class="sub">No BOQ yet.</div>
-  <div class="rc-doc-heading"><h4>MIR library</h4><span id="rcMirCount" class="small sub">0 documents</span></div><div id="rcDocs"></div>
+  <div class="rc-doc-heading"><h4>المقايسة الحالية</h4><span class="small sub">Excel reference</span></div><div id="rcBoqInfo" class="sub">No BOQ yet.</div>
+  <div class="rc-doc-heading"><h4>ملفات MIR</h4><span id="rcMirCount" class="small sub">0 documents</span></div><div id="rcDocs"></div>
  </div>
  <div class="rc-pane" id="rcP-rev">
-  <div class="rc-bar"><button id="rcMatch">Run matching</button><button id="rcApproveExact" class="good">Approve all "exact" matches</button>
+  <div class="rc-bar"><button id="rcMatch">تشغيل المطابقة</button><button id="rcApproveExact" class="good">اعتماد المطابقات المؤكدة</button>
    <select id="rcRevFilter"><option value="all">All lines</option><option value="todo">Needs attention</option><option value="unreviewed">Not reviewed</option><option value="nomatch">No approved match</option><option value="amb">Ambiguous / unmatched</option><option value="dup">Duplicates</option></select>
    <input id="rcRevSearch" placeholder="Search description / file" style="min-width:200px"></div>
-  <div class="sub">Edit the values to match the scanned page (open it with "View page"), set the MIR status, then <b>Save &amp; mark reviewed</b>. Then confirm the BOQ row and press <b>Approve match</b>.</div>
+  <div class="sub">Edit the values to match the scanned page (open it with "View page"), set the MIR status, then <b>حفظ وتأكيد المراجعة</b>. Then confirm the BOQ row and press <b>اعتماد المطابقة</b>.</div>
   <div id="rcRecs"></div>
  </div>
  <div class="rc-pane" id="rcP-rec">
   <div id="rcSummary"></div>
-  <div class="rc-bar"><input id="rcSearch" placeholder="Search code / description / part" style="min-width:220px"><select id="rcBrandF"><option value="">All brands</option></select>
-   <select id="rcStatF"><option value="">All statuses</option><option value="complete">Complete</option><option value="partial">Partial</option><option value="pending_review">Pending review</option><option value="no_mir">No MIR</option><option value="over_boq">Over BOQ</option><option value="no_confirmed">No confirmed qty</option></select></div>
+  <div class="rc-bar"><input id="rcSearch" placeholder="ابحث بالكود أو الوصف أو رقم الصنف" style="min-width:220px"><select id="rcBrandF"><option value="">كل البراندات</option></select>
+   <select id="rcStatF"><option value="">كل الحالات</option><option value="complete">Complete</option><option value="partial">Partial</option><option value="pending_review">Pending review</option><option value="no_mir">No MIR</option><option value="over_boq">Over BOQ</option><option value="no_confirmed">No confirmed qty</option></select></div>
   <div class="rc-scroll"><table class="rc" id="rcTable"></table></div>
   <div class="sub" id="rcNote" style="margin-top:8px"></div>
  </div>
  <div class="rc-pane" id="rcP-brd"><div id="rcBrands"></div></div>
  <div class="rc-pane" id="rcP-exp">
-  <div class="rc-bar"><button id="rcExport" class="good">Generate Excel report</button><span id="rcExpMsg" class="sub"></span></div>
-  <h4 style="margin:12px 0 6px">Exceptions &amp; warnings</h4><div id="rcExc"></div>
-  <h4 style="margin:12px 0 6px">Recent review / approval log</h4><div id="rcAudit" class="small sub"></div>
+  <div class="rc-bar"><button id="rcExport" class="good">إنشاء تقرير Excel</button><span id="rcExpMsg" class="sub"></span></div>
+  <h4 style="margin:12px 0 6px">الاستثناءات والتحذيرات</h4><div id="rcExc"></div>
+  <h4 style="margin:12px 0 6px">سجل المراجعة والاعتماد</h4><div id="rcAudit" class="small sub"></div>
  </div>
 </div>
 '''
@@ -133,7 +133,7 @@ function render(){
  const b=D.boq;
  q('rcBoqInfo').innerHTML=b
   ? '<div class="rc-boq-summary"><div class="rc-boq-file">▤ '+esc(b.filename)+'</div><div class="rc-boq-meta">Sheet: <b>'+esc(b.sheet)+'</b> · Header row: '+b.header_row+' · <b>'+b.items+'</b> BOQ items<br>Columns detected: '+Object.entries(b.columns).map(([k,v])=>esc(k)+' → '+esc(v)).join(' · ')+'<br>'+(b.sheets_considered||[]).map(x=>esc(x.sheet)+(x.header_row?' (score '+x.score+')':' (no BOQ header)')).join(' · ')+'</div>'+b.warnings.filter(w=>w.severity!=='info').slice(0,6).map(w=>'<div class="small" style="color:#9a6700;margin-top:5px">⚠ '+esc(w.message)+'</div>').join('')+'</div>'
-  : '<div class="rc-empty">No BOQ workbook uploaded yet.<br>Upload the contract Excel file above to begin reconciliation.</div>';
+  : '<div class="rc-empty">No ملف المقايسة BOQ uploaded yet.<br>Upload the contract Excel file above to begin reconciliation.</div>';
  q('rcMirCount').textContent=D.docs.length+' document(s) · '+D.docs.reduce((n,d)=>n+d.pages,0)+' pages';
  q('rcDocs').innerHTML=D.docs.length
   ? '<div class="rc-source-list">'+D.docs.map(d=>{
@@ -143,7 +143,7 @@ function render(){
       :d.ocr_status==='error'?chip('OCR failed','c-bad')+'<div class="small" style="color:#b42318;margin-top:5px">'+esc(d.ocr_error||'Please run OCR again.')+'</div>'
       :d.ocr_status==='interrupted'?chip('Interrupted · retry OCR','c-warn')
       :chip('OCR not started','c-mute');
-    return '<div class="rc-source-card"><div class="rc-source-head"><div class="rc-file-icon">PDF</div><div style="min-width:0;flex:1"><div class="rc-source-name">'+esc(d.filename)+'</div><div class="rc-source-meta">Uploaded by '+esc(d.uploaded_by||'project user')+' · '+esc(d.sha256.slice(0,10))+'</div></div></div><div class="rc-source-stats"><span class="rc-stat-pill">'+d.pages+' page(s)</span><span class="rc-stat-pill">'+n+' extracted line(s)</span>'+status+'</div><div class="rc-source-actions"><button data-ocr="'+d.id+'">'+(d.ocr_status==='running'?'OCR running…':'Run OCR')+'</button><button class="alt" data-addline="'+d.id+'">Add line</button><a class="alt" href="/api/recon/page?doc='+d.id+'&page=1" target="_blank">View first page ↗</a><button class="alt" data-rmdoc="'+d.id+'">Remove</button></div></div>';
+    return '<div class="rc-source-card"><div class="rc-source-head"><div class="rc-file-icon">PDF</div><div style="min-width:0;flex:1"><div class="rc-source-name">'+esc(d.filename)+'</div><div class="rc-source-meta">Uploaded by '+esc(d.uploaded_by||'project user')+' · '+esc(d.sha256.slice(0,10))+'</div></div></div><div class="rc-source-stats"><span class="rc-stat-pill">'+d.pages+' page(s)</span><span class="rc-stat-pill">'+n+' extracted line(s)</span>'+status+'</div><div class="rc-source-actions"><button data-ocr="'+d.id+'">'+(d.ocr_status==='running'?'OCR running…':'Run OCR')+'</button><button class="alt" data-addline="'+d.id+'">Add line</button><a class="alt" href="/api/recon/page?doc='+d.id+'&page=1" target="_blank">عرض الصفحة الأولى ↗</a><button class="alt" data-rmdoc="'+d.id+'">Remove</button></div></div>';
    }).join('')+'</div>'
   : '<div class="rc-empty">No MIR PDFs yet.<br>Upload one or more scanned MIR files above.</div>';
  renderRecs();renderRec();renderBrands();renderExp();
@@ -166,20 +166,20 @@ function renderRecs(){
  q('rcRecs').innerHTML=rows.length?rows.map(r=>{const e=r.eff,m=r.match||{},o=r.ocr||{};const ms=MS[m.state||'not_matched']||MS.not_matched;
   const ocrTxt=r.origin==='ocr'?`OCR draft: ref ${esc(o.ref_no||'?')} · date ${esc(o.date||'?')} · “${esc(o.description||'(nothing read)')}” · unit ${esc(o.unit||'?')} · Q.T ${o.qty??'?'} · TOTAL ${o.total??'?'} · conf ${o.conf??'n/a'}${o.date_alternatives&&o.date_alternatives.length?' (other date readings: '+esc(o.date_alternatives.join(', '))+')':''}${o.mir_status?' · box ticked: '+esc(o.mir_status):''}${o.invoice_no?' · invoice '+esc(o.invoice_no):''}${o.extra_text?' · handwriting/extra: '+esc(o.extra_text):''}${o.alts&&Object.keys(o.alts).length?' · <b>other readings:</b> '+Object.entries(o.alts).map(([k,v])=>esc(k)+' '+v.join(' / ')).join('; '):''}`:'Manually entered line (no OCR data)';
   const gs=f=>(r.user&&f in r.user)?'':((o&&o[f]!=null)?' rc-guess':'');
-  return `<div class="rc-rec" data-id="${r.id}" data-doc="${r.doc_id}" data-page="${r.page}"><div class="rc-bar"><b>${esc(r.filename)}</b> p${r.page} <button class="alt" data-scan>Show scan</button> <a href="/api/recon/page?doc=${r.doc_id}&page=${r.page}" target="_blank">open full ↗</a> ${r.review_status==='reviewed'?chip('reviewed','c-ok'):chip('not reviewed','c-warn')} ${chip('match: '+ms[0],ms[1])}${m.method==='manual'?chip('manual decision','c-info'):''} ${flags(r.flags)}</div>
+  return `<div class="rc-rec" data-id="${r.id}" data-doc="${r.doc_id}" data-page="${r.page}"><div class="rc-bar"><b>${esc(r.filename)}</b> p${r.page} <button class="alt" data-scan>عرض الصورة</button> <a href="/api/recon/page?doc=${r.doc_id}&page=${r.page}" target="_blank">open full ↗</a> ${r.review_status==='reviewed'?chip('reviewed','c-ok'):chip('not reviewed','c-warn')} ${chip('match: '+ms[0],ms[1])}${m.method==='manual'?chip('manual decision','c-info'):''} ${flags(r.flags)}</div>
   <div class="rc-ocr">${ocrTxt}</div><div class="rc-scan" hidden></div>
   <div class="rc-grid"><div><label>MIR ref no.</label><input data-f="ref_no" class="${gs('ref_no')}" value="${esc(e.ref_no||'')}"${dis}></div><div><label>Date (as written)</label><input data-f="date" class="${gs('date')}" value="${esc(e.date||'')}"${dis}></div>
   <div style="grid-column:span 2"><label>Material description</label><textarea data-f="description" rows="2" class="${gs('description')}"${dis}>${esc(e.description||'')}</textarea></div>
-  <div><label>Unit</label><input data-f="unit" class="${gs('unit')}" value="${esc(e.unit||'')}"${dis}></div><div><label>Q.T (quantity)</label><input data-f="qty" class="${gs('qty')}" value="${e.qty??''}"${dis}></div><div><label>TOTAL (as written)</label><input data-f="total" class="${gs('total')}" value="${e.total??''}"${dis}></div>
-  <div><label>MIR status (check-box)</label><select data-f="mir_status"${dis}><option value="">— set —</option>${['A','B','C','D'].map(s=>`<option value="${s}"${e.mir_status===s?' selected':''}>${s} – ${({A:'Approved',B:'Approved with note',C:'Not approved',D:'Rejected'})[s]}</option>`).join('')}</select></div>
-  <div><label>Brand (optional)</label><input data-f="brand" value="${esc(e.brand||'')}"${dis}></div>
-  <div style="grid-column:span 2"><label>Matched BOQ row</label><select data-boq${dis}>${boqOpts(r)}</select></div></div>
-  <div class="rc-bar"><button data-save${dis}>Save</button><button data-rev class="good"${dis}>Save &amp; mark reviewed</button><button data-tot class="alt"${dis} title="Copy the TOTAL column value into Q.T after you checked the scan">Use TOTAL as Q.T</button><button data-appr class="good"${dis}>Approve match</button><button data-rej class="alt"${dis}>Reject match</button>${r.flags.includes('duplicate')?`<button data-notdup class="alt"${dis}>Not a duplicate</button>`:`<button data-isdup class="alt"${dis} title="Do not count this line (same material submitted twice)">Exclude as duplicate</button>`}${r.origin==='manual'?`<button data-del class="alt"${dis}>Delete line</button>`:''}</div></div>`}).join(''):'<div class="sub">No MIR lines match this filter. Run OCR or add lines in step 1.</div>';
+  <div><label>الوحدة</label><input data-f="unit" class="${gs('unit')}" value="${esc(e.unit||'')}"${dis}></div><div><label>الكمية Q.T</label><input data-f="qty" class="${gs('qty')}" value="${e.qty??''}"${dis}></div><div><label>الإجمالي كما هو مكتوب</label><input data-f="total" class="${gs('total')}" value="${e.total??''}"${dis}></div>
+  <div><label>حالة MIR (خانة الاختيار)</label><select data-f="mir_status"${dis}><option value="">— set —</option>${['A','B','C','D'].map(s=>`<option value="${s}"${e.mir_status===s?' selected':''}>${s} – ${({A:'Approved',B:'Approved with note',C:'Not approved',D:'Rejected'})[s]}</option>`).join('')}</select></div>
+  <div><label>البراند (اختياري)</label><input data-f="brand" value="${esc(e.brand||'')}"${dis}></div>
+  <div style="grid-column:span 2"><label>بند المقايسة المطابق</label><select data-boq${dis}>${boqOpts(r)}</select></div></div>
+  <div class="rc-bar"><button data-save${dis}>Save</button><button data-rev class="good"${dis}>حفظ وتأكيد المراجعة</button><button data-tot class="alt"${dis} title="Copy the TOTAL column value into Q.T after you checked the scan">Use TOTAL as Q.T</button><button data-appr class="good"${dis}>اعتماد المطابقة</button><button data-rej class="alt"${dis}>رفض المطابقة</button>${r.flags.includes('duplicate')?`<button data-notdup class="alt"${dis}>Not a duplicate</button>`:`<button data-isdup class="alt"${dis} title="Do not count this line (same material submitted twice)">Exclude as duplicate</button>`}${r.origin==='manual'?`<button data-del class="alt"${dis}>Delete line</button>`:''}</div></div>`}).join(''):'<div class="sub">No MIR lines match this filter. Run OCR or add lines in step 1.</div>';
  document.querySelectorAll('#rcRecs .rc-rec').forEach(box=>{const id=box.dataset.id;const get=()=>{const o={};box.querySelectorAll('[data-f]').forEach(i=>o[i.dataset.f]=i.value);return o};
   if(keep[id]){box.querySelectorAll('[data-f],[data-boq]').forEach(i=>{const k=i.dataset.f||'_boq';if(k in keep[id])i.value=keep[id][k]});box.dataset.dirty='1'}
   box.addEventListener('input',()=>box.dataset.dirty='1');box.addEventListener('change',()=>box.dataset.dirty='1');
   const run=async(fn,ok)=>{try{await fn();msg(ok,'success');box.removeAttribute('data-dirty');await load()}catch(e){msg(e.message,'error')}};
-  box.querySelector('[data-scan]').onclick=e=>{const sc=box.querySelector('.rc-scan');if(sc.hidden){sc.innerHTML='<img loading="lazy" alt="scanned MIR page" src="/api/recon/page?doc='+box.dataset.doc+'&page='+box.dataset.page+'&w=1100">';sc.hidden=false;e.target.textContent='Hide scan'}else{sc.hidden=true;sc.innerHTML='';e.target.textContent='Show scan'}};
+  box.querySelector('[data-scan]').onclick=e=>{const sc=box.querySelector('.rc-scan');if(sc.hidden){sc.innerHTML='<img loading="lazy" alt="scanned MIR page" src="/api/recon/page?doc='+box.dataset.doc+'&page='+box.dataset.page+'&w=1100">';sc.hidden=false;e.target.textContent='Hide scan'}else{sc.hidden=true;sc.innerHTML='';e.target.textContent='عرض الصورة'}};
   box.querySelector('[data-tot]').onclick=()=>{const t=box.querySelector('[data-f=total]').value;if(t==='')return msg('TOTAL is empty - read it from the scan first.','error');const qf=box.querySelector('[data-f=qty]');qf.value=t;qf.classList.remove('rc-guess');box.dataset.dirty='1'};
   box.querySelector('[data-save]').onclick=()=>run(async()=>{await act('update_record',{id,fields:get(),mark_reviewed:false});await act('match_run')},'Saved and BOQ auto-match refreshed. Check the suggested row and score; it is not approved automatically.');
   box.querySelector('[data-rev]').onclick=()=>run(async()=>{await act('update_record',{id,fields:get(),mark_reviewed:true});await act('match_run')},'Reviewed and BOQ auto-match refreshed. Check the suggested row and score; it is not approved automatically.');
@@ -193,11 +193,11 @@ function renderRec(){
  const s=D.comp.summary;const cur=s.currency_label;
  q('rcSummary').innerHTML=`<div class="rc-cards"><div class="rc-card">Original BOQ value<b>${fmt(s.boq_total_value)}</b><span class="small">${esc(cur)} · ${s.items_valued} valued / ${s.items_unvalued} without price</span></div><div class="rc-card">Confirmed MIR value<b>${fmt(s.mir_value)}</b></div><div class="rc-card">Remaining BOQ value<b>${fmt(s.remaining_value)}</b></div><div class="rc-card">Overall financial %<b>${pc(s.fin_pct)}</b></div>
  <div class="rc-card">BOQ items<b>${s.boq_items}</b><span class="small">${s.items_with_confirmed} with confirmed MIR · ${s.items_pending_review} pending · ${s.items_without_mir} none · ${s.items_over_boq} over BOQ</span></div><div class="rc-card">MIR lines<b>${s.mir_records}</b><span class="small">${s.records_reviewed} reviewed · ${s.unmatched_mir_records} not matched · ${s.mir_docs_ocr_done}/${s.mir_docs} PDFs OCR'd</span></div><div class="rc-card">Warnings<b>${s.warnings}</b><span class="small">see “Export &amp; log”</span></div></div>`;
- const bf=q('rcBrandF'),cv=bf.value;bf.innerHTML='<option value="">All brands</option>'+D.comp.brands.filter(b=>b.items).map(b=>`<option value="${esc(b.key)}">${esc(b.brand)}</option>`).join('');bf.value=cv;
+ const bf=q('rcBrandF'),cv=bf.value;bf.innerHTML='<option value="">كل البراندات</option>'+D.comp.brands.filter(b=>b.items).map(b=>`<option value="${esc(b.key)}">${esc(b.brand)}</option>`).join('');bf.value=cv;
  const t=q('rcSearch').value.toLowerCase(),sf=q('rcStatF').value;
  let rows=D.comp.items.filter(x=>(!t||(x.description+' '+x.code+' '+x.part+' '+x.row_ref).toLowerCase().includes(t))&&(!bf.value||x.brand_key===bf.value)&&(!sf||x.status===sf));
  rows.sort((a,b)=>{let va=a[sortKey],vb=b[sortKey];if(va==null)va=-Infinity;if(vb==null)vb=-Infinity;return (va>vb?1:va<vb?-1:0)*sortDir});
- const H=[['code','Code'],['description','Description'],['brand','Brand'],['unit','Unit'],['boq_qty','BOQ qty'],['confirmed_qty','Confirmed MIR'],['remaining_qty','Remaining'],['unit_price','Unit price'],['boq_value','BOQ value'],['mir_value','MIR value'],['remaining_value','Remaining value'],['qty_pct','Qty %'],['fin_pct','Fin %'],['status','Status'],['n_records','Sources']];
+ const H=[['code','Code'],['description','Description'],['brand','Brand'],['unit','الوحدة'],['boq_qty','BOQ qty'],['confirmed_qty','Confirmed MIR'],['remaining_qty','Remaining'],['unit_price','الوحدة price'],['boq_value','BOQ value'],['mir_value','MIR value'],['remaining_value','Remaining value'],['qty_pct','Qty %'],['fin_pct','Fin %'],['status','Status'],['n_records','Sources']];
  q('rcTable').innerHTML='<thead><tr>'+H.map(h=>`<th data-s="${h[0]}">${h[1]}${sortKey===h[0]?(sortDir>0?' ▲':' ▼'):''}</th>`).join('')+'</tr></thead><tbody>'+rows.map(x=>{const st=ST[x.status]||[x.status,''];const un=x.unit_source==='user'?x.unit:(x.unit||'');
   const src=x.sources.map(z=>`<a href="/api/recon/page?doc=${esc(D.docs.find(d=>d.filename===z.file)?.id||'')}&page=${z.page}" target="_blank">${esc(z.file)} p${z.page}</a> <span class="small">(${esc(z.ref_no||'?')}: ${fq(z.qty)} ${esc(z.unit||'')}, ${esc(z.status||'?')}${z.reviewed?'':', unreviewed'})</span>`).join('<br>');
   const na=k=>x.unavailable[k]?` title="${esc(x.unavailable[k])}"`:'';
@@ -208,70 +208,19 @@ function renderRec(){
 function renderBrands(){
  const brands=D.comp.brands||[];
  const cards=brands.map(b=>{
-  const units=Object.entries(b.qty_by_unit||{}).sort((x,y)=>(Number(y[1].boq)||0)-(Number(x[1].boq)||0));
-  const finPct=b.fin_pct==null?null:Number(b.fin_pct);
-  const finBarPct=finPct==null?0:Math.max(0,Math.min(100,finPct));
-  const rings=units.map(([u,v])=>{
-   const boq=Number(v.boq)||0,delivered=Number(v.confirmed)||0,remaining=Math.max(boq-delivered,0);
-   const rawPct=boq>0?(delivered/boq*100):null;
-   const ringPct=rawPct==null?0:Math.max(0,Math.min(100,rawPct));
-   const remPct=rawPct==null?null:Math.max(0,100-ringPct);
-   const circumference=2*Math.PI*42;
-   const dash=rawPct==null?0:(circumference*ringPct/100);
-   const ringColor=rawPct==null?'#d9dee7':'#14805e';
-   return `<div class="rc-brand-unit"><div class="rc-donut"><svg class="rc-donut-svg" viewBox="0 0 100 100" role="img" aria-label="${rawPct==null?'BOQ quantity unavailable':pc(rawPct)+' delivered'}"><circle class="rc-donut-track" cx="50" cy="50" r="42" fill="none" stroke="#e6e9ef" stroke-width="11"></circle><circle class="rc-donut-progress" cx="50" cy="50" r="42" fill="none" stroke="${ringColor}" stroke-width="11" stroke-linecap="round" stroke-dasharray="${dash} ${circumference}" transform="rotate(-90 50 50)"></circle></svg><div class="rc-donut-hole"><b>${rawPct==null?'—':pc(rawPct)}</b><span>delivered</span></div></div><div class="rc-brand-unit-info"><b>${esc(u)}</b><div class="rc-brand-legend"><span><i style="background:#14805e"></i> Delivered: ${fq(delivered)}</span><span><i style="background:#e6e9ef"></i> Remaining: ${fq(remaining)}</span></div><div class="small sub">BOQ: ${fq(boq)} ${esc(u)}</div>${rawPct!=null&&rawPct>100?'<div class="small" style="color:#b42318;font-weight:700">Over BOQ by '+fq(delivered-boq)+' '+esc(u)+'</div>':''}<div class="small sub">${rawPct==null?'BOQ quantity unavailable':pc(remPct)+' remaining'}</div></div></div>`;
-  }).join('');
-  return `<div class="rc-brand-card">
-   <div class="rc-brand-head"><div><b>${esc(b.brand)}</b><div class="small sub">${b.items} BOQ items</div></div><span class="rc-brand-tag">Delivery overview</span></div>
-   <section class="rc-brand-section"><div class="rc-brand-section-title">Quantity progress <span>Physical quantities</span></div>
-    <div class="rc-brand-quantity"><div class="rc-brand-rings">${rings||'<div class="sub">No unit-based quantities yet for this brand.</div>'}</div>
-     <div class="rc-brand-qty-explain"><div><b>What these numbers mean</b></div><div><strong>BOQ total</strong> = original quantity in the Excel file.</div><div><strong>Delivered</strong> = reviewed and approved MIR quantity.</div><div><strong>Remaining</strong> = BOQ total minus delivered.</div></div>
-    </div>
-    ${b.unspecified_unit_items?'<div class="small" style="margin-top:8px;color:#8a6100">'+b.unspecified_unit_items+' item(s) have a BOQ quantity but no unit, so they are not in any circle. Set their unit in “BOQ overview”, or approve a MIR line that states it.</div>':''}${b.unspecified_qty_items?'<div class="small sub" style="margin-top:4px">'+b.unspecified_qty_items+' item(s) have no numeric BOQ quantity.</div>':''}
-   </section>
-   <section class="rc-brand-section rc-brand-fin-section"><div class="rc-brand-section-title">Financial progress <span>Based on item values</span><b>${pc(b.fin_pct)}</b></div>
-    <div class="rc-brand-fin-track"><div style="width:${finBarPct}%"></div></div>
-    <div class="rc-brand-fin-caption"><span>Confirmed MIR value / BOQ value</span><span>${pc(b.fin_pct)} consumed</span></div>
-    <div class="small sub">This percentage measures money, not delivered quantity. Remaining BOQ value: <b>${fmt(b.remaining_value)}</b>.</div>
-   </section>
-   <div class="rc-brand-foot"><span><b>${b.items_with_confirmed} / ${b.items}</b> BOQ items have approved delivery</span><span><b>${b.unmatched_mir_records}</b> unmatched MIR lines</span></div>
-   ${b.over_boq.length?'<div class="rc-brand-warning">Over-BOQ items: '+b.over_boq.length+'</div>':''}
-  </div>`;
+  const boq=Number(b.boq_qty_total)||0, delivered=Number(b.confirmed_qty_total)||0, remaining=boq-delivered;
+  const pct=boq>0?delivered/boq*100:null, ringPct=pct==null?0:Math.max(0,Math.min(100,pct));
+  const circumference=2*Math.PI*42, dash=circumference*ringPct/100;
+  const fin=b.fin_pct==null?null:Number(b.fin_pct), finBar=fin==null?0:Math.max(0,Math.min(100,fin));
+  const ring=pct==null?'<div class="sub">لا توجد كميات BOQ رقمية صالحة لهذا البراند.</div>':`
+   <div class="rc-brand-unit"><div class="rc-donut"><svg class="rc-donut-svg" viewBox="0 0 100 100" role="img" aria-label="${pc(pct)} تم اعتماده"><circle cx="50" cy="50" r="42" fill="none" stroke="#e6e9ef" stroke-width="11"></circle><circle cx="50" cy="50" r="42" fill="none" stroke="#14805e" stroke-width="11" stroke-linecap="round" stroke-dasharray="${dash} ${circumference}" transform="rotate(-90 50 50)"></circle></svg><div class="rc-donut-hole"><b>${pc(pct)}</b><span>نسبة الكمية المعتمدة</span></div></div><div class="rc-brand-unit-info"><div class="rc-brand-legend"><span>المعتمد: <b>${fq(delivered)}</b></span><span>المتبقي: <b>${fq(remaining)}</b></span></div><div class="small sub">إجمالي BOQ: <b>${fq(boq)}</b></div>${pct>100?'<div class="small" style="color:#b42318;font-weight:700">تجاوز BOQ بمقدار '+fq(delivered-boq)+'</div>':''}<div class="small sub">${pc(100-pct)} نسبة المتبقي</div></div></div>`;
+  return `<div class="rc-brand-card"><div class="rc-brand-head"><div><b>${esc(b.brand)}</b><div class="small sub">${b.items} بند في المقايسة</div></div><span class="rc-brand-tag">ملخص تقدم التوريد</span></div>
+   <section class="rc-brand-section"><div class="rc-brand-section-title">تقدم الكميات <span>حساب رقمي بغض النظر عن الوحدة</span></div><div class="rc-brand-quantity"><div class="rc-brand-rings">${ring}</div><div class="rc-brand-qty-explain"><b>تفسير الأرقام</b><div><strong>إجمالي BOQ</strong> = مجموع الكميات الأصلية في ملف Excel.</div><div><strong>المعتمد</strong> = كميات MIR التي تمت مراجعتها واعتمادها فقط.</div><div><strong>المتبقي</strong> = إجمالي BOQ ناقص الكمية المعتمدة.</div><div style="margin-top:7px;color:#8a6100">تنبيه: يتم الجمع رقميًا حتى لو كانت الوحدات مختلفة أو غير مسجلة؛ لذلك قد لا يمثل الإجمالي كمية مادية بوحدة موحدة.</div></div></div></section>
+   <section class="rc-brand-section rc-brand-fin-section"><div class="rc-brand-section-title">التقدم المالي <span>بناءً على قيم البنود</span><b>${pc(fin)}</b></div><div class="rc-brand-fin-track"><div style="width:${finBar}%"></div></div><div class="rc-brand-fin-caption"><span>قيمة MIR المعتمدة ÷ قيمة BOQ</span><span>${pc(fin)} مستهلك</span></div><div class="small sub">المؤشر المالي منفصل عن نسبة الكميات. القيمة المالية المتبقية: <b>${fmt(b.remaining_value)}</b>.</div></section>
+   <div class="rc-brand-foot"><span><b>${b.items_with_confirmed} / ${b.items}</b> بند له توريد معتمد</span><span><b>${b.unmatched_mir_records}</b> سطر MIR غير مطابق</span></div>${b.over_boq.length?'<div class="rc-brand-warning">بنود تجاوزت كمية BOQ: '+b.over_boq.length+'</div>':''}</div>`;
  }).join('');
- q('rcBrands').innerHTML=`<style>
-#rcBrands .rc-brand-card{border:1px solid var(--border,#d9dee7);border-radius:14px;padding:16px;margin:0 0 14px;background:var(--card-bg,#fff)}
-#rcBrands .rc-brand-head{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #e6e9ef;padding-bottom:12px}
-#rcBrands .rc-brand-head>div>b{font-size:17px}
-#rcBrands .rc-brand-tag{font-size:11px;padding:5px 9px;border-radius:20px;background:#eef3f8;color:#475467}
-#rcBrands .rc-brand-section{padding:13px 0;border-bottom:1px solid #e6e9ef}
-#rcBrands .rc-brand-section-title{display:flex;align-items:center;gap:9px;font-weight:700;font-size:14px;margin-bottom:10px}
-#rcBrands .rc-brand-section-title span{font-size:11px;font-weight:400;color:var(--muted,#667085)}
-#rcBrands .rc-brand-quantity{display:grid;grid-template-columns:minmax(240px,1.1fr) minmax(220px,1fr);gap:16px;align-items:center}
-#rcBrands .rc-brand-rings{display:flex;flex-direction:column;gap:10px;padding:0;min-width:0}
-#rcBrands .rc-brand-unit{display:flex;align-items:center;gap:14px;border:1px solid #edf0f4;border-radius:12px;padding:12px;min-width:0}
-#rcBrands .rc-donut{width:112px;height:112px;flex:0 0 112px;display:grid;place-items:center;position:relative;border-radius:50%;isolation:isolate}
-#rcBrands .rc-donut-svg{position:absolute;inset:0;width:100%;height:100%;display:block;overflow:visible;z-index:0}
-#rcBrands .rc-donut-hole{position:relative;z-index:1;width:78px;height:78px;border:1px solid rgba(217,222,231,.75);border-radius:50%;background:var(--card-bg,#fff);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none}
-#rcBrands .rc-donut-hole b{font-size:17px;line-height:1.2;font-variant-numeric:tabular-nums}
-#rcBrands .rc-donut-hole span{font-size:10px;color:var(--muted,#667085)}
-#rcBrands .rc-brand-unit-info{min-width:0;overflow-wrap:anywhere}
-#rcBrands .rc-brand-unit-info>b{font-size:13px}
-#rcBrands .rc-brand-legend{display:flex;flex-direction:column;gap:5px;font-size:12px;margin:6px 0}
-#rcBrands .rc-brand-legend span{display:flex;align-items:center;gap:6px}
-#rcBrands .rc-brand-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;flex:0 0 9px}
-#rcBrands .rc-brand-qty-explain{font-size:12px;line-height:1.8;color:var(--muted,#667085)}
-#rcBrands .rc-brand-qty-explain b{color:var(--text,#101828)}
-#rcBrands .rc-brand-fin-section{border-bottom:0;padding-bottom:3px}
-#rcBrands .rc-brand-section-title>b{margin-left:auto;font-size:16px;font-variant-numeric:tabular-nums}
-#rcBrands .rc-brand-fin-track{height:10px;border-radius:20px;background:#e6e9ef;overflow:hidden}
-#rcBrands .rc-brand-fin-track>div{height:100%;background:#2874bd;border-radius:20px}
-#rcBrands .rc-brand-fin-caption{display:flex;justify-content:space-between;gap:8px;margin:6px 0;font-size:11px;color:var(--muted,#667085)}
-#rcBrands .rc-brand-foot{display:flex;gap:8px 20px;flex-wrap:wrap;border-top:1px solid #e6e9ef;margin-top:12px;padding-top:10px;font-size:12px;color:var(--muted,#667085)}
-#rcBrands .rc-brand-warning{font-size:12px;color:#b42318;font-weight:700;margin-top:7px}
-@media(max-width:650px){#rcBrands .rc-brand-quantity{grid-template-columns:1fr}#rcBrands .rc-brand-unit{align-items:flex-start}#rcBrands .rc-donut{width:92px;height:92px;flex-basis:92px}#rcBrands .rc-donut-hole{width:66px;height:66px}}
-</style>`+cards+'<div class="sub" style="margin-top:6px">Quantity progress compares numeric BOQ quantities with reviewed and approved MIR quantities. Financial progress compares their values. The two percentages measure different things.</div>';
-}
-function renderExp(){
+ q('rcBrands').innerHTML=cards||'<div class="rc-empty">لا توجد بيانات براندات بعد. ارفع ملف BOQ وراجع سطور MIR.</div>';
+}function renderExp(){
  q('rcExc').innerHTML=D.comp.exceptions.length?'<div class="rc-scroll" style="max-height:300px"><table class="rc"><thead><tr><th>Severity</th><th>Type</th><th>Message</th></tr></thead><tbody>'+D.comp.exceptions.slice(0,300).map(e=>`<tr><td>${chip(e.severity,e.severity==='error'?'c-bad':e.severity==='warning'?'c-warn':'c-info')}</td><td>${esc(e.type)}</td><td>${esc(e.message)}</td></tr>`).join('')+'</tbody></table></div>':'<div class="sub">None.</div>';
  q('rcAudit').innerHTML=D.audit.length?D.audit.map(a=>`${esc(a.ts)} · <b>${esc(a.user)}</b> · ${esc(a.action)} · ${esc(a.detail)}`).join('<br>'):'No actions yet.'}
 function tab(t){document.querySelectorAll('#rcTabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));document.querySelectorAll('#reconPanel .rc-pane').forEach(p=>p.classList.toggle('on',p.id==='rcP-'+t))}
