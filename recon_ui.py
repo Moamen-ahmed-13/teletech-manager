@@ -77,8 +77,8 @@ RECON_HTML = r'''
 #rcBrands .rc-brand-section{padding:13px 0;border-bottom:1px solid #e6e9ef}
 #rcBrands .rc-brand-section-title{display:flex;align-items:center;gap:9px;font-weight:700;font-size:14px;margin-bottom:10px}
 #rcBrands .rc-brand-section-title span{font-size:11px;font-weight:400;color:var(--muted,#667085)}
-#rcBrands .rc-brand-quantity{display:grid;grid-template-columns:minmax(240px,1.1fr) minmax(220px,1fr);gap:16px;align-items:start}
-#rcBrands .rc-brand-rings{display:grid;gap:10px;min-width:0}
+#rcBrands .rc-brand-quantity{display:block}
+#rcBrands .rc-brand-rings{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;min-width:0}
 #rcBrands .rc-brand-unit{display:flex;align-items:center;gap:14px;border:1px solid #edf0f4;border-radius:12px;padding:12px;min-width:0}
 #rcBrands .rc-donut{width:112px;height:112px;flex:0 0 112px;display:grid;place-items:center;position:relative;border-radius:50%;isolation:isolate}
 #rcBrands .rc-donut-svg{position:absolute;inset:0;width:100%;height:100%;display:block;overflow:visible;z-index:0}
@@ -87,8 +87,6 @@ RECON_HTML = r'''
 #rcBrands .rc-donut-hole span{font-size:10px;color:var(--muted,#667085)}
 #rcBrands .rc-brand-unit-info{min-width:0;overflow-wrap:anywhere}
 #rcBrands .rc-brand-legend{display:flex;flex-direction:column;gap:5px;font-size:12px;margin:0 0 6px}
-#rcBrands .rc-brand-qty-explain{font-size:12px;line-height:1.8;color:var(--muted,#667085)}
-#rcBrands .rc-brand-qty-explain b{color:var(--text,#101828)}
 #rcBrands .rc-brand-fin-section{border-bottom:0;padding-bottom:3px}
 #rcBrands .rc-brand-section-title>b{margin-inline-start:auto;font-size:16px;font-variant-numeric:tabular-nums}
 #rcBrands .rc-brand-fin-track{height:10px;border-radius:20px;background:#e6e9ef;overflow:hidden}
@@ -96,7 +94,7 @@ RECON_HTML = r'''
 #rcBrands .rc-brand-fin-caption{display:flex;justify-content:space-between;gap:8px;margin:6px 0;font-size:11px;color:var(--muted,#667085)}
 #rcBrands .rc-brand-foot{display:flex;gap:8px 20px;flex-wrap:wrap;border-top:1px solid #e6e9ef;margin-top:12px;padding-top:10px;font-size:12px;color:var(--muted,#667085)}
 #rcBrands .rc-brand-warning{font-size:12px;color:#b42318;font-weight:700;margin-top:7px}
-@media(max-width:650px){#rcBrands .rc-brand-quantity{grid-template-columns:1fr}#rcBrands .rc-brand-unit{align-items:flex-start}#rcBrands .rc-donut{width:92px;height:92px;flex-basis:92px}#rcBrands .rc-donut-hole{width:66px;height:66px}}
+@media(max-width:650px){#rcBrands .rc-brand-unit{align-items:flex-start}#rcBrands .rc-donut{width:92px;height:92px;flex-basis:92px}#rcBrands .rc-donut-hole{width:66px;height:66px}}
 </style>
 <div class="card" id="reconPanel" style="margin-top:16px">
  <div class="cardHead"><div><h3>متابعة الخامات والتوريدات</h3><div class="sub">قارن أذونات فحص الخامات MIR بالعقد والمقايسة BOQ، وراجع نتائج القراءة قبل اعتماد الكميات.</div></div><span id="rcBadge" class="badge neutral">Loading</span></div>
@@ -246,8 +244,8 @@ function renderBrands(){
   const fin=b.fin_pct==null?null:Number(b.fin_pct), finBar=fin==null?0:Math.max(0,Math.min(100,fin));
   const missingUnits=Number(b.unspecified_unit_items)||0;
   return '<div class="rc-brand-card"><div class="rc-brand-head"><div><b>'+esc(b.brand)+'</b><div class="small sub">'+b.items+' بند في المقايسة</div></div><span class="rc-brand-tag">ملخص تقدم البراند</span></div>' +
-   '<section class="rc-brand-section"><div class="rc-brand-section-title">تقدم الكميات <span>دائرة مستقلة لكل وحدة قياس</span></div><div class="rc-brand-quantity"><div class="rc-brand-rings">'+(rings||'<div class="sub">لا توجد وحدات قياس محددة لها كميات BOQ.</div>')+'</div><div class="rc-brand-qty-explain"><b>تفسير الأرقام</b><div><strong>Confirmed</strong> = كميات MIR التي تمت مراجعتها واعتمادها فقط.</div><div><strong>Remaining</strong> = كمية BOQ لهذه الوحدة ناقص الكمية المعتمدة.</div><div style="margin-top:7px;color:#8a6100">كل دائرة تخص وحدة قياس واحدة؛ لا يتم جمع الرول والقطعة أو أي وحدات مختلفة معًا.</div>'+(missingUnits?'<div class="small" style="margin-top:8px;color:#8a6100">'+missingUnits+' بندًا له كمية بلا وحدة؛ حدّد وحدته من BOQ overview حتى يظهر في الدوائر.</div>':'')+'</div></div></section>' +
-   '<section class="rc-brand-section rc-brand-fin-section"><div class="rc-brand-section-title">التقدم المالي <span>بناءً على قيم البنود</span><b>'+pc(fin)+'</b></div><div class="rc-brand-fin-track"><div style="width:'+finBar+'%"></div></div><div class="rc-brand-fin-caption"><span>Confirmed MIR value / BOQ value</span><span>'+pc(fin)+' of BOQ value confirmed</span></div><div class="small sub">المؤشر المالي منفصل عن نسب الكميات. القيمة المالية المتبقية: <b>'+fmt(b.remaining_value)+'</b>.</div></section>' +
+   '<section class="rc-brand-section"><div class="rc-brand-section-title">تقدم الكميات</div><div class="rc-brand-quantity"><div class="rc-brand-rings">'+(rings||'<div class="sub">لا توجد وحدات قياس محددة لها كميات BOQ.</div>')+'</div>'+(missingUnits?'<div class="small" style="margin-top:8px;color:#8a6100">'+missingUnits+' بندًا له كمية بلا وحدة؛ حدّد وحدته من BOQ overview.</div>':'')+'</div></section>' +
+   '<section class="rc-brand-section rc-brand-fin-section"><div class="rc-brand-section-title">التقدم المالي <span>بناءً على قيم البنود</span><b>'+pc(fin)+'</b></div><div class="rc-brand-fin-track"><div style="width:'+finBar+'%"></div></div><div class="rc-brand-fin-caption"><span>Confirmed MIR value / BOQ value</span><span>'+pc(fin)+' of BOQ value confirmed</span></div><div class="small sub">القيمة المالية المتبقية: <b>'+fmt(b.remaining_value)+'</b>.</div></section>' +
    '<div class="rc-brand-foot"><span><b>'+b.items_with_confirmed+' / '+b.items+'</b> بند له كمية معتمدة</span><span><b>'+b.unmatched_mir_records+'</b> سطر MIR غير مطابق</span></div>'+(b.over_boq.length?'<div class="rc-brand-warning">بنود تجاوزت كمية BOQ: '+b.over_boq.length+'</div>':'')+'</div>';
  }).join('');
  q('rcBrands').innerHTML=cards||'<div class="rc-empty">لا توجد بيانات براندات بعد. ارفع ملف BOQ وراجع سطور MIR.</div>';
