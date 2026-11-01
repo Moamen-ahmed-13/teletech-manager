@@ -70,7 +70,33 @@ RECON_HTML = r'''
 #reconPanel .advanced{border:1px solid var(--rc-line);border-radius:10px;padding:11px 13px;background:#fafbfd;margin:10px 0}
 #reconPanel .advanced summary{cursor:pointer;font-size:12px;font-weight:650;color:#475467}
 @media(max-width:720px){#reconPanel .rc-upload-grid{grid-template-columns:1fr}#reconPanel .cardHead{flex-direction:column}#reconPanel .rc-tabs button{flex:1 1 auto;padding:8px 10px}#reconPanel .rc-source-list{grid-template-columns:1fr}#reconPanel .rc-rec{padding:10px}}
-#reconPanel .rc-brand-rings{display:grid;gap:10px;min-width:0}
+#rcBrands .rc-brand-card{border:1px solid var(--border,#d9dee7);border-radius:14px;padding:16px;margin:0 0 14px;background:var(--card-bg,#fff)}
+#rcBrands .rc-brand-head{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #e6e9ef;padding-bottom:12px}
+#rcBrands .rc-brand-head>div>b{font-size:17px}
+#rcBrands .rc-brand-tag{font-size:11px;padding:5px 9px;border-radius:20px;background:#eef3f8;color:#475467}
+#rcBrands .rc-brand-section{padding:13px 0;border-bottom:1px solid #e6e9ef}
+#rcBrands .rc-brand-section-title{display:flex;align-items:center;gap:9px;font-weight:700;font-size:14px;margin-bottom:10px}
+#rcBrands .rc-brand-section-title span{font-size:11px;font-weight:400;color:var(--muted,#667085)}
+#rcBrands .rc-brand-quantity{display:grid;grid-template-columns:minmax(240px,1.1fr) minmax(220px,1fr);gap:16px;align-items:start}
+#rcBrands .rc-brand-rings{display:grid;gap:10px;min-width:0}
+#rcBrands .rc-brand-unit{display:flex;align-items:center;gap:14px;border:1px solid #edf0f4;border-radius:12px;padding:12px;min-width:0}
+#rcBrands .rc-donut{width:112px;height:112px;flex:0 0 112px;display:grid;place-items:center;position:relative;border-radius:50%;isolation:isolate}
+#rcBrands .rc-donut-svg{position:absolute;inset:0;width:100%;height:100%;display:block;overflow:visible;z-index:0}
+#rcBrands .rc-donut-hole{position:relative;z-index:1;width:78px;height:78px;border:1px solid rgba(217,222,231,.75);border-radius:50%;background:var(--card-bg,#fff);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none}
+#rcBrands .rc-donut-hole b{font-size:17px;line-height:1.2;font-variant-numeric:tabular-nums}
+#rcBrands .rc-donut-hole span{font-size:10px;color:var(--muted,#667085)}
+#rcBrands .rc-brand-unit-info{min-width:0;overflow-wrap:anywhere}
+#rcBrands .rc-brand-legend{display:flex;flex-direction:column;gap:5px;font-size:12px;margin:0 0 6px}
+#rcBrands .rc-brand-qty-explain{font-size:12px;line-height:1.8;color:var(--muted,#667085)}
+#rcBrands .rc-brand-qty-explain b{color:var(--text,#101828)}
+#rcBrands .rc-brand-fin-section{border-bottom:0;padding-bottom:3px}
+#rcBrands .rc-brand-section-title>b{margin-inline-start:auto;font-size:16px;font-variant-numeric:tabular-nums}
+#rcBrands .rc-brand-fin-track{height:10px;border-radius:20px;background:#e6e9ef;overflow:hidden}
+#rcBrands .rc-brand-fin-track>div{height:100%;background:#2874bd;border-radius:20px}
+#rcBrands .rc-brand-fin-caption{display:flex;justify-content:space-between;gap:8px;margin:6px 0;font-size:11px;color:var(--muted,#667085)}
+#rcBrands .rc-brand-foot{display:flex;gap:8px 20px;flex-wrap:wrap;border-top:1px solid #e6e9ef;margin-top:12px;padding-top:10px;font-size:12px;color:var(--muted,#667085)}
+#rcBrands .rc-brand-warning{font-size:12px;color:#b42318;font-weight:700;margin-top:7px}
+@media(max-width:650px){#rcBrands .rc-brand-quantity{grid-template-columns:1fr}#rcBrands .rc-brand-unit{align-items:flex-start}#rcBrands .rc-donut{width:92px;height:92px;flex-basis:92px}#rcBrands .rc-donut-hole{width:66px;height:66px}}
 </style>
 <div class="card" id="reconPanel" style="margin-top:16px">
  <div class="cardHead"><div><h3>متابعة الخامات والتوريدات</h3><div class="sub">قارن أذونات فحص الخامات MIR بالعقد والمقايسة BOQ، وراجع نتائج القراءة قبل اعتماد الكميات.</div></div><span id="rcBadge" class="badge neutral">Loading</span></div>
@@ -212,10 +238,10 @@ function renderBrands(){
   const units=Object.entries(b.qty_by_unit||{}).filter(([u,v])=>Number(v&&v.boq)>0).sort((x,y)=>String(x[0]).localeCompare(String(y[0])));
   const circumference=2*Math.PI*42;
   const rings=units.map(([unit,v])=>{
-   const boq=Number(v.boq)||0, confirmed=Number(v.confirmed)||0, remaining=boq-confirmed;
+   const boq=Number(v.boq)||0, confirmed=Number(v.confirmed)||0, remaining=Math.max(boq-confirmed,0);
    const pct=boq>0?confirmed/boq*100:null, ringPct=pct==null?0:Math.max(0,Math.min(100,pct));
    const dash=circumference*ringPct/100;
-   return '<div class="rc-brand-unit"><div class="rc-donut"><svg class="rc-donut-svg" viewBox="0 0 100 100" role="img" aria-label="'+pc(pct)+' '+esc(unit)+' confirmed"><circle cx="50" cy="50" r="42" fill="none" stroke="#e6e9ef" stroke-width="11"></circle><circle cx="50" cy="50" r="42" fill="none" stroke="#14805e" stroke-width="11" stroke-linecap="round" stroke-dasharray="'+dash+' '+circumference+'" transform="rotate(-90 50 50)"></circle></svg><div class="rc-donut-hole"><b>'+pc(pct)+'</b><span>'+esc(unit)+'</span></div></div><div class="rc-brand-unit-info"><div class="rc-brand-legend"><span>Confirmed: <b>'+fq(confirmed)+' '+esc(unit)+'</b></span><span>Remaining: <b>'+fq(remaining)+' '+esc(unit)+'</b></span></div><div class="small sub">BOQ total: <b>'+fq(boq)+' '+esc(unit)+'</b></div><div class="small sub">'+pc(100-pct)+' remaining</div>'+(pct>100?'<div class="small" style="color:#b42318;font-weight:700">Over BOQ by '+fq(confirmed-boq)+' '+esc(unit)+'</div>':'')+'</div></div>';
+   return '<div class="rc-brand-unit"><div class="rc-donut"><svg class="rc-donut-svg" viewBox="0 0 100 100" role="img" aria-label="'+pc(pct)+' '+esc(unit)+' confirmed"><circle cx="50" cy="50" r="42" fill="none" stroke="#e6e9ef" stroke-width="11"></circle><circle cx="50" cy="50" r="42" fill="none" stroke="#14805e" stroke-width="11" stroke-linecap="round" stroke-dasharray="'+dash+' '+circumference+'" transform="rotate(-90 50 50)"></circle></svg><div class="rc-donut-hole"><b>'+pc(pct)+'</b><span>'+esc(unit)+'</span></div></div><div class="rc-brand-unit-info"><div class="rc-brand-legend"><span>Confirmed: <b>'+fq(confirmed)+' '+esc(unit)+'</b></span><span>Remaining: <b>'+fq(remaining)+' '+esc(unit)+'</b></span></div><div class="small sub">BOQ total: <b>'+fq(boq)+' '+esc(unit)+'</b></div><div class="small sub">'+pc(Math.max(0,100-pct))+' remaining</div>'+(pct>100?'<div class="small" style="color:#b42318;font-weight:700">Over BOQ by '+fq(confirmed-boq)+' '+esc(unit)+'</div>':'')+'</div></div>';
   }).join('');
   const fin=b.fin_pct==null?null:Number(b.fin_pct), finBar=fin==null?0:Math.max(0,Math.min(100,fin));
   const missingUnits=Number(b.unspecified_unit_items)||0;
