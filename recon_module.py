@@ -1029,7 +1029,7 @@ def update_record(st, rec_id, fields, mark_reviewed, user):
                 r['user'][k] = _clean_field(k, r['ocr'].get(k)) if k in r['ocr'] else None
         missing = []
         if not r['user'].get('description'): missing.append('description')
-        if not r['user'].get('unit'): missing.append('unit')
+        # Unit is optional metadata; it never blocks review or numeric quantity subtraction.
         if r['user'].get('qty') is None: missing.append('qty (Q.T)')
         if not r['user'].get('mir_status'): missing.append('MIR status (A/B/C/D)')
         if not r['user'].get('ref_no'): missing.append('MIR ref no.')
