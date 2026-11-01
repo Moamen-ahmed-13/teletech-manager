@@ -1436,18 +1436,22 @@ def compute(st):
     brands = {}
     for row in rows:
         b = brands.setdefault(row['brand_key'], {'brand': row['brand'], 'key': row['brand_key'], 'items': 0, 'items_valued': 0, 'items_unvalued': 0,
-                                                 'qty_by_unit': {}, 'unspecified_unit_items': 0, 'boq_value': 0.0, 'mir_value': 0.0, 'remaining_value': 0.0,
+                                                 'qty_by_unit': {}, 'boq_qty_total': 0.0, 'confirmed_qty_total': 0.0, 'unspecified_unit_items': 0, 'boq_value': 0.0, 'mir_value': 0.0, 'remaining_value': 0.0,
                                                  'items_with_confirmed': 0, 'missing_mir': [], 'over_boq': [], 'awaiting_review': [], 'unmatched_mir_records': 0})
         b['items'] += 1
         if row['boq_value'] is not None and row['mir_value'] is not None:
             b['items_valued'] += 1; b['boq_value'] += row['boq_value']; b['mir_value'] += row['mir_value']; b['remaining_value'] += row['remaining_value']
         else:
             b['items_unvalued'] += 1
+        # Brand progress uses numeric BOQ and confirmed MIR quantities; unit labels are optional metadata.
+        if row['boq_qty'] is not None:
+            b['boq_qty_total'] += row['boq_qty']
+            b['confirmed_qty_total'] += row['confirmed_qty'] or 0
+        else:
+            b['unspecified_unit_items'] += 1
         if row['unit'] and row['boq_qty'] is not None:
             u = b['qty_by_unit'].setdefault(row['unit'], {'boq': 0.0, 'confirmed': 0.0})
             u['boq'] += row['boq_qty']; u['confirmed'] += row['confirmed_qty'] or 0
-        else:
-            b['unspecified_unit_items'] += 1
         if (row['confirmed_qty'] or 0) > 0: b['items_with_confirmed'] += 1
         if row['status'] == 'no_mir': b['missing_mir'].append(row['row_ref'])
         if row['status'] == 'over_boq': b['over_boq'].append(row['row_ref'])
@@ -1456,7 +1460,7 @@ def compute(st):
         if rv['approved_boq_id'] is None:
             k = rv.get('brand_key', '?')
             brands.setdefault(k, {'brand': '(unknown brand)' if k == '?' else names.get(k, k), 'key': k, 'items': 0, 'items_valued': 0, 'items_unvalued': 0,
-                                  'qty_by_unit': {}, 'unspecified_unit_items': 0, 'boq_value': 0.0, 'mir_value': 0.0, 'remaining_value': 0.0,
+                                  'qty_by_unit': {}, 'boq_qty_total': 0.0, 'confirmed_qty_total': 0.0, 'unspecified_unit_items': 0, 'boq_value': 0.0, 'mir_value': 0.0, 'remaining_value': 0.0,
                                   'items_with_confirmed': 0, 'missing_mir': [], 'over_boq': [], 'awaiting_review': [], 'unmatched_mir_records': 0})['unmatched_mir_records'] += 1
     brand_list = []
     for b in brands.values():
