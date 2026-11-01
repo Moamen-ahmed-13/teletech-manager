@@ -187,7 +187,7 @@ function renderRecs(){
   box.querySelector('[data-rej]').onclick=()=>run(()=>act('match_decide',{id,decision:'reject',boq_id:box.querySelector('[data-boq]').value}),'Match rejected.');
   const idp=box.querySelector('[data-isdup]');if(idp)idp.onclick=()=>run(()=>act('dup',{id,value:'duplicate'}),'Line excluded as duplicate.');
   const nd=box.querySelector('[data-notdup]');if(nd)nd.onclick=()=>run(()=>act('dup',{id,value:'not_duplicate'}),'Marked as not a duplicate.');
-  const dl=box.querySelector('[data-del]');if(dl)dl.onclick=()=>{if(confirm('Delete this manual line?'))run(()=>act('delete_record',{id}),'Line deleted.')}})}
+  const dl=box.querySelector('[data-del]');if(dl)dl.onclick=()=>{if(confirm('Delete this manual line?'))run(()=>act('delete_record',{id}),'Line deleted.')}})
 function renderRec(){
  const s=D.comp.summary;const cur=s.currency_label;
  q('rcSummary').innerHTML=`<div class="rc-cards"><div class="rc-card">Original BOQ value<b>${fmt(s.boq_total_value)}</b><span class="small">${esc(cur)} · ${s.items_valued} valued / ${s.items_unvalued} without price</span></div><div class="rc-card">Confirmed MIR value<b>${fmt(s.mir_value)}</b></div><div class="rc-card">Remaining BOQ value<b>${fmt(s.remaining_value)}</b></div><div class="rc-card">Overall financial %<b>${pc(s.fin_pct)}</b></div>
