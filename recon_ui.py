@@ -240,7 +240,7 @@ function renderBrands(){
    ${b.over_boq.length?'<div class="rc-brand-warning">Over-BOQ items: '+b.over_boq.length+'</div>':''}
   </div>`;
  }).join('');
- q('rcBrands').innerHTML='<style>
+ q('rcBrands').innerHTML=`<style>
 #rcBrands .rc-brand-card{border:1px solid var(--border,#d9dee7);border-radius:14px;padding:16px;margin:0 0 14px;background:var(--card-bg,#fff)}
 #rcBrands .rc-brand-head{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #e6e9ef;padding-bottom:12px}
 #rcBrands .rc-brand-head>div>b{font-size:17px}
@@ -271,7 +271,7 @@ function renderBrands(){
 #rcBrands .rc-brand-foot{display:flex;gap:8px 20px;flex-wrap:wrap;border-top:1px solid #e6e9ef;margin-top:12px;padding-top:10px;font-size:12px;color:var(--muted,#667085)}
 #rcBrands .rc-brand-warning{font-size:12px;color:#b42318;font-weight:700;margin-top:7px}
 @media(max-width:650px){#rcBrands .rc-brand-quantity{grid-template-columns:1fr}#rcBrands .rc-brand-unit{align-items:flex-start}#rcBrands .rc-donut{width:92px;height:92px;flex-basis:92px}#rcBrands .rc-donut-hole{width:66px;height:66px}}
-</style>'+cards+'<div class="sub" style="margin-top:6px">Quantity progress compares numeric BOQ quantities with reviewed and approved MIR quantities. Financial progress compares their values. The two percentages measure different things.</div>';
+</style>`+cards+'<div class="sub" style="margin-top:6px">Quantity progress compares numeric BOQ quantities with reviewed and approved MIR quantities. Financial progress compares their values. The two percentages measure different things.</div>';
 function renderExp(){
  q('rcExc').innerHTML=D.comp.exceptions.length?'<div class="rc-scroll" style="max-height:300px"><table class="rc"><thead><tr><th>Severity</th><th>Type</th><th>Message</th></tr></thead><tbody>'+D.comp.exceptions.slice(0,300).map(e=>`<tr><td>${chip(e.severity,e.severity==='error'?'c-bad':e.severity==='warning'?'c-warn':'c-info')}</td><td>${esc(e.type)}</td><td>${esc(e.message)}</td></tr>`).join('')+'</tbody></table></div>':'<div class="sub">None.</div>';
  q('rcAudit').innerHTML=D.audit.length?D.audit.map(a=>`${esc(a.ts)} · <b>${esc(a.user)}</b> · ${esc(a.action)} · ${esc(a.detail)}`).join('<br>'):'No actions yet.'}
