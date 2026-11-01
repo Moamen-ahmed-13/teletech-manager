@@ -70,6 +70,7 @@ RECON_HTML = r'''
 #reconPanel .advanced{border:1px solid var(--rc-line);border-radius:10px;padding:11px 13px;background:#fafbfd;margin:10px 0}
 #reconPanel .advanced summary{cursor:pointer;font-size:12px;font-weight:650;color:#475467}
 @media(max-width:720px){#reconPanel .rc-upload-grid{grid-template-columns:1fr}#reconPanel .cardHead{flex-direction:column}#reconPanel .rc-tabs button{flex:1 1 auto;padding:8px 10px}#reconPanel .rc-source-list{grid-template-columns:1fr}#reconPanel .rc-rec{padding:10px}}
+#reconPanel .rc-brand-rings{display:grid;gap:10px;min-width:0}
 </style>
 <div class="card" id="reconPanel" style="margin-top:16px">
  <div class="cardHead"><div><h3>متابعة الخامات والتوريدات</h3><div class="sub">قارن أذونات فحص الخامات MIR بالعقد والمقايسة BOQ، وراجع نتائج القراءة قبل اعتماد الكميات.</div></div><span id="rcBadge" class="badge neutral">Loading</span></div>
@@ -208,19 +209,24 @@ function renderRec(){
 function renderBrands(){
  const brands=D.comp.brands||[];
  const cards=brands.map(b=>{
-  const boq=Number(b.boq_qty_total)||0, delivered=Number(b.confirmed_qty_total)||0, remaining=boq-delivered;
-  const pct=boq>0?delivered/boq*100:null, ringPct=pct==null?0:Math.max(0,Math.min(100,pct));
-  const circumference=2*Math.PI*42, dash=circumference*ringPct/100;
+  const units=Object.entries(b.qty_by_unit||{}).filter(([u,v])=>Number(v&&v.boq)>0).sort((x,y)=>String(x[0]).localeCompare(String(y[0])));
+  const circumference=2*Math.PI*42;
+  const rings=units.map(([unit,v])=>{
+   const boq=Number(v.boq)||0, confirmed=Number(v.confirmed)||0, remaining=boq-confirmed;
+   const pct=boq>0?confirmed/boq*100:null, ringPct=pct==null?0:Math.max(0,Math.min(100,pct));
+   const dash=circumference*ringPct/100;
+   return '<div class="rc-brand-unit"><div class="rc-donut"><svg class="rc-donut-svg" viewBox="0 0 100 100" role="img" aria-label="'+pc(pct)+' '+esc(unit)+' confirmed"><circle cx="50" cy="50" r="42" fill="none" stroke="#e6e9ef" stroke-width="11"></circle><circle cx="50" cy="50" r="42" fill="none" stroke="#14805e" stroke-width="11" stroke-linecap="round" stroke-dasharray="'+dash+' '+circumference+'" transform="rotate(-90 50 50)"></circle></svg><div class="rc-donut-hole"><b>'+pc(pct)+'</b><span>'+esc(unit)+'</span></div></div><div class="rc-brand-unit-info"><div class="rc-brand-legend"><span>Confirmed: <b>'+fq(confirmed)+' '+esc(unit)+'</b></span><span>Remaining: <b>'+fq(remaining)+' '+esc(unit)+'</b></span></div><div class="small sub">BOQ total: <b>'+fq(boq)+' '+esc(unit)+'</b></div><div class="small sub">'+pc(100-pct)+' remaining</div>'+(pct>100?'<div class="small" style="color:#b42318;font-weight:700">Over BOQ by '+fq(confirmed-boq)+' '+esc(unit)+'</div>':'')+'</div></div>';
+  }).join('');
   const fin=b.fin_pct==null?null:Number(b.fin_pct), finBar=fin==null?0:Math.max(0,Math.min(100,fin));
-  const ring=pct==null?'<div class="sub">لا توجد كميات BOQ رقمية صالحة لهذا البراند.</div>':`
-   <div class="rc-brand-unit"><div class="rc-donut"><svg class="rc-donut-svg" viewBox="0 0 100 100" role="img" aria-label="${pc(pct)} تم اعتماده"><circle cx="50" cy="50" r="42" fill="none" stroke="#e6e9ef" stroke-width="11"></circle><circle cx="50" cy="50" r="42" fill="none" stroke="#14805e" stroke-width="11" stroke-linecap="round" stroke-dasharray="${dash} ${circumference}" transform="rotate(-90 50 50)"></circle></svg><div class="rc-donut-hole"><b>${pc(pct)}</b><span>نسبة الكمية المعتمدة</span></div></div><div class="rc-brand-unit-info"><div class="rc-brand-legend"><span>المعتمد: <b>${fq(delivered)}</b></span><span>المتبقي: <b>${fq(remaining)}</b></span></div><div class="small sub">إجمالي BOQ: <b>${fq(boq)}</b></div>${pct>100?'<div class="small" style="color:#b42318;font-weight:700">تجاوز BOQ بمقدار '+fq(delivered-boq)+'</div>':''}<div class="small sub">${pc(100-pct)} نسبة المتبقي</div></div></div>`;
-  return `<div class="rc-brand-card"><div class="rc-brand-head"><div><b>${esc(b.brand)}</b><div class="small sub">${b.items} بند في المقايسة</div></div><span class="rc-brand-tag">ملخص تقدم التوريد</span></div>
-   <section class="rc-brand-section"><div class="rc-brand-section-title">تقدم الكميات <span>حساب رقمي بغض النظر عن الوحدة</span></div><div class="rc-brand-quantity"><div class="rc-brand-rings">${ring}</div><div class="rc-brand-qty-explain"><b>تفسير الأرقام</b><div><strong>إجمالي BOQ</strong> = مجموع الكميات الأصلية في ملف Excel.</div><div><strong>المعتمد</strong> = كميات MIR التي تمت مراجعتها واعتمادها فقط.</div><div><strong>المتبقي</strong> = إجمالي BOQ ناقص الكمية المعتمدة.</div><div style="margin-top:7px;color:#8a6100">تنبيه: يتم الجمع رقميًا حتى لو كانت الوحدات مختلفة أو غير مسجلة؛ لذلك قد لا يمثل الإجمالي كمية مادية بوحدة موحدة.</div></div></div></section>
-   <section class="rc-brand-section rc-brand-fin-section"><div class="rc-brand-section-title">التقدم المالي <span>بناءً على قيم البنود</span><b>${pc(fin)}</b></div><div class="rc-brand-fin-track"><div style="width:${finBar}%"></div></div><div class="rc-brand-fin-caption"><span>قيمة MIR المعتمدة ÷ قيمة BOQ</span><span>${pc(fin)} مستهلك</span></div><div class="small sub">المؤشر المالي منفصل عن نسبة الكميات. القيمة المالية المتبقية: <b>${fmt(b.remaining_value)}</b>.</div></section>
-   <div class="rc-brand-foot"><span><b>${b.items_with_confirmed} / ${b.items}</b> بند له توريد معتمد</span><span><b>${b.unmatched_mir_records}</b> سطر MIR غير مطابق</span></div>${b.over_boq.length?'<div class="rc-brand-warning">بنود تجاوزت كمية BOQ: '+b.over_boq.length+'</div>':''}</div>`;
+  const missingUnits=Number(b.unspecified_unit_items)||0;
+  return '<div class="rc-brand-card"><div class="rc-brand-head"><div><b>'+esc(b.brand)+'</b><div class="small sub">'+b.items+' بند في المقايسة</div></div><span class="rc-brand-tag">ملخص تقدم البراند</span></div>' +
+   '<section class="rc-brand-section"><div class="rc-brand-section-title">تقدم الكميات <span>دائرة مستقلة لكل وحدة قياس</span></div><div class="rc-brand-quantity"><div class="rc-brand-rings">'+(rings||'<div class="sub">لا توجد وحدات قياس محددة لها كميات BOQ.</div>')+'</div><div class="rc-brand-qty-explain"><b>تفسير الأرقام</b><div><strong>Confirmed</strong> = كميات MIR التي تمت مراجعتها واعتمادها فقط.</div><div><strong>Remaining</strong> = كمية BOQ لهذه الوحدة ناقص الكمية المعتمدة.</div><div style="margin-top:7px;color:#8a6100">كل دائرة تخص وحدة قياس واحدة؛ لا يتم جمع الرول والقطعة أو أي وحدات مختلفة معًا.</div>'+(missingUnits?'<div class="small" style="margin-top:8px;color:#8a6100">'+missingUnits+' بندًا له كمية بلا وحدة؛ حدّد وحدته من BOQ overview حتى يظهر في الدوائر.</div>':'')+'</div></div></section>' +
+   '<section class="rc-brand-section rc-brand-fin-section"><div class="rc-brand-section-title">التقدم المالي <span>بناءً على قيم البنود</span><b>'+pc(fin)+'</b></div><div class="rc-brand-fin-track"><div style="width:'+finBar+'%"></div></div><div class="rc-brand-fin-caption"><span>Confirmed MIR value / BOQ value</span><span>'+pc(fin)+' of BOQ value confirmed</span></div><div class="small sub">المؤشر المالي منفصل عن نسب الكميات. القيمة المالية المتبقية: <b>'+fmt(b.remaining_value)+'</b>.</div></section>' +
+   '<div class="rc-brand-foot"><span><b>'+b.items_with_confirmed+' / '+b.items+'</b> بند له كمية معتمدة</span><span><b>'+b.unmatched_mir_records+'</b> سطر MIR غير مطابق</span></div>'+(b.over_boq.length?'<div class="rc-brand-warning">بنود تجاوزت كمية BOQ: '+b.over_boq.length+'</div>':'')+'</div>';
  }).join('');
  q('rcBrands').innerHTML=cards||'<div class="rc-empty">لا توجد بيانات براندات بعد. ارفع ملف BOQ وراجع سطور MIR.</div>';
-}function renderExp(){
+}
+function renderExp(){
  q('rcExc').innerHTML=D.comp.exceptions.length?'<div class="rc-scroll" style="max-height:300px"><table class="rc"><thead><tr><th>Severity</th><th>Type</th><th>Message</th></tr></thead><tbody>'+D.comp.exceptions.slice(0,300).map(e=>`<tr><td>${chip(e.severity,e.severity==='error'?'c-bad':e.severity==='warning'?'c-warn':'c-info')}</td><td>${esc(e.type)}</td><td>${esc(e.message)}</td></tr>`).join('')+'</tbody></table></div>':'<div class="sub">None.</div>';
  q('rcAudit').innerHTML=D.audit.length?D.audit.map(a=>`${esc(a.ts)} · <b>${esc(a.user)}</b> · ${esc(a.action)} · ${esc(a.detail)}`).join('<br>'):'No actions yet.'}
 function tab(t){document.querySelectorAll('#rcTabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));document.querySelectorAll('#reconPanel .rc-pane').forEach(p=>p.classList.toggle('on',p.id==='rcP-'+t))}
