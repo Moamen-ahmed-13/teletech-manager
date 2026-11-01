@@ -209,6 +209,10 @@ function renderBrands(){
  const cards=brands.map(b=>{
   const totalBoq=Number(b.boq_qty_total)||0, totalConfirmed=Number(b.confirmed_qty_total)||0;
   const units=totalBoq>0?[['Total quantity',{boq:totalBoq,confirmed:totalConfirmed}]]:[];
+  const qtyPct=totalBoq>0?totalConfirmed/totalBoq*100:null;
+  const qtyRemaining=Math.max(totalBoq-totalConfirmed,0);
+  const finPct=b.fin_pct==null?null:Number(b.fin_pct);
+  const finBarPct=finPct==null?0:Math.max(0,Math.min(100,finPct));
   const rings=units.map(([u,v])=>{
    const boq=Number(v.boq)||0,delivered=Number(v.confirmed)||0,remaining=Math.max(boq-delivered,0);
    const rawPct=boq>0?(delivered/boq*100):null;
@@ -219,10 +223,55 @@ function renderBrands(){
    const ringColor=rawPct==null?'#d9dee7':'#14805e';
    return `<div class="rc-brand-unit"><div class="rc-donut"><svg class="rc-donut-svg" viewBox="0 0 100 100" role="img" aria-label="${rawPct==null?'BOQ quantity unavailable':pc(rawPct)+' delivered'}"><circle class="rc-donut-track" cx="50" cy="50" r="42" fill="none" stroke="#e6e9ef" stroke-width="11"></circle><circle class="rc-donut-progress" cx="50" cy="50" r="42" fill="none" stroke="${ringColor}" stroke-width="11" stroke-linecap="round" stroke-dasharray="${dash} ${circumference}" transform="rotate(-90 50 50)"></circle></svg><div class="rc-donut-hole"><b>${rawPct==null?'—':pc(rawPct)}</b><span>delivered</span></div></div><div class="rc-brand-unit-info"><b>${esc(u)}</b><div class="rc-brand-legend"><span><i style="background:#14805e"></i> Delivered: ${fq(delivered)}</span><span><i style="background:#e6e9ef"></i> Remaining: ${fq(remaining)}</span></div><div class="small sub">BOQ: ${fq(boq)} ${esc(u)}</div>${rawPct!=null&&rawPct>100?'<div class="small" style="color:#b42318;font-weight:700">Over BOQ by '+fq(delivered-boq)+' '+esc(u)+'</div>':''}<div class="small sub">${rawPct==null?'BOQ quantity unavailable':pc(remPct)+' remaining'}</div></div></div>`;
   }).join('');
-  return `<div class="rc-brand-card"><div class="rc-brand-head"><div><b>${esc(b.brand)}</b><div class="small sub">${b.items} BOQ item(s) · Quantity progress</div></div><div class="rc-brand-fin"><span>Financial consumption</span><b>${pc(b.fin_pct)}</b></div></div><div class="rc-brand-rings">${rings||'<div class="sub">No usable BOQ quantities for this brand.</div>'}</div>${b.unspecified_unit_items?'<div class="small sub" style="margin-top:8px">'+b.unspecified_unit_items+' item(s) have no numeric BOQ quantity and cannot be included in quantity progress.</div>':''}<div class="rc-brand-foot"><span>Items with confirmed delivery: <b>${b.items_with_confirmed}</b> / ${b.items}</span><span>Remaining value: <b>${fmt(b.remaining_value)}</b></span><span>Unmatched MIR lines: <b>${b.unmatched_mir_records}</b></span></div>${b.over_boq.length?'<div class="small" style="color:#b42318;margin-top:6px;font-weight:700">Over-BOQ items: '+b.over_boq.length+'</div>':''}</div>`;
+  return `<div class="rc-brand-card">
+   <div class="rc-brand-head"><div><b>${esc(b.brand)}</b><div class="small sub">${b.items} BOQ items</div></div><span class="rc-brand-tag">Delivery overview</span></div>
+   <section class="rc-brand-section"><div class="rc-brand-section-title">Quantity progress <span>Physical quantities</span></div>
+    <div class="rc-brand-quantity">${rings||'<div class="sub">No numeric BOQ quantities available for this brand.</div>'}
+     <div class="rc-brand-qty-explain"><div><b>What these numbers mean</b></div><div><strong>BOQ total</strong> = original quantity in the Excel file.</div><div><strong>Delivered</strong> = reviewed and approved MIR quantity.</div><div><strong>Remaining</strong> = BOQ total minus delivered.</div>${qtyPct!=null&&qtyPct>100?'<div class="rc-brand-warning">Delivered quantity exceeds BOQ by '+fq(totalConfirmed-totalBoq)+'</div>':''}</div>
+    </div>
+    ${b.unspecified_unit_items?'<div class="small sub" style="margin-top:8px">'+b.unspecified_unit_items+' item(s) have no numeric BOQ quantity and are not included in this calculation.</div>':''}
+   </section>
+   <section class="rc-brand-section rc-brand-fin-section"><div class="rc-brand-section-title">Financial progress <span>Based on item values</span><b>${pc(b.fin_pct)}</b></div>
+    <div class="rc-brand-fin-track"><div style="width:${finBarPct}%"></div></div>
+    <div class="rc-brand-fin-caption"><span>Confirmed MIR value / BOQ value</span><span>${pc(b.fin_pct)} consumed</span></div>
+    <div class="small sub">This percentage measures money, not delivered quantity. Remaining BOQ value: <b>${fmt(b.remaining_value)}</b>.</div>
+   </section>
+   <div class="rc-brand-foot"><span><b>${b.items_with_confirmed} / ${b.items}</b> BOQ items have approved delivery</span><span><b>${b.unmatched_mir_records}</b> unmatched MIR lines</span></div>
+   ${b.over_boq.length?'<div class="rc-brand-warning">Over-BOQ items: '+b.over_boq.length+'</div>':''}
+  </div>`;
  }).join('');
- q('rcBrands').innerHTML='<style>#rcBrands .rc-brand-card{border:1px solid var(--border,#d9dee7);border-radius:14px;padding:16px;margin:0 0 14px;background:var(--card-bg,#fff)}#rcBrands .rc-brand-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:1px solid #e6e9ef;padding-bottom:10px}#rcBrands .rc-brand-head>b,#rcBrands .rc-brand-head>div:first-child>b{font-size:16px}#rcBrands .rc-brand-fin{display:flex;gap:10px;align-items:center;font-size:12px;color:var(--muted,#667085)}#rcBrands .rc-brand-fin b{font-size:16px;color:var(--text,#101828)}#rcBrands .rc-brand-rings{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;padding-top:14px}#rcBrands .rc-brand-unit{display:flex;align-items:center;gap:12px;border:1px solid #edf0f4;border-radius:12px;padding:12px;min-width:0}#rcBrands .rc-donut{width:100px;height:100px;flex:0 0 100px;display:grid;place-items:center;position:relative;border-radius:50%;isolation:isolate}#rcBrands .rc-donut-svg{position:absolute;inset:0;width:100%;height:100%;display:block;overflow:visible;z-index:0}#rcBrands .rc-donut-track{stroke:#e6e9ef}#rcBrands .rc-donut-progress{stroke:#14805e;transition:stroke-dasharray .25s ease}#rcBrands .rc-donut-hole{position:relative;z-index:1;width:72px;height:72px;border:1px solid rgba(217,222,231,.75);border-radius:50%;background:var(--card-bg,#fff);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;box-shadow:inset 0 1px 3px rgba(16,24,40,.05);pointer-events:none}#rcBrands .rc-donut-hole b{font-size:16px;line-height:1.2;font-variant-numeric:tabular-nums}#rcBrands .rc-donut-hole span{font-size:10px;color:var(--muted,#667085)}#rcBrands .rc-brand-unit-info{min-width:0;overflow-wrap:anywhere}#rcBrands .rc-brand-legend{display:flex;flex-direction:column;gap:4px;font-size:12px;margin:5px 0}#rcBrands .rc-brand-legend span{display:flex;align-items:center;gap:5px}#rcBrands .rc-brand-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;flex:0 0 9px}#rcBrands .rc-brand-foot{display:flex;gap:8px 18px;flex-wrap:wrap;border-top:1px solid #e6e9ef;margin-top:12px;padding-top:10px;font-size:12px;color:var(--muted,#667085)}@media(max-width:600px){#rcBrands .rc-brand-unit{align-items:flex-start}#rcBrands .rc-donut{width:82px;height:82px;flex-basis:82px}#rcBrands .rc-donut-hole{width:58px;height:58px}#rcBrands .rc-donut-hole b{font-size:12px}}</style>'+cards+'<div class="sub" style="margin-top:6px">Each circle is calculated separately per unit. Green = confirmed delivered; grey = remaining BOQ quantity. Only reviewed, approved MIR quantities are counted. Values may be unavailable when BOQ prices are missing.</div>';
-}
+ q('rcBrands').innerHTML='<style>
+#rcBrands .rc-brand-card{border:1px solid var(--border,#d9dee7);border-radius:14px;padding:16px;margin:0 0 14px;background:var(--card-bg,#fff)}
+#rcBrands .rc-brand-head{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid #e6e9ef;padding-bottom:12px}
+#rcBrands .rc-brand-head>div>b{font-size:17px}
+#rcBrands .rc-brand-tag{font-size:11px;padding:5px 9px;border-radius:20px;background:#eef3f8;color:#475467}
+#rcBrands .rc-brand-section{padding:13px 0;border-bottom:1px solid #e6e9ef}
+#rcBrands .rc-brand-section-title{display:flex;align-items:center;gap:9px;font-weight:700;font-size:14px;margin-bottom:10px}
+#rcBrands .rc-brand-section-title span{font-size:11px;font-weight:400;color:var(--muted,#667085)}
+#rcBrands .rc-brand-quantity{display:grid;grid-template-columns:minmax(240px,1.1fr) minmax(220px,1fr);gap:16px;align-items:center}
+#rcBrands .rc-brand-rings{display:block;padding:0}
+#rcBrands .rc-brand-unit{display:flex;align-items:center;gap:14px;border:1px solid #edf0f4;border-radius:12px;padding:12px;min-width:0}
+#rcBrands .rc-donut{width:112px;height:112px;flex:0 0 112px;display:grid;place-items:center;position:relative;border-radius:50%;isolation:isolate}
+#rcBrands .rc-donut-svg{position:absolute;inset:0;width:100%;height:100%;display:block;overflow:visible;z-index:0}
+#rcBrands .rc-donut-hole{position:relative;z-index:1;width:78px;height:78px;border:1px solid rgba(217,222,231,.75);border-radius:50%;background:var(--card-bg,#fff);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;pointer-events:none}
+#rcBrands .rc-donut-hole b{font-size:17px;line-height:1.2;font-variant-numeric:tabular-nums}
+#rcBrands .rc-donut-hole span{font-size:10px;color:var(--muted,#667085)}
+#rcBrands .rc-brand-unit-info{min-width:0;overflow-wrap:anywhere}
+#rcBrands .rc-brand-unit-info>b{font-size:13px}
+#rcBrands .rc-brand-legend{display:flex;flex-direction:column;gap:5px;font-size:12px;margin:6px 0}
+#rcBrands .rc-brand-legend span{display:flex;align-items:center;gap:6px}
+#rcBrands .rc-brand-legend i{display:inline-block;width:9px;height:9px;border-radius:50%;flex:0 0 9px}
+#rcBrands .rc-brand-qty-explain{font-size:12px;line-height:1.8;color:var(--muted,#667085)}
+#rcBrands .rc-brand-qty-explain b{color:var(--text,#101828)}
+#rcBrands .rc-brand-fin-section{border-bottom:0;padding-bottom:3px}
+#rcBrands .rc-brand-section-title>b{margin-left:auto;font-size:16px;font-variant-numeric:tabular-nums}
+#rcBrands .rc-brand-fin-track{height:10px;border-radius:20px;background:#e6e9ef;overflow:hidden}
+#rcBrands .rc-brand-fin-track>div{height:100%;background:#2874bd;border-radius:20px}
+#rcBrands .rc-brand-fin-caption{display:flex;justify-content:space-between;gap:8px;margin:6px 0;font-size:11px;color:var(--muted,#667085)}
+#rcBrands .rc-brand-foot{display:flex;gap:8px 20px;flex-wrap:wrap;border-top:1px solid #e6e9ef;margin-top:12px;padding-top:10px;font-size:12px;color:var(--muted,#667085)}
+#rcBrands .rc-brand-warning{font-size:12px;color:#b42318;font-weight:700;margin-top:7px}
+@media(max-width:650px){#rcBrands .rc-brand-quantity{grid-template-columns:1fr}#rcBrands .rc-brand-unit{align-items:flex-start}#rcBrands .rc-donut{width:92px;height:92px;flex-basis:92px}#rcBrands .rc-donut-hole{width:66px;height:66px}}
+</style>'+cards+'<div class="sub" style="margin-top:6px">Quantity progress compares numeric BOQ quantities with reviewed and approved MIR quantities. Financial progress compares their values. The two percentages measure different things.</div>';
 function renderExp(){
  q('rcExc').innerHTML=D.comp.exceptions.length?'<div class="rc-scroll" style="max-height:300px"><table class="rc"><thead><tr><th>Severity</th><th>Type</th><th>Message</th></tr></thead><tbody>'+D.comp.exceptions.slice(0,300).map(e=>`<tr><td>${chip(e.severity,e.severity==='error'?'c-bad':e.severity==='warning'?'c-warn':'c-info')}</td><td>${esc(e.type)}</td><td>${esc(e.message)}</td></tr>`).join('')+'</tbody></table></div>':'<div class="sub">None.</div>';
  q('rcAudit').innerHTML=D.audit.length?D.audit.map(a=>`${esc(a.ts)} · <b>${esc(a.user)}</b> · ${esc(a.action)} · ${esc(a.detail)}`).join('<br>'):'No actions yet.'}
