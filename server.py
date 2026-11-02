@@ -1616,7 +1616,7 @@ def _parse_visible_dxf(path, with_rooms=False):
     occurrences=[]
     room_markers=[]
     text_items=[]
-    def walk(entities, parent=(1,0,0,1,0,0), ancestors=(), depth=0):
+    def walk(entities, parent=(1,0,0,1,0,0), ancestors=(), depth=0, ancestor_handles=()):
         if depth>16: return
         amap=attributes_by_insert(entities)
         for e in entities:
@@ -1624,14 +1624,14 @@ def _parse_visible_dxf(path, with_rooms=False):
                 txt=str(_dxf_first(e,1,'') or '').strip()
                 rx,ry=transform_point(parent,_dxf_num(e,10),_dxf_num(e,20))
                 text_items.append({'text':txt,'x':rx,'y':ry,'layer':_dxf_first(e,8,'0'),
-                                   'ancestors':list(ancestors),'depth':depth,'type':e['type']})
+                                   'ancestors':list(ancestors),'ancestor_handles':list(ancestor_handles),'depth':depth,'type':e['type']})
                 if _is_room_marker_text(txt):
                     room_markers.append({'name':txt.upper(),'x':rx,'y':ry,'layer':_dxf_first(e,8,'0'),
-                                         'ancestors':list(ancestors),'depth':depth})
+                                         'ancestors':list(ancestors),'ancestor_handles':list(ancestor_handles),'depth':depth})
                 if 'ROOF' in txt.upper():
                     occurrences.append({'handle':_dxf_first(e,5,''),'block':'__ROOF_TEXT__','layer':_dxf_first(e,8,'0'),
                                         'x':rx,'y':ry,'text':txt,'rotation':0.0,'attributes':{},
-                                        'ancestors':list(ancestors),'depth':depth,'legend_branch':False,'root':depth==0})
+                                        'ancestors':list(ancestors),'ancestor_handles':list(ancestor_handles),'depth':depth,'legend_branch':False,'root':depth==0})
                 ridx=_rack_index_from_text(txt)
                 if ridx in {1,2}:
                     occurrences.append({'handle':_dxf_first(e,5,''),'block':'__RACK_TEXT__','layer':_dxf_first(e,8,'0'),
@@ -1653,11 +1653,11 @@ def _parse_visible_dxf(path, with_rooms=False):
             legend_branch=any(('legend' in str(a).lower() or 'legent' in str(a).lower()) for a in (*ancestors,name))
             occurrences.append({'handle':handle,'block':name,'layer':layer,'x':x,'y':y,'insert_x':ix,'insert_y':iy,
                                 'rotation':_dxf_num(e,50,0),'attributes':amap.get(handle,{}),
-                                'ancestors':list(ancestors),'depth':depth,'legend_branch':legend_branch,
+                                'ancestors':list(ancestors),'ancestor_handles':list(ancestor_handles),'depth':depth,'legend_branch':legend_branch,
                                 'root':depth==0})
             if name in blocks and not legend_branch:
                 if m is None: m=insert_matrix(e,blocks[name]['base'])
-                walk(blocks[name]['entities'],mat_mul(parent,m),ancestors+(name,),depth+1)
+                walk(blocks[name]['entities'],mat_mul(parent,m),ancestors+(name,),depth+1,ancestor_handles+(handle,))
     walk(model)
 
     # ROUTE_ROOM_LOCK_FIX2: many architectural blocks split room numbers into two
@@ -7701,6 +7701,8 @@ def _asbuilt_targets(floor,label_pattern=None):
             'y':float(rec.get('y') or ent.get('y') or 0.0),
             'root':root,
             'depth':int(rec.get('depth') or ent.get('depth') or 0),
+            'ancestor_handles':list(rec.get('ancestor_handles') or []),
+            'ancestor_blocks':list(rec.get('ancestors') or []),
             'editable_direct':bool(root and handle),
         })
 
@@ -9174,7 +9176,7 @@ window.renderVisionReview=function(j){
  h+='</div><div class="actions" style="display:flex;flex-direction:row;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:8px;margin-top:8px"><button id="bulkAdd" style="width:auto;min-width:0;flex:0 0 auto">Add selected to revision list</button><button id="bulkAll" class="alt" style="width:auto;min-width:0;flex:0 0 auto">Select all matched</button><button id="bulkNone" class="alt" style="width:auto;min-width:0;flex:0 0 auto">Clear</button><span id="bulkMsg" class="miniNote"></span></div></div>';
  h+='<div style="max-height:420px;overflow:auto"><table><thead><tr><th>Use</th><th>Page</th><th>Floor</th><th>Color</th><th>CAD endpoint</th><th>Match</th><th>Action</th></tr></thead><tbody>';
  inv.forEach((m,i)=>{const o=m.candidate_options||[],pct=Math.round(Number((o[0]||{}).match_confidence||0)*100),rule=RULES[m.color],blocked=!rule||!o.length;
-  h+='<tr data-b="'+i+'"><td><input type="checkbox" class="bu" '+(pct>=78&&!blocked?'checked':'')+(blocked?' disabled':'')+'></td><td>'+Number(m.page_number||0)+'</td><td>'+esc(m.floor_hint||'')+'</td><td>'+colorDot(m.color)+'</td><td><select class="bt" style="min-width:300px" '+(!o.length?'disabled':'')+'>'+(o.length?o.map(x=>'<option value="'+esc(x.target_id||'')+'">'+esc((x.label||x.block||x.target_id||'')+' | '+(x.service||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No CAD candidate</option>')+'</select></td><td class="'+(pct>=78?'confHigh':pct>=60?'confMid':'confLow')+'">'+pct+'%</td><td>'+esc(rule?rule.patch:'REVIEW')+'</td></tr>';
+  h+='<tr data-b="'+i+'"><td><input type="checkbox" class="bu" '+(pct>=78&&!blocked?'checked':'')+(blocked?' disabled':'')+'></td><td>'+Number(m.page_number||0)+'</td><td>'+esc(m.floor_hint||'')+'</td><td>'+colorDot(m.color)+'</td><td><select class="bt" style="min-width:300px" '+(!o.length?'disabled':'')+'>'+(o.length?o.map(x=>'<option value="'+esc(x.target_id||'')+'">'+esc((x.label||x.block||x.target_id||'')+' | '+(x.service||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No CAD candidate</option>')+'</select></td><td class="'+(pct>=78?'confHigh':pct>=60?'confMid':'confLow')+'">'+pct+'%</td><td>'+(rule&&rule.kind==='move'?'<span class="miniNote">MOVE_ENDPOINT</span><div style="display:flex;gap:4px;margin-top:4px"><input class="moveX" type="number" step="any" placeholder="Arrow X" style="width:105px"><input class="moveY" type="number" step="any" placeholder="Arrow Y" style="width:105px"></div>':esc(rule?rule.patch:'REVIEW'))+'</td></tr>';
  });
  box.innerHTML=h+'</tbody></table></div>';
  const msg=t=>$('bulkMsg').textContent=t,rows=()=>[...box.querySelectorAll('tr[data-b]')];
@@ -9183,7 +9185,7 @@ window.renderVisionReview=function(j){
  $('bulkAdd').onclick=()=>{let add=0,dup=0,miss=0,moves=0,pulled=0;
   for(const r of rows()){if(!r.querySelector('.bu').checked)continue;
    const m=inv[+r.dataset.b],rule=RULES[m.color],tid=r.querySelector('.bt').value;
-   if(!rule)continue;if(rule.kind==='move'){moves++;continue}if(rule.kind==='pulled'){pulled++;continue}if(!tid){miss++;continue}
+   if(!rule)continue;if(rule.kind==='move'){const xe=r.querySelector('.moveX'),ye=r.querySelector('.moveY');const xv=xe&&xe.value,yv=ye&&ye.value;if(!tid||xv===''||yv===''||!Number.isFinite(Number(xv))||!Number.isFinite(Number(yv))){miss++;continue}const mo=(m.candidate_options||[]).find(x=>x.target_id===tid)||{},mf=mo.floor||m.floor_hint||'';if(asbuiltChanges.some(c=>c.op==='MOVE_ENDPOINT'&&c.floor===mf&&c.target_id===tid)){dup++;continue}asbuiltChanges.push({op:'MOVE_ENDPOINT',floor:mf,target_id:tid,x:Number(xv),y:Number(yv),note:'As-Built page '+m.page_number+' orange arrow destination manually confirmed'});moves++;continue}if(rule.kind==='pulled'){pulled++;continue}if(!tid){miss++;continue}
    const o=(m.candidate_options||[]).find(x=>x.target_id===tid)||{},fl=o.floor||m.floor_hint||'';
    if(asbuiltChanges.some(c=>c.op==='SITE_REMOVE'&&c.floor===fl&&c.target_id===tid)){dup++;continue}
    asbuiltChanges.push({op:'SITE_REMOVE',floor:fl,target_id:tid,target_label:o.label||o.block||'',site_status:rule.status,patch_action:rule.patch,note:'As-Built page '+m.page_number+' '+m.color+' '+(m.markup_id||'')});add++;
