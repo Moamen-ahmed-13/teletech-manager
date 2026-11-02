@@ -9165,7 +9165,7 @@ window.renderVisionReview=function(j){
  inv.forEach((m,i)=>{const o=m.candidate_options||[],pct=Math.round(Number((o[0]||{}).match_confidence||0)*100),rule=RULES[m.color],blocked=!rule||rule.kind==='move'||rule.kind==='pulled'||!o.length;
   h+='<tr data-b="'+i+'"><td><input type="checkbox" class="bu" '+(pct>=78&&!blocked?'checked':'')+(blocked?' disabled':'')+'></td><td>'+Number(m.page_number||0)+'</td><td>'+esc(m.floor_hint||'')+'</td><td>'+colorDot(m.color)+'</td><td><select class="bt" style="min-width:300px" '+(!o.length?'disabled':'')+'>'+(o.length?o.map(x=>'<option value="'+esc(x.target_id||'')+'">'+esc((x.label||x.block||x.target_id||'')+' | '+(x.service||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No CAD candidate</option>')+'</select></td><td class="'+(pct>=78?'confHigh':pct>=60?'confMid':'confLow')+'">'+pct+'%</td><td>'+esc(rule?rule.patch:'REVIEW')+'</td></tr>';
  });
- box.innerHTML=h+'</tbody></div>';
+ box.innerHTML=h+'</tbody></table></div>';
  const msg=t=>$('bulkMsg').textContent=t,rows=()=>[...box.querySelectorAll('tr[data-b]')];
  $('bulkAll').onclick=()=>rows().forEach(r=>{const c=r.querySelector('.bu');if(!c.disabled)c.checked=true});
  $('bulkNone').onclick=()=>rows().forEach(r=>r.querySelector('.bu').checked=false);
