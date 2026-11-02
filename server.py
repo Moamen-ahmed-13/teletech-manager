@@ -7068,7 +7068,7 @@ def _asbuilt_cv_color_inventory(image_path, legend_path=None):
         mins={'pink':pink_min,'yellow':yellow_min,'orange':orange_min,'green':green_min}
 
         out={
-            'available':True,'width':int(w),'height':int(h),
+            'available':True,'source_image_path':str(image_path),'width':int(w),'height':int(h),
             'counts':{'pink':0,'yellow':0,'orange':0,'blue':0,'green':0},
             'regions':{'pink':[],'yellow':[],'orange':[],'blue':[],'green':[]},
             'blue_ignored':True,
@@ -7297,6 +7297,85 @@ def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='')
                     'match_confidence':round(conf,2),'editable_direct':bool(t.get('editable_direct'))})
     return out
 
+
+def _asbuilt_detect_blue_arrow_tips(image_path, orange_regions):
+    """Detect blue-ink arrow strokes associated with orange move marks.
+
+    This is a conservative geometric proposal only. It does not execute CAD edits.
+    Blue components must be local to an orange markup; ambiguous/missing strokes
+    are returned as unresolved instead of guessing a destination.
+    """
+    if cv2 is None or np is None or not image_path:
+        return {}
+    try:
+        img=cv2.imread(str(image_path),cv2.IMREAD_COLOR)
+        if img is None: return {}
+        h,w=img.shape[:2]
+        hsv=cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
+        # Blue ballpoint ink. Keep a broad hue range for scan/lighting variation;
+        # locality to the orange mark is the primary discriminator.
+        blue=((hsv[:,:,0]>=88)&(hsv[:,:,0]<=140)&
+              (hsv[:,:,1]>=35)&(hsv[:,:,2]>=35)).astype(np.uint8)
+        n,labels,stats,cent=cv2.connectedComponentsWithStats(blue,8)
+        comps=[]
+        for k in range(1,n):
+            area=int(stats[k,cv2.CC_STAT_AREA])
+            if area<12: continue
+            x=int(stats[k,cv2.CC_STAT_LEFT]); y=int(stats[k,cv2.CC_STAT_TOP])
+            ww=int(stats[k,cv2.CC_STAT_WIDTH]); hh=int(stats[k,cv2.CC_STAT_HEIGHT])
+            if max(ww,hh)<25: continue
+            ys,xs=np.where(labels[y:y+hh,x:x+ww]==k)
+            if len(xs)<12: continue
+            comps.append({'id':k,'x':x,'y':y,'w':ww,'h':hh,
+                          'xs':xs.astype(float)+x,'ys':ys.astype(float)+y,
+                          'area':area,'cx':float(cent[k][0]),'cy':float(cent[k][1])})
+        out={}
+        for oi,reg in enumerate(orange_regions or [],1):
+            bb=reg.get('bbox') or [0,0,0,0]
+            ox,oy,ow,oh=[float(v) for v in bb[:4]]
+            ocx=ox+ow/2.0; ocy=oy+oh/2.0
+            pad=max(35,int(min(w,h)*0.018))
+            ranked=[]
+            for c in comps:
+                # Component must touch or lie close to the orange markup bbox.
+                dx=max(ox-(c['x']+c['w']),c['x']-(ox+ow),0)
+                dy=max(oy-(c['y']+c['h']),c['y']-(oy+oh),0)
+                gap=(dx*dx+dy*dy)**0.5
+                if gap>pad: continue
+                vx=c['xs']-ocx; vy=c['ys']-ocy
+                d2=vx*vx+vy*vy
+                far=int(np.argmax(d2))
+                tx=float(c['xs'][far]); ty=float(c['ys'][far])
+                length=float(np.sqrt(float(d2[far])))
+                span=max(c['w'],c['h'])
+                if length<max(45,min(w,h)*0.025): continue
+                # Favor long pen strokes and close association to the mark.
+                elong=max(c['w'],c['h'])/max(1,min(c['w'],c['h']))
+                score=min(1.0,length/max(min(w,h)*0.18,1))*0.55
+                score+=min(1.0,elong/5.0)*0.25
+                score+=max(0.0,1.0-gap/max(pad,1))*0.20
+                ranked.append((score,c,tx,ty,length,gap))
+            ranked.sort(key=lambda z:z[0],reverse=True)
+            if not ranked:
+                out[oi]={'status':'NOT_FOUND','confidence':0.0,'reason':'No nearby blue-ink stroke was associated with this orange mark.'}
+                continue
+            best=ranked[0]
+            # Two similarly scored unrelated components make the destination ambiguous.
+            ambiguous=len(ranked)>1 and (best[0]-ranked[1][0])<0.08
+            score,c,tx,ty,length,gap=best
+            out[oi]={
+                'status':'AMBIGUOUS' if ambiguous or score<0.48 else 'CANDIDATE',
+                'confidence':round(float(score),2),
+                'tip_px':[int(round(tx)),int(round(ty))],
+                'tip_norm':[int(round(tx/max(w,1)*1000)),int(round(ty/max(h,1)*1000))],
+                'stroke_bbox':[c['x'],c['y'],c['w'],c['h']],
+                'stroke_length_px':round(length,1),'orange_to_stroke_gap_px':round(gap,1),
+                'reason':'Blue-ink component endpoint proposal; visual confirmation required.'
+            }
+        return out
+    except Exception as e:
+        return {'_error':{'status':'ERROR','reason':str(e)}}
+
 def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=None, per_floor=None, floor_hint=''):
     """Deterministic code-only markup inventory from OpenCV regions.
 
@@ -7307,6 +7386,7 @@ def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=No
     if not cv_info or not cv_info.get('available'):
         return []
     inv=[]
+    arrow_by_orange=_asbuilt_detect_blue_arrow_tips(cv_info.get('source_image_path'),(cv_info.get('regions') or {}).get('orange') or [])
     for color in ('pink','yellow','orange','green'):
         for idx,r in enumerate((cv_info.get('regions') or {}).get(color) or [],1):
             bbox=r.get('bbox') or [0,0,0,0]
@@ -7352,6 +7432,16 @@ def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=No
                 'candidate_options':[],'suggested_target_id':'','suggested_target_label':'',
                 'match_confidence':0.0,'match_status':'UNMATCHED_REVIEW'
             }
+            if color=='orange':
+                arrow=arrow_by_orange.get(idx,{}) if isinstance(arrow_by_orange,dict) else {}
+                row['blue_arrow_detection']=arrow
+                tip=arrow.get('tip_norm') if isinstance(arrow,dict) else None
+                if tip and len(tip)>=2:
+                    dest_probe={'x_norm':int(tip[0]),'y_norm':int(tip[1])}
+                    row['arrow_destination_norm']=[int(tip[0]),int(tip[1])]
+                    row['arrow_destination_options']=_asbuilt_match_markup_to_cad(dest_probe,catalog,per_floor,floor_hint=floor_hint) if catalog else []
+                else:
+                    row['arrow_destination_options']=[]
             if catalog:
                 opts=_asbuilt_match_markup_to_cad(row,catalog,per_floor,floor_hint=floor_hint)
                 row['candidate_options']=opts
