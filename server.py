@@ -7836,6 +7836,10 @@ def export_project_asbuilt(results_by_floor, site_changes, label_pattern=None):
       'Second Floor':{'IDF-G1':('S-R1',{1:11,2:16,3:24,4:29,5:34,6:39,7:44,8:49},7,20),'IDF-G2':('S-R2',{1:11,2:16,3:24,4:29,5:34,6:39,7:44,8:49},7,20)},
       'Third Floor':{'IDF-G1':('T-R1',{1:11,2:16,3:24,4:29,5:34,6:39,7:44,8:49},7,20),'IDF-G2':('T-R2',{1:11,2:16,3:24,4:29,5:34,6:39,7:44,8:49},7,20)},
     }
+    # Restrict generated workbook sheets to floors represented by this As-Built batch.
+    # The source project may contain many analyzed floors, but they must not leak
+    # into an export created from a one-floor upload.
+    PORT_LAYOUTS={floor:layout for floor,layout in PORT_LAYOUTS.items() if floor in effective}
     changes_by_sheet=defaultdict(list)
     for ch in site_changes:
         t=ch.get('target') or {}; sf=t.get('schedule_floor') or ch.get('floor'); rack=t.get('rack')
@@ -8117,7 +8121,14 @@ def generate_asbuilt_project_package(changes,label_pattern=None):
     for floor,items in grouped.items():
         floor_outputs.append(generate_asbuilt_package(floor,items,label_pattern=label_pattern))
 
-    adjusted_files=export_project_asbuilt(PROJECT_RESULTS,normalized_site,label_pattern=label_pattern) if normalized_site else {}
+    # Build adjusted Excel only from floors actually present in this As-Built batch.
+    # Roof is stored with Third Floor CAD, so retain Third Floor as its export dependency.
+    export_floors=set(grouped)
+    if 'Roof Floor' in export_floors:
+        export_floors.add('Third Floor')
+    scoped_results={f:PROJECT_RESULTS[f] for f in export_floors if f in PROJECT_RESULTS}
+    scoped_site=[c for c in normalized_site if c.get('floor') in export_floors]
+    adjusted_files=export_project_asbuilt(scoped_results,scoped_site,label_pattern=label_pattern) if scoped_site else {}
     ts=time.strftime('%Y%m%d-%H%M%S')
     master_readme=EXPORTS/f'PROJECT_ASBUILT_{ts}_README.txt'
     master_manifest=EXPORTS/f'PROJECT_ASBUILT_{ts}_changes.json'
