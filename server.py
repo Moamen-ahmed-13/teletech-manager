@@ -9818,7 +9818,11 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError: n=0
                 if n <= 0: return self._json({'error':'Empty upload or missing Content-Length'},411)
                 if n > MAX_UPLOAD_BYTES: return self._json({'error':'Drawing is larger than the 2 GiB upload limit'},413)
-                target=_project_dir(CURRENT_PROJECT_ID)/(uuid.uuid4().hex+'_'+name)
+                # Store CAD drawings under a short physical filename. Deep Windows workspace paths
+                # plus the original consultant filename can exceed the Windows path limit.
+                # Keep the original filename in UPLOADED_DRAWINGS/UI metadata instead.
+                suffix=Path(name).suffix.lower()
+                target=_project_dir(CURRENT_PROJECT_ID)/(uuid.uuid4().hex+'_DRAWING'+suffix)
                 written=self._stream_upload(target,n)
                 CURRENT_DRAWING=target
                 print(f'[UI] upload saved: {target.name} ({written} bytes)')
