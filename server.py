@@ -6530,10 +6530,15 @@ Before deciding what any markup means, perform a complete visual inventory page-
 MARKUP COUNT RULES:
 1) Markup Count and CAD Entity Count are different. Count visible markup marks only; never convert a markup count into an entity count.
 2) A visible distinct colored mark is one markup. Two touching/adjacent marks are two only when you can visually distinguish two separate strokes/marks; otherwise count them as ambiguous, not guessed.
-3) Record Pink, Yellow, Orange, Blue and Green separately for every page. Unknown colors go to human review.
+3) Record Pink, Yellow, Orange, Blue and Green separately for every page. Pink is the actual source-file color; do NOT rename it Red.
 4) Preserve the original handwritten Arabic status literally. Do not translate it into a different status when the handwriting is uncertain.
-5) Lock the Legend before interpreting the slides. If the legend says Pink = «لم يتم السحب نهائيًا», preserve exactly that meaning. Do not reverse it to «تم السحب».
-6) If a color is not defined in the Legend, normalized_status must remain empty/null and human_review_required=true.
+5) The confirmed legend is fixed and must be applied consistently:
+   - Pink: «لم يتم السحب نهائيًا» => CANCEL the cable/endpoint; SHIFT its label; do NOT reserve or retain a Patch Panel slot.
+   - Yellow: «لم يتم السحب» => cable was not pulled; RESERVE its Patch Panel slot; do NOT shift its label (treat the label as still present).
+   - Orange: cable was MOVED to another location; KEEP its Patch Panel slot and KEEP its label unchanged. This is a move, NOT a cancellation/deletion.
+   - Green: cable was PULLED; KEEP its Patch Panel slot and KEEP its label unchanged.
+   - Blue or any undefined color: no inferred action; keep normalized_status empty/null and require human review.
+6) A color/action mapping does not by itself identify a CAD endpoint. Match the correct floor, room, nearby text and CAD target; uncertain matches remain for human review.
 7) Never treat printed CAD symbols as handwritten markups merely because they have a similar color or shape. Use stroke/overlay/context to decide; if uncertain, flag it.
 
 TWO-PASS OUTPUT:
@@ -6543,10 +6548,11 @@ TWO-PASS OUTPUT:
 
 REVISION / CAD MATCHING RULES:
 1) The CAD project is the source of truth for existing Point/Endpoint IDs and coordinates. The scan is the source of truth for the technician's markup/revision intent.
-2) Only approved removal statuses may currently become removable CAD findings: «لم يتم السحب», «تم رد الكابلات», «لا يوجد لها مسار», «تم نقل».
-3) A color alone is never enough to create a CAD operation.
-4) Match a markup to the candidate CAD endpoint only when the page/floor, room/nearby text, spatial location and drawing context support the match. Never fabricate a target_key.
-5) Cable/routing notes, moves, additions, Patch Panel/Rack notes and other non-removal markups must be preserved in markup_inventory with their original text and human_review_required=true until a dedicated CAD operation is confirmed. Do not turn them into endpoint deletion.
+2) Apply the fixed color actions exactly: Pink=CANCEL + SHIFT LABEL + NO PATCH PANEL SLOT; Yellow=NOT PULLED + RESERVE PATCH PANEL SLOT + KEEP LABEL; Orange=MOVED + KEEP PATCH PANEL SLOT + KEEP LABEL; Green=PULLED + KEEP PATCH PANEL SLOT + KEEP LABEL.
+3) Orange is a move, never an endpoint deletion. Yellow is not a deletion. Green is a pulled cable, not a deletion. Only Pink carries the final-cancellation action.
+4) A color alone is never enough to create a CAD operation. Confirm the matching endpoint and floor first.
+5) Match a markup to the candidate CAD endpoint only when the page/floor, room/nearby text, spatial location and drawing context support the match. Never fabricate a target_key.
+6) Preserve all four color classes and their actions in markup_inventory. If the endpoint match or the handwritten evidence is uncertain, require human review; do not silently execute a CAD change.
 6) x_norm/y_norm are page coordinates normalized 0..1000, left-to-right/top-to-bottom.
 7) Do not modify CAD during analysis. This stage produces a reviewed revision manifest only.
 
@@ -7317,8 +7323,27 @@ def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=No
             row={
                 'markup_id':f'MK-{str(color).upper()}-P{int(page_number):02d}-{idx:03d}',
                 'page_number':int(page_number),'color':color,
-                'status_original':'لم يتم السحب نهائيًا' if color=='pink' else ('مسحوب' if color=='green' else None),
-                'normalized_status':'NOT_WITHDRAWN_FINAL' if color=='pink' else ('WITHDRAWN' if color=='green' else None),
+                # Canonical As-Built legend actions. Keep "pink" as the source-file color.
+                'status_original':{
+                    'pink':'لم يتم السحب نهائيًا',
+                    'yellow':'لم يتم السحب - مع حجز مكان في الباتش بانل',
+                    'orange':'كابل تم نقله إلى مكان آخر',
+                    'green':'كابل مسحوب',
+                }.get(color),
+                'normalized_status':{
+                    'pink':'CANCELLED_NOT_PULLED_FINAL',
+                    'yellow':'NOT_PULLED_RESERVE_PATCH_PANEL',
+                    'orange':'MOVED_KEEP_PATCH_PANEL',
+                    'green':'PULLED_KEEP_PATCH_PANEL',
+                }.get(color),
+                'patch_panel_action':{
+                    'pink':'NO_SLOT','yellow':'RESERVE_SLOT',
+                    'orange':'KEEP_SLOT','green':'KEEP_SLOT',
+                }.get(color),
+                'label_action':{
+                    'pink':'SHIFT','yellow':'KEEP',
+                    'orange':'KEEP','green':'KEEP',
+                }.get(color),
                 'confidence':conf,
                 'x_norm':int((r.get('center_norm') or [0,0])[0]),'y_norm':int((r.get('center_norm') or [0,0])[1]),
                 'bbox_px':[int(v) for v in bbox[:4]],'area_px':int(area),'entity_identified':False,
