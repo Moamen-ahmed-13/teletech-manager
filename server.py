@@ -9160,24 +9160,24 @@ window.renderVisionReview=function(j){
   if(!cnt[c])continue;const r=RULES[c];
   h+='<span class="actions" style="gap:6px">'+colorDot(c)+'<b>'+c+' ('+cnt[c]+')</b><span>'+esc(r.status)+'</span><b>'+r.patch+'</b><span class="miniNote">'+esc(r.label)+'</span></span>';
  }
- h+='</div><div class="actions" style="margin-top:8px"><button id="bulkAdd">Add selected to revision list</button><button id="bulkAll" class="alt">Select all matched</button><button id="bulkNone" class="alt">Clear</button><span id="bulkMsg" class="miniNote"></span></div></div>';
+ h+='</div><div class="stack" style="display:flex;flex-direction:column;align-items:stretch;gap:7px;margin-top:8px"><button id="bulkAdd">Add selected to revision list</button><button id="bulkAll" class="alt">Select all matched</button><button id="bulkNone" class="alt">Clear</button><span id="bulkMsg" class="miniNote"></span></div></div>';
  h+='<div style="max-height:420px;overflow:auto"><table><thead><tr><th>Use</th><th>Page</th><th>Floor</th><th>Color</th><th>CAD endpoint</th><th>Match</th><th>Action</th></tr></thead><tbody>';
- inv.forEach((m,i)=>{const o=m.candidate_options||[],pct=Math.round(Number((o[0]||{}).match_confidence||0)*100),rule=RULES[m.color],blocked=!rule||rule.kind==='move'||rule.kind==='pulled'||!o.length;
+ inv.forEach((m,i)=>{const o=m.candidate_options||[],pct=Math.round(Number((o[0]||{}).match_confidence||0)*100),rule=RULES[m.color],blocked=!rule||!o.length;
   h+='<tr data-b="'+i+'"><td><input type="checkbox" class="bu" '+(pct>=78&&!blocked?'checked':'')+(blocked?' disabled':'')+'></td><td>'+Number(m.page_number||0)+'</td><td>'+esc(m.floor_hint||'')+'</td><td>'+colorDot(m.color)+'</td><td><select class="bt" style="min-width:300px" '+(!o.length?'disabled':'')+'>'+(o.length?o.map(x=>'<option value="'+esc(x.target_id||'')+'">'+esc((x.label||x.block||x.target_id||'')+' | '+(x.service||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No CAD candidate</option>')+'</select></td><td class="'+(pct>=78?'confHigh':pct>=60?'confMid':'confLow')+'">'+pct+'%</td><td>'+esc(rule?rule.patch:'REVIEW')+'</td></tr>';
  });
  box.innerHTML=h+'</tbody></table></div>';
  const msg=t=>$('bulkMsg').textContent=t,rows=()=>[...box.querySelectorAll('tr[data-b]')];
  $('bulkAll').onclick=()=>rows().forEach(r=>{const c=r.querySelector('.bu');if(!c.disabled)c.checked=true});
  $('bulkNone').onclick=()=>rows().forEach(r=>r.querySelector('.bu').checked=false);
- $('bulkAdd').onclick=()=>{let add=0,dup=0,miss=0,moves=0;
+ $('bulkAdd').onclick=()=>{let add=0,dup=0,miss=0,moves=0,pulled=0;
   for(const r of rows()){if(!r.querySelector('.bu').checked)continue;
    const m=inv[+r.dataset.b],rule=RULES[m.color],tid=r.querySelector('.bt').value;
-   if(!rule)continue;if(rule.kind==='move'){moves++;continue}if(!tid){miss++;continue}
+   if(!rule)continue;if(rule.kind==='move'){moves++;continue}if(rule.kind==='pulled'){pulled++;continue}if(!tid){miss++;continue}
    const o=(m.candidate_options||[]).find(x=>x.target_id===tid)||{},fl=o.floor||m.floor_hint||'';
    if(asbuiltChanges.some(c=>c.op==='SITE_REMOVE'&&c.floor===fl&&c.target_id===tid)){dup++;continue}
    asbuiltChanges.push({op:'SITE_REMOVE',floor:fl,target_id:tid,target_label:o.label||o.block||'',site_status:rule.status,patch_action:rule.patch,note:'As-Built page '+m.page_number+' '+m.color+' '+(m.markup_id||'')});add++;
   }
-  renderAsbuiltChanges();msg('Added '+add+(dup?' · duplicates '+dup:'')+(miss?' · no endpoint '+miss:'')+(moves?' · moved items need destination review '+moves:''));
+  renderAsbuiltChanges();msg('Added '+add+(dup?' · duplicates '+dup:'')+(miss?' · no endpoint '+miss:'')+(moves?' · orange moved items kept for destination review '+moves:'')+(pulled?' · green pulled items kept unchanged '+pulled:''));
  };
 };
 // show Generate results next to the button (they were written into the collapsed manual-entry panel)
