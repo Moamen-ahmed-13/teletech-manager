@@ -9143,33 +9143,47 @@ function chips(){const box=q('floorChips'),fl=asbuiltProjectFloors||[],cur=resul
 const cp=q('clearProject'),oc=cp.onclick;cp.onclick=function(e){if(!confirm('Clear all analyzed floors, uploaded drawings and generated files from this project?'))return;return oc.call(this,e)};
 })();</script>
 <script>(function(){
-const orig=window.renderVisionReview,ST=['لم يتم السحب','تم رد الكابلات','لا يوجد لها مسار','تم نقل'];
-const DEF={yellow:['لم يتم السحب','RESERVE']};
-const opt=(arr,sel,ph)=>'<option value="">'+ph+'</option>'+arr.map(v=>'<option'+(v===sel?' selected':'')+'>'+esc(v)+'</option>').join('');
+const orig=window.renderVisionReview;
+const RULES={
+ pink:{status:'لم يتم السحب نهائيًا',patch:'SHIFT',label:'SHIFT label · no Patch Panel slot',kind:'cancel'},
+ yellow:{status:'لم يتم السحب',patch:'RESERVE',label:'Keep label · reserve Patch Panel slot',kind:'reserve'},
+ orange:{status:'تم نقل',patch:'KEEP',label:'Keep Patch Panel slot and label · destination needs review',kind:'move'}
+};
+const opt=(arr,sel)=>arr.map(v=>'<option value="'+esc(v)+'"'+(v===sel?' selected':'')+'>'+esc(v)+'</option>').join('');
 window.renderVisionReview=function(j){
  orig.apply(this,arguments);
  const inv=((j&&j.markup_inventory)||[]).filter(m=>m.color!=='green');
  if((asbuiltVisionRows||[]).length||!inv.length)return;
  const box=$('asChatReview'),cnt={};inv.forEach(m=>cnt[m.color]=(cnt[m.color]||0)+1);
- let h='<div style="padding:12px 14px;border-bottom:1px solid var(--line)"><b>Bulk approve</b><div class="miniNote">Set what each color means, tick the rows you accept, then add them all at once. Green (already withdrawn) is skipped. Rows start ticked only when the match is 78% or higher and the color has a rule.</div><div class="stack" style="margin-top:10px">';
- for(const c of ['pink','yellow','orange']){if(!cnt[c])continue;h+='<div class="actions">'+colorDot(c)+'<b style="min-width:100px">'+c+' ('+cnt[c]+')</b><select id="bs_'+c+'" style="min-width:170px" dir="auto">'+opt(ST,(DEF[c]||[])[0],'Site status...')+'</select><select id="ba_'+c+'">'+opt(['SHIFT','RESERVE'],(DEF[c]||[])[1],'Patch action...')+'</select></div>'}
+ let h='<div style="padding:12px 14px;border-bottom:1px solid var(--line)"><b>Bulk approve · confirmed color rules</b><div class="miniNote">Pink = cancel + SHIFT label + no Patch Panel slot. Yellow = not pulled + RESERVE slot + keep label. Orange = moved + keep slot and label; destination must be reviewed separately. Green remains informational and is not added as a removal.</div><div class="stack" style="margin-top:10px">';
+ for(const c of ['pink','yellow','orange']){
+  if(!cnt[c])continue;
+  const r=RULES[c];
+  h+='<div class="actions">'+colorDot(c)+'<b style="min-width:100px">'+c+' ('+cnt[c]+')</b><span style="min-width:190px" dir="auto">'+esc(r.status)+'</span><b>'+esc(r.patch)+'</b><span class="miniNote">'+esc(r.label)+'</span></div>';
+ }
  h+='<div class="actions"><button id="bulkAdd">Add selected to revision list</button><button id="bulkAll" class="alt">Select all matched</button><button id="bulkNone" class="alt">Clear</button><span id="bulkMsg" class="miniNote"></span></div></div></div>';
- h+='<div style="max-height:420px;overflow:auto"><table><thead><tr><th>Use</th><th>Page</th><th>Floor</th><th>Color</th><th>CAD endpoint</th><th>Match</th></tr></thead><tbody>';
- inv.forEach((m,i)=>{const o=m.candidate_options||[],b=o[0]||{},pct=Math.round(Number(b.match_confidence||0)*100);
-  h+='<tr data-b="'+i+'"><td><input type="checkbox" class="bu" '+(pct>=78&&DEF[m.color]?'checked':'')+(o.length?'':' disabled')+'></td><td>'+Number(m.page_number||0)+'</td><td>'+esc(m.floor_hint||'')+'</td><td>'+colorDot(m.color)+'</td><td><select class="bt" style="min-width:300px">'+(o.length?o.map(x=>'<option value="'+esc(x.target_id||'')+'">'+esc((x.label||x.block||x.target_id||'')+' | '+(x.service||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No CAD candidate</option>')+'</select></td><td class="'+(pct>=78?'confHigh':pct>=60?'confMid':'confLow')+'">'+pct+'%</td></tr>'});
+ h+='<div style="max-height:420px;overflow:auto"><table><thead><tr><th>Use</th><th>Page</th><th>Floor</th><th>Color</th><th>CAD endpoint</th><th>Match</th><th>Rule</th></tr></thead><tbody>';
+ inv.forEach((m,i)=>{const o=m.candidate_options||[],pct=Math.round(Number((o[0]||{}).match_confidence||0)*100),rule=RULES[m.color];
+  const canAdd=!!rule&&rule.kind!=='move'&&o.length>0;
+  h+='<tr data-b="'+i+'"><td><input type="checkbox" class="bu" '+(pct>=78&&canAdd?'checked':'')+(!o.length||!rule?' disabled':'')+'></td><td>'+Number(m.page_number||0)+'</td><td>'+esc(m.floor_hint||'')+'</td><td>'+colorDot(m.color)+'</td><td><select class="bt" style="min-width:300px">'+(o.length?o.map(x=>'<option value="'+esc(x.target_id||'')+'">'+esc((x.label||x.block||x.target_id||'')+' | '+(x.service||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No CAD candidate</option>')+'</select></td><td class="'+(pct>=78?'confHigh':pct>=60?'confMid':'confLow')+'">'+pct+'%</td><td>'+esc(rule?rule.label:'Human review')+'</td></tr>';
+ });
  box.innerHTML=h+'</tbody></table></div>';
  const msg=t=>$('bulkMsg').textContent=t,rows=()=>[...box.querySelectorAll('tr[data-b]')];
  $('bulkAll').onclick=()=>rows().forEach(r=>{const c=r.querySelector('.bu');if(!c.disabled)c.checked=true});
  $('bulkNone').onclick=()=>rows().forEach(r=>r.querySelector('.bu').checked=false);
- $('bulkAdd').onclick=()=>{let add=0,dup=0,miss=0;
+ $('bulkAdd').onclick=()=>{let add=0,dup=0,miss=0,moveReview=0;
   for(const r of rows()){if(!r.querySelector('.bu').checked)continue;
-   const m=inv[+r.dataset.b],tid=r.querySelector('.bt').value,st=($('bs_'+m.color)||{}).value,pa=($('ba_'+m.color)||{}).value;
-   if(!st||!pa)return msg('Choose a site status and patch action for '+m.color+' first.');
+   const m=inv[+r.dataset.b],rule=RULES[m.color],tid=r.querySelector('.bt').value;
+   if(!rule){continue}
+   if(rule.kind==='move'){moveReview++;continue}
    if(!tid){miss++;continue}
    const o=(m.candidate_options||[]).find(x=>x.target_id===tid)||{},fl=o.floor||m.floor_hint||'';
    if(asbuiltChanges.some(c=>c.op==='SITE_REMOVE'&&c.floor===fl&&c.target_id===tid)){dup++;continue}
-   asbuiltChanges.push({op:'SITE_REMOVE',floor:fl,target_id:tid,target_label:o.label||o.block||'',site_status:st,patch_action:pa,note:'As-Built page '+m.page_number+' '+m.color+' '+(m.markup_id||'')});add++}
-  renderAsbuiltChanges();msg('Added '+add+(dup?', skipped '+dup+' already in the list':'')+(miss?', '+miss+' without an endpoint':'')+'.')};
+   asbuiltChanges.push({op:'SITE_REMOVE',floor:fl,target_id:tid,target_label:o.label||o.block||'',site_status:rule.status,patch_action:rule.patch,note:'As-Built page '+m.page_number+' '+m.color+' '+(m.markup_id||'')});add++;
+  }
+  renderAsbuiltChanges();
+  msg('Added '+add+(dup?', skipped '+dup+' duplicates':'')+(miss?', '+miss+' without an endpoint':'')+(moveReview?'. '+moveReview+' orange moved item(s) kept for destination review; no deletion or relabeling was applied':'')+'.');
+ };
 };
 // show Generate results next to the button (they were written into the collapsed manual-entry panel)
 const as=$('asStatus');if(as)new MutationObserver(()=>{const s=$('asChatStatus');s.className='status info';s.textContent=as.textContent}).observe(as,{childList:true,characterData:true,subtree:true});
