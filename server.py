@@ -9155,7 +9155,7 @@ window.renderVisionReview=function(j){
  const inv=(j&&j.markup_inventory)||[];
  if((asbuiltVisionRows||[]).length||!inv.length)return;
  const box=$('asChatReview'),cnt={};inv.forEach(m=>cnt[m.color]=(cnt[m.color]||0)+1);
- let h='<div style="padding:10px 12px;border-bottom:1px solid var(--line)"><b>Color rules</b><div class="actions" style="gap:14px;margin-top:8px;flex-wrap:wrap">';
+ let h='<div style="padding:10px 12px;border-bottom:1px solid var(--line)"><b>Color rules</b><div class="stack" style="display:flex;flex-direction:column;align-items:stretch;gap:7px;margin-top:8px">';
  for(const c of ['pink','yellow','orange','green']){
   if(!cnt[c])continue;const r=RULES[c];
   h+='<span class="actions" style="gap:6px">'+colorDot(c)+'<b>'+c+' ('+cnt[c]+')</b><span>'+esc(r.status)+'</span><b>'+r.patch+'</b><span class="miniNote">'+esc(r.label)+'</span></span>';
