@@ -7282,44 +7282,80 @@ def _asbuilt_sheet_floor(page_number, total_pages):
 
 
 def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',page_to_cad_affine=None):
-    """Rank existing CAD endpoints by normalized sheet position; review-only."""
-    try: sx=float(markup.get('x_norm') or 500); sy=float(markup.get('y_norm') or 500)
-    except Exception: sx=sy=500.0
+    """Rank endpoint candidates using registered CAD distance, endpoint density,
+    semantic hints (when present), and nearest-vs-runner-up separation.
+
+    Confidence is deliberately conservative: a nearby endpoint is not enough
+    when several endpoint instances are packed together or when the markup
+    provides no service/block evidence. This remains review-only.
+    """
+    try:
+        sx=float(markup.get('x_norm') or 500); sy=float(markup.get('y_norm') or 500)
+    except Exception:
+        sx=sy=500.0
     mapped_xy=_asbuilt_norm_to_cad_xy(sx,sy,catalog,floor_hint=floor_hint,page_to_cad_affine=page_to_cad_affine)
+    floor_rows=[t for t in (catalog or []) if isinstance(t,dict) and
+                (not floor_hint or str(t.get('floor') or '')==str(floor_hint))]
+    if not floor_rows:
+        return []
+    # Typical nearest-neighbour spacing provides a drawing-scale-independent
+    # distance unit; fixed world-unit thresholds were unreliable across floors.
+    coords=[]
+    for t in floor_rows:
+        try: coords.append((float(t.get('x') or 0),float(t.get('y') or 0)))
+        except Exception: coords.append((0.0,0.0))
+    nearest=[]
+    for i,(x,y) in enumerate(coords):
+        ds=[math.hypot(x-x2,y-y2) for j,(x2,y2) in enumerate(coords) if i!=j]
+        if ds:
+            v=min(ds)
+            if math.isfinite(v) and v>1e-8: nearest.append(v)
+    nearest.sort()
+    spacing=nearest[len(nearest)//2] if nearest else 1.0
+    spacing=max(float(spacing),1e-6)
+    norm=lambda v: re.sub(r'[^A-Z0-9\\u0600-\\u06FF]+',' ',str(v or '').upper()).strip()
+    hint=norm(' '.join(str(markup.get(k) or '') for k in ('ocr_text','service_hint','nearby_text','evidence')))
+    hint_tokens=[w for w in hint.split() if len(w)>=2]
     scored=[]
-    for t in catalog or []:
-        floor=str(t.get('floor') or '')
-        if floor_hint and floor != floor_hint: continue
+    for t,(tx,ty) in zip(floor_rows,coords):
         if mapped_xy is not None:
-            dx=float(t.get('x') or 0)-mapped_xy[0]; dy=float(t.get('y') or 0)-mapped_xy[1]
-            dist=(dx*dx+dy*dy)**0.5
-            if dist<=100: conf=.95
-            elif dist<=250: conf=.88
-            elif dist<=500: conf=.78
-            elif dist<=900: conf=.62
-            else: conf=.25
+            dist=math.hypot(tx-mapped_xy[0],ty-mapped_xy[1])
+            units=dist/spacing
         else:
-            dx=float(t.get('nx') or 0)-sx; dy=float(t.get('ny') or 0)-sy
-            dist=(dx*dx+dy*dy)**0.5
-            if dist<=60: conf=.90
-            elif dist<=110: conf=.78
-            elif dist<=180: conf=.62
-            elif dist<=280: conf=.45
-            else: conf=.25
-        scored.append((dist,t,conf))
-    # HARD RULE: never fall back to another floor. If the page floor has no
-    # candidates, leave it unmatched for review instead of suggesting a wrong floor.
+            dist=math.hypot(float(t.get('nx') or 0)-sx,float(t.get('ny') or 0)-sy)
+            units=dist/85.0
+        searchable=norm(' '.join(str(t.get(k) or '') for k in ('service','block','label','rack')))
+        semantic_hits=sum(1 for token in hint_tokens if token in searchable)
+        semantic_penalty=(0.0 if semantic_hits else (0.35 if hint_tokens else 0.0))
+        score=units+semantic_penalty
+        scored.append((score,dist,units,semantic_hits,t))
     scored.sort(key=lambda z:z[0])
+    if not scored: return []
+    best=scored[0]
+    second=scored[1] if len(scored)>1 else None
+    # Confidence combines normalized geometric proximity and separation from
+    # the next candidate. Dense/ambiguous endpoint clusters stay below 78%.
+    proximity=math.exp(-0.72*max(0.0,best[2]))
+    separation=1.0 if second is None else max(0.0,min(1.0,(second[0]-best[0])/max(second[0],0.25)))
+    confidence=0.18+0.68*proximity+0.14*separation
+    if hint_tokens and best[3]:
+        confidence=min(0.97,confidence+0.06)
+    elif hint_tokens and not best[3]:
+        confidence*=0.78
+    if second is not None and second[0]-best[0] < 0.18:
+        confidence=min(confidence,0.72)
     out=[]
-    for dist,t,conf in scored[:8]:
+    for rank,(_,dist,units,semantic_hits,t) in enumerate(scored[:8]):
+        local_conf=confidence if rank==0 else max(0.05,confidence*math.exp(-0.8*(scored[rank][0]-best[0])))
         out.append({'target_id':t.get('target_id'),'candidate_key':t.get('candidate_key'),
                     'floor':t.get('floor'),'label':t.get('label') or t.get('block') or t.get('target_id'),
                     'service':t.get('service',''),'block':t.get('block',''),'rack':t.get('rack',''),
                     'x':t.get('x'),'y':t.get('y'),'cad_x_norm':int(t.get('nx') or 0),
                     'cad_y_norm':int(t.get('ny') or 0),'distance_norm':round(dist,1),
-                    'match_confidence':round(conf,2),'editable_direct':bool(t.get('editable_direct'))})
+                    'distance_in_endpoint_spacing':round(units,3),
+                    'semantic_match':bool(semantic_hits),'match_confidence':round(float(local_conf),2),
+                    'editable_direct':bool(t.get('editable_direct'))})
     return out
-
 
 def _asbuilt_register_page_to_floor(page_image_path, floor):
     """Register one uploaded As-Built page to the original DXF for its assigned floor.
