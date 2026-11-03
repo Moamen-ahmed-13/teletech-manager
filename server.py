@@ -8159,10 +8159,10 @@ def generate_asbuilt_package(floor,changes,label_pattern=None):
             raise RuntimeError(f'Cannot safely combine multiple nested edits under root INSERT {root_handle} in one package. Review/export them separately.')
         nested_root_changes[root_handle]=ch
     for ch in normalized:
-        if ch.get('op')=='DELETE_ENDPOINT' and not ch.get('nested_clone'):
+        if ch.get('op') in {'MOVE_ENDPOINT','DELETE_ENDPOINT','SITE_REMOVE'} and not ch.get('nested_clone'):
             h=str((ch.get('target') or {}).get('handle') or '')
             if h in nested_root_changes:
-                raise RuntimeError(f'Root INSERT {h} is both deleted and used by a nested edit; split these changes into separate packages.')
+                raise RuntimeError(f'Root INSERT {h} also has a direct edit; split the root and nested changes into separate packages.')
 
     lines=[
       '(vl-load-com)',
