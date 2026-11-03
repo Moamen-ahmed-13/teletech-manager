@@ -1653,7 +1653,7 @@ def _parse_visible_dxf(path, with_rooms=False):
             legend_branch=any(('legend' in str(a).lower() or 'legent' in str(a).lower()) for a in (*ancestors,name))
             occurrences.append({'handle':handle,'block':name,'layer':layer,'x':x,'y':y,'insert_x':ix,'insert_y':iy,
                                 'rotation':_dxf_num(e,50,0),'attributes':amap.get(handle,{}),
-                                'ancestors':list(ancestors),'ancestor_handles':list(ancestor_handles),'depth':depth,'legend_branch':legend_branch,
+                                'ancestors':list(ancestors),'ancestor_handles':list(ancestor_handles),'parent_transform':list(parent),'depth':depth,'legend_branch':legend_branch,
                                 'root':depth==0})
             if name in blocks and not legend_branch:
                 if m is None: m=insert_matrix(e,blocks[name]['base'])
@@ -7793,6 +7793,10 @@ def _asbuilt_targets(floor,label_pattern=None):
             'depth':int(rec.get('depth') or ent.get('depth') or 0),
             'ancestor_handles':list(rec.get('ancestor_handles') or []),
             'ancestor_blocks':list(rec.get('ancestors') or []),
+            'parent_transform':list(rec.get('parent_transform') or [1,0,0,1,0,0]),
+            'insert_x':float(rec.get('insert_x') if rec.get('insert_x') is not None else rec.get('x') or 0.0),
+            'insert_y':float(rec.get('insert_y') if rec.get('insert_y') is not None else rec.get('y') or 0.0),
+            'entity_type':'INSERT',
             'editable_direct':bool(root and handle),
         })
 
@@ -8045,11 +8049,15 @@ def generate_asbuilt_package(floor,changes,label_pattern=None):
             tid=str(ch.get('target_id') or '')
             t=targets.get(tid)
             if not t: raise RuntimeError(f'Change #{idx}: target was not found in {floor}.')
-            if op in {'MOVE_ENDPOINT','DELETE_ENDPOINT'} and not t.get('editable_direct'):
-                raise RuntimeError(
-                    f"Change #{idx}: {t.get('label') or t.get('block')} is nested inside a parent block (depth {t.get('depth')}). "
-                    'Direct move/delete is blocked to avoid changing every block instance. Use Site removal for Excel + manual CAD deletion, or edit it manually in AutoCAD.'
-                )
+            nested=not bool(t.get('editable_direct'))
+            if nested:
+                ah=list(t.get('ancestor_handles') or []); ab=list(t.get('ancestor_blocks') or [])
+                if int(t.get('depth') or 0)<1 or len(ah)!=len(ab) or len(ah)!=int(t.get('depth') or 0) or not t.get('handle'):
+                    raise RuntimeError(f"Change #{idx}: nested target ancestry is incomplete; refusing unsafe CAD edit.")
+                if any((not str(v).strip()) or str(v).startswith('*') for v in ab):
+                    raise RuntimeError(f"Change #{idx}: anonymous/dynamic/xref block ancestry is not eligible for instance-safe editing.")
+            if op in {'MOVE_ENDPOINT','DELETE_ENDPOINT'} and nested and str(t.get('entity_type') or '')!='INSERT':
+                raise RuntimeError(f"Change #{idx}: nested target is not a supported INSERT entity.")
             item={'op':op,'target':t,'note':note,'floor':floor}
             if op=='MOVE_ENDPOINT':
                 try: nx=float(ch.get('x')); ny=float(ch.get('y'))
@@ -8062,7 +8070,18 @@ def generate_asbuilt_package(floor,changes,label_pattern=None):
                     raise RuntimeError(f'Change #{idx}: choose one of the four approved site removal statuses.')
                 if action not in ASBUILT_PATCH_ACTIONS:
                     raise RuntimeError(f'Change #{idx}: choose SHIFT or RESERVE for Patch Panel handling.')
-                item.update(site_status=status,patch_action=action,cad_manual_required=not bool(t.get('editable_direct')))
+                item.update(site_status=status,patch_action=action,cad_manual_required=False,cad_nested_clone=not bool(t.get('editable_direct')))
+            normalized.append(item)
+            if op=='MOVE_ENDPOINT' and nested:
+                m=list(t.get('parent_transform') or [])
+                if len(m)!=6: raise RuntimeError(f'Change #{idx}: nested transform is incomplete.')
+                a,b,c,d,tx,ty=[float(v) for v in m]; det=a*d-b*c
+                if abs(det)<1e-12: raise RuntimeError(f'Change #{idx}: nested transform is singular; refusing move.')
+                dx=nx-tx; dy=ny-ty
+                lx=(d*dx-c*dy)/det; ly=(-b*dx+a*dy)/det
+                item.update(nested_clone=True,local_x=lx,local_y=ly)
+            elif op in {'DELETE_ENDPOINT','SITE_REMOVE'} and nested:
+                item.update(nested_clone=True)
             normalized.append(item)
         elif op=='ADD_BLOCK':
             block=str(ch.get('block') or '').strip()
@@ -8092,6 +8111,79 @@ def generate_asbuilt_package(floor,changes,label_pattern=None):
       '(if (not (tblsearch "LAYER" "TELETECH-ASBUILT")) (command "_.-LAYER" "_M" "TELETECH-ASBUILT" ""))',
       '(setq *tt-doc* (vla-get-ActiveDocument (vlax-get-acad-object)))',
       '(setq *tt-ms* (vla-get-ModelSpace *tt-doc*))',
+      "(defun tt:clean-ent (d) (vl-remove-if (function (lambda (x) (member (car x) (quote (5 102 330 360))))) d))",
+      "(defun tt:clone-block (src new removeh childh childname watchh / btr bd e ed typ h ok skip targetnew)",
+      "  (setq btr (tblobjname \"BLOCK\" src))",
+      "  (if (or (null btr) (tblsearch \"BLOCK\" new)) nil",
+      "    (progn",
+      "      (setq bd (tt:clean-ent (entget btr)))",
+      "      (if (assoc 2 bd) (setq bd (subst (cons 2 new) (assoc 2 bd) bd)))",
+      "      (if (assoc 3 bd) (setq bd (subst (cons 3 new) (assoc 3 bd) bd)))",
+      "      (if (not (entmake bd)) nil",
+      "        (progn",
+      "          (setq e (entnext btr) ok T skip nil targetnew nil)",
+      "          (while (and e ok (/= \"ENDBLK\" (cdr (assoc 0 (entget e)))))",
+      "            (setq ed (entget e) typ (cdr (assoc 0 ed)) h (cdr (assoc 5 ed)))",
+      "            (cond",
+      "              ((and removeh h (= (strcase h) (strcase removeh))) (setq skip (= typ \"INSERT\")))",
+      "              ((and skip (member typ (quote (\"ATTRIB\" \"SEQEND\")))) (if (= typ \"SEQEND\") (setq skip nil)))",
+      "              (T",
+      "                (setq skip nil ed (tt:clean-ent ed))",
+      "                (if (and childh h (= (strcase h) (strcase childh)) (= typ \"INSERT\") childname (assoc 2 ed))",
+      "                  (setq ed (subst (cons 2 childname) (assoc 2 ed) ed)))",
+      "                (if (entmake ed)",
+      "                  (if (and watchh h (= (strcase h) (strcase watchh))) (setq targetnew (cdr (assoc 5 (entget (entlast)))))",
+      "                  (setq ok nil))",
+      "              )",
+      "            )",
+      "            (setq e (entnext e))",
+      "          )",
+      "          (if (and ok e (= \"ENDBLK\" (cdr (assoc 0 (entget e)))))",
+      "            (if (entmake (tt:clean-ent (entget e))) (list new targetnew) nil)",
+      "            nil)",
+      "        )",
+      "      )",
+      "    )",
+      "  )",
+      ")",
+      "(defun tt:clone-path (blocks handles targeth removeit / i n src new childh childname result root ed btr flags target)",
+      "  (setq n (length blocks) i (1- (length blocks)) childname nil)",
+      "  (if (or (= n 0) (/= n (length handles))) nil",
+      "    (progn",
+      "      (setq target (handent targeth))",
+      "      (if (or (null target) (/= \"INSERT\" (cdr (assoc 0 (entget target))))) (setq i -1)",
+      "        (progn",
+      "          (setq btr (tblobjname \"BLOCK\" (car (last blocks))))",
+      "          (if (or (null btr) (/= (cdr (assoc 330 (entget target))) (cdr (assoc 5 (entget btr))))) (setq i -1))",
+      "        )",
+      "      )",
+      "      (while (>= i 0)",
+      "        (setq src (nth i blocks) btr (tblsearch \"BLOCK\" src) flags (if btr (cdr (assoc 70 btr)) 0))",
+      "        (if (or (null btr) (/= 0 (logand flags 29)) (= (substr src 1 1) \"*\"))",
+      "          (setq result nil i -1)",
+      "          (progn",
+      "            (setq new (strcat \"TTAB_\" (itoa (getvar \"MILLISECS\")) \"_\" (itoa i) \"_\" (itoa (setq *tt-clone-seq* (1+ *tt-clone-seq*)))))",
+      "            (setq childh (if (< i (1- n)) (nth (1+ i) handles) nil))",
+      "            (setq result (tt:clone-block src new (if (and removeit (= i (1- n))) targeth nil) childh childname (if (and (not removeit) (= i (1- n))) targeth nil)))",
+      "            (if result (progn (setq childname (car result)) (setq i (1- i))) (setq i -1))",
+      "          )",
+      "        )",
+      "      )",
+      "      (if (and (> n 0) childname)",
+      "        (progn",
+      "          (setq root (handent (car handles)))",
+      "          (if (and root (= \"INSERT\" (cdr (assoc 0 (entget root)))) (or (null (assoc 67 (entget root))) (= 0 (cdr (assoc 67 (entget root)))))",
+      "            (progn",
+      "              (setq ed (entget root))",
+      "              (if (entmod (subst (cons 2 childname) (assoc 2 ed) ed)) (progn (entupd root) (list childname targeth)) nil)",
+      "            )",
+      "            nil)",
+      "        )",
+      "        nil)",
+      "    )",
+      "  )",
+      ")",
+      "(setq *tt-clone-seq* 0)",
     ]
     for idx,ch in enumerate(normalized,1):
         op=ch['op']
