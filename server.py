@@ -7339,7 +7339,7 @@ def _asbuilt_detect_blue_arrow_tips(image_path, orange_regions):
             if area<12: continue
             x=int(stats[k,cv2.CC_STAT_LEFT]); y=int(stats[k,cv2.CC_STAT_TOP])
             ww=int(stats[k,cv2.CC_STAT_WIDTH]); hh=int(stats[k,cv2.CC_STAT_HEIGHT])
-            if max(ww,hh)<25: continue
+            if max(ww,hh)<25 or ww>w*0.45 or hh>h*0.45 or area>page_area*0.003: continue
             ys,xs=np.where(labels[y:y+hh,x:x+ww]==k)
             if len(xs)<12: continue
             comps.append({'id':k,'x':x,'y':y,'w':ww,'h':hh,
@@ -7367,6 +7367,7 @@ def _asbuilt_detect_blue_arrow_tips(image_path, orange_regions):
                 if length<max(45,min(w,h)*0.025): continue
                 # Favor long pen strokes and close association to the mark.
                 elong=max(c['w'],c['h'])/max(1,min(c['w'],c['h']))
+                if elong<1.6: continue
                 score=min(1.0,length/max(min(w,h)*0.18,1))*0.55
                 score+=min(1.0,elong/5.0)*0.25
                 score+=max(0.0,1.0-gap/max(pad,1))*0.20
@@ -8096,7 +8097,7 @@ def generate_asbuilt_package(floor,changes,label_pattern=None):
                     raise RuntimeError(f"Change #{idx}: nested target ancestry is incomplete; refusing unsafe CAD edit.")
                 if any((not str(v).strip()) or str(v).startswith('*') for v in ab):
                     raise RuntimeError(f"Change #{idx}: anonymous/dynamic/xref block ancestry is not eligible for instance-safe editing.")
-            if op in {'MOVE_ENDPOINT','DELETE_ENDPOINT'} and nested and str(t.get('entity_type') or '')!='INSERT':
+            if nested and str(t.get('entity_type') or '')!='INSERT':
                 raise RuntimeError(f"Change #{idx}: nested target is not a supported INSERT entity.")
             item={'op':op,'target':t,'note':note,'floor':floor}
             if op=='MOVE_ENDPOINT':
