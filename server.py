@@ -6547,7 +6547,7 @@ MARKUP COUNT RULES:
 4) Preserve the original handwritten Arabic status literally. Do not translate it into a different status when the handwriting is uncertain.
 5) The confirmed legend is fixed and must be applied consistently:
    - Pink: «لم يتم السحب نهائيًا» => CANCEL the cable/endpoint; SHIFT its label; do NOT reserve or retain a Patch Panel slot.
-   - Yellow: «لم يتم السحب» => cable was not pulled; RESERVE its Patch Panel slot; do NOT shift its label (treat the label as still present).
+   - Yellow: «لم يتم السحب» => DELETE the endpoint from the updated CAD drawing; RESERVE its Patch Panel slot; do NOT shift its label (keep its original port position).
    - Orange: cable was MOVED to another location; KEEP its Patch Panel slot and KEEP its label unchanged. This is a move, NOT a cancellation/deletion.
    - Green: cable was PULLED; KEEP its Patch Panel slot and KEEP its label unchanged.
    - Blue or any undefined color: no inferred action; keep normalized_status empty/null and require human review.
@@ -6561,8 +6561,8 @@ TWO-PASS OUTPUT:
 
 REVISION / CAD MATCHING RULES:
 1) The CAD project is the source of truth for existing Point/Endpoint IDs and coordinates. The scan is the source of truth for the technician's markup/revision intent.
-2) Apply the fixed color actions exactly: Pink=CANCEL + SHIFT LABEL + NO PATCH PANEL SLOT; Yellow=NOT PULLED + RESERVE PATCH PANEL SLOT + KEEP LABEL; Orange=MOVED + KEEP PATCH PANEL SLOT + KEEP LABEL; Green=PULLED + KEEP PATCH PANEL SLOT + KEEP LABEL.
-3) Orange is a move, never an endpoint deletion. Yellow is not a deletion. Green is a pulled cable, not a deletion. Only Pink carries the final-cancellation action.
+2) Apply the fixed color actions exactly: Pink=DELETE CAD ENDPOINT + SHIFT LABEL + NO PATCH PANEL SLOT; Yellow=DELETE CAD ENDPOINT + RESERVE PATCH PANEL SLOT + KEEP LABEL POSITION; Orange=MOVE CAD ENDPOINT TO THE BLUE ARROW TIP + KEEP PATCH PANEL SLOT + KEEP LABEL; Green=NO CAD CHANGE + KEEP PATCH PANEL SLOT + KEEP LABEL.
+3) Orange is a move, never an endpoint deletion. Yellow deletes the endpoint from the updated CAD drawing but reserves its original Patch Panel slot. Green remains unchanged.
 4) A color alone is never enough to create a CAD operation. Confirm the matching endpoint and floor first.
 5) Match a markup to the candidate CAD endpoint only when the page/floor, room/nearby text, spatial location and drawing context support the match. Never fabricate a target_key.
 6) Preserve all four color classes and their actions in markup_inventory. If the endpoint match or the handwritten evidence is uncertain, require human review; do not silently execute a CAD change.
