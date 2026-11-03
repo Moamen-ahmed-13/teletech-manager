@@ -8071,7 +8071,6 @@ def generate_asbuilt_package(floor,changes,label_pattern=None):
                 if action not in ASBUILT_PATCH_ACTIONS:
                     raise RuntimeError(f'Change #{idx}: choose SHIFT or RESERVE for Patch Panel handling.')
                 item.update(site_status=status,patch_action=action,cad_manual_required=False,cad_nested_clone=not bool(t.get('editable_direct')))
-            normalized.append(item)
             if op=='MOVE_ENDPOINT' and nested:
                 m=list(t.get('parent_transform') or [])
                 if len(m)!=6: raise RuntimeError(f'Change #{idx}: nested transform is incomplete.')
