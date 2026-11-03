@@ -7327,6 +7327,7 @@ def _asbuilt_detect_blue_arrow_tips(image_path, orange_regions):
         img=cv2.imread(str(image_path),cv2.IMREAD_COLOR)
         if img is None: return {}
         h,w=img.shape[:2]
+        page_area=float(max(h*w,1))
         hsv=cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
         # Blue ballpoint ink. Keep a broad hue range for scan/lighting variation;
         # locality to the orange mark is the primary discriminator.
