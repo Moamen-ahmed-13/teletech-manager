@@ -1654,7 +1654,7 @@ def _parse_visible_dxf(path, with_rooms=False):
             occurrences.append({'handle':handle,'block':name,'layer':layer,'x':x,'y':y,'insert_x':ix,'insert_y':iy,
                                 'rotation':_dxf_num(e,50,0),'attributes':amap.get(handle,{}),
                                 'ancestors':list(ancestors),'ancestor_handles':list(ancestor_handles),'parent_transform':list(parent),'depth':depth,'legend_branch':legend_branch,
-                                'root':depth==0})
+                                'root':depth==0,'entity_type':'INSERT'})
             if name in blocks and not legend_branch:
                 if m is None: m=insert_matrix(e,blocks[name]['base'])
                 walk(blocks[name]['entities'],mat_mul(parent,m),ancestors+(name,),depth+1,ancestor_handles+(handle,))
