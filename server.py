@@ -7336,11 +7336,11 @@ def _asbuilt_norm_to_cad_xy(x_norm,y_norm,catalog,floor_hint=''):
 
 
 def _asbuilt_detect_blue_arrow_tips(image_path, orange_regions):
-    """Detect blue-ink arrow strokes associated with orange move marks.
+    """Trace blue-ink relocation arrows outward from their known orange origins.
 
-    This is a conservative geometric proposal only. It does not execute CAD edits.
-    Blue components must be local to an orange markup; ambiguous/missing strokes
-    are returned as unresolved instead of guessing a destination.
+    Search is seeded at each orange markup, bridges small pen/scan gaps, and
+    proposes the far endpoint only when a converging arrowhead is visible.
+    CAD placement remains separately gated by a verified page-to-CAD transform.
     """
     if cv2 is None or np is None or not image_path:
         return {}
@@ -7348,95 +7348,92 @@ def _asbuilt_detect_blue_arrow_tips(image_path, orange_regions):
         img=cv2.imread(str(image_path),cv2.IMREAD_COLOR)
         if img is None: return {}
         h,w=img.shape[:2]
-        page_area=float(max(h*w,1))
+        page_min=float(max(1,min(h,w)))
         hsv=cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
-        # Blue ballpoint ink. Keep a broad hue range for scan/lighting variation;
-        # locality to the orange mark is the primary discriminator.
-        blue=((hsv[:,:,0]>=88)&(hsv[:,:,0]<=140)&
-              (hsv[:,:,1]>=35)&(hsv[:,:,2]>=35)).astype(np.uint8)
-        n,labels,stats,cent=cv2.connectedComponentsWithStats(blue,8)
-        comps=[]
-        for k in range(1,n):
-            area=int(stats[k,cv2.CC_STAT_AREA])
-            if area<12: continue
-            x=int(stats[k,cv2.CC_STAT_LEFT]); y=int(stats[k,cv2.CC_STAT_TOP])
-            ww=int(stats[k,cv2.CC_STAT_WIDTH]); hh=int(stats[k,cv2.CC_STAT_HEIGHT])
-            if max(ww,hh)<25 or ww>w*0.45 or hh>h*0.45 or area>page_area*0.003: continue
-            ys,xs=np.where(labels[y:y+hh,x:x+ww]==k)
-            if len(xs)<12: continue
-            comps.append({'id':k,'x':x,'y':y,'w':ww,'h':hh,
-                          'xs':xs.astype(float)+x,'ys':ys.astype(float)+y,
-                          'area':area,'cx':float(cent[k][0]),'cy':float(cent[k][1])})
+        blue=((hsv[:,:,0]>=82)&(hsv[:,:,0]<=145)&
+              (hsv[:,:,1]>=28)&(hsv[:,:,2]>=28)).astype(np.uint8)
+        close_size=max(3,int(round(page_min*0.006))|1)
+        close_size=min(close_size,11)
+        kernel=cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(close_size,close_size))
+        bridged=cv2.morphologyEx(blue,cv2.MORPH_CLOSE,kernel,iterations=1)
         out={}
         for oi,reg in enumerate(orange_regions or [],1):
             bb=reg.get('bbox') or [0,0,0,0]
             ox,oy,ow,oh=[float(v) for v in bb[:4]]
             ocx=ox+ow/2.0; ocy=oy+oh/2.0
-            pad=max(35,int(min(w,h)*0.018))
+            pad=max(70,int(page_min*0.24))
+            x0=max(0,int(ox-pad)); y0=max(0,int(oy-pad))
+            x1=min(w,int(ox+ow+pad)); y1=min(h,int(oy+oh+pad))
+            local=bridged[y0:y1,x0:x1]
+            n,labels,stats,cent=cv2.connectedComponentsWithStats(local,8)
             ranked=[]
-            for c in comps:
-                # Component must touch or lie close to the orange markup bbox.
-                dx=max(ox-(c['x']+c['w']),c['x']-(ox+ow),0)
-                dy=max(oy-(c['y']+c['h']),c['y']-(oy+oh),0)
-                gap=(dx*dx+dy*dy)**0.5
-                if gap>pad: continue
-                vx=c['xs']-ocx; vy=c['ys']-ocy
-                d2=vx*vx+vy*vy
+            for k in range(1,n):
+                area=int(stats[k,cv2.CC_STAT_AREA])
+                if area<10 or area>h*w*0.004: continue
+                lx=int(stats[k,cv2.CC_STAT_LEFT]); ly=int(stats[k,cv2.CC_STAT_TOP])
+                ww=int(stats[k,cv2.CC_STAT_WIDTH]); hh=int(stats[k,cv2.CC_STAT_HEIGHT])
+                if max(ww,hh)<22: continue
+                ys,xs=np.where(labels[ly:ly+hh,lx:lx+ww]==k)
+                if len(xs)<10: continue
+                xs=xs.astype(float)+lx+x0; ys=ys.astype(float)+ly+y0
+                dx=np.maximum(np.maximum(ox-xs,0),xs-(ox+ow))
+                dy=np.maximum(np.maximum(oy-ys,0),ys-(oy+oh))
+                gaps=np.sqrt(dx*dx+dy*dy)
+                gap=float(np.min(gaps))
+                if gap>max(24,int(page_min*0.045)): continue
+                d2=(xs-ocx)**2+(ys-ocy)**2
                 far=int(np.argmax(d2))
-                tx=float(c['xs'][far]); ty=float(c['ys'][far])
+                tx=float(xs[far]); ty=float(ys[far])
                 length=float(np.sqrt(float(d2[far])))
-                span=max(c['w'],c['h'])
-                if length<max(45,min(w,h)*0.025): continue
-                # Favor long pen strokes and close association to the mark.
-                elong=max(c['w'],c['h'])/max(1,min(c['w'],c['h']))
-                if elong<1.6: continue
-                score=min(1.0,length/max(min(w,h)*0.18,1))*0.55
-                score+=min(1.0,elong/5.0)*0.25
-                score+=max(0.0,1.0-gap/max(pad,1))*0.20
-                # A long blue CAD line is not enough: require two short strokes
-                # converging at the far endpoint to support an arrowhead.
-                hp=max(18,int(min(w,h)*0.012))
+                if length<max(38,page_min*0.022): continue
+                elong=max(ww,hh)/max(1,min(ww,hh))
+                if elong<1.25: continue
+                hp=max(16,int(page_min*0.014))
                 rx0=max(0,int(tx)-hp); ry0=max(0,int(ty)-hp)
                 rx1=min(w,int(tx)+hp+1); ry1=min(h,int(ty)+hp+1)
-                roi=(blue[ry0:ry1,rx0:rx1]*255).astype(np.uint8)
-                hlines=cv2.HoughLinesP(roi,1,np.pi/180,threshold=7,minLineLength=7,maxLineGap=5)
+                roi=(bridged[ry0:ry1,rx0:rx1]*255).astype(np.uint8)
+                hlines=cv2.HoughLinesP(roi,1,np.pi/180,threshold=6,
+                                       minLineLength=max(6,int(page_min*0.004)),
+                                       maxLineGap=max(4,int(page_min*0.004)))
                 near=[]
                 if hlines is not None:
                     for ln in hlines[:,0,:]:
-                        x1,y1,x2,y2=[float(v) for v in ln]
-                        p1=(x1+rx0,y1+ry0); p2=(x2+rx0,y2+ry0)
-                        d1=((p1[0]-tx)**2+(p1[1]-ty)**2)**0.5
-                        d2=((p2[0]-tx)**2+(p2[1]-ty)**2)**0.5
-                        if min(d1,d2)<=max(9,min(w,h)*0.004):
-                            ang=(math.degrees(math.atan2(y2-y1,x2-x1))%180.0)
-                            near.append(ang)
+                        ax,ay,bx,by=[float(v) for v in ln]
+                        p1=(ax+rx0,ay+ry0); p2=(bx+rx0,by+ry0)
+                        da=((p1[0]-tx)**2+(p1[1]-ty)**2)**0.5
+                        db=((p2[0]-tx)**2+(p2[1]-ty)**2)**0.5
+                        if min(da,db)<=max(10,page_min*0.006):
+                            near.append(math.degrees(math.atan2(by-ay,bx-ax))%180.0)
                 arrowhead=False
                 for ai in range(len(near)):
                     for aj in range(ai+1,len(near)):
                         ad=abs(near[ai]-near[aj]); ad=min(ad,180-ad)
-                        if 18.0<=ad<=115.0:
+                        if 18.0<=ad<=125.0:
                             arrowhead=True; break
                     if arrowhead: break
-                if not arrowhead:
-                    score*=0.72
-                ranked.append((score,c,tx,ty,length,gap,arrowhead))
+                score=min(1.0,length/max(page_min*0.16,1))*0.45
+                score+=min(1.0,elong/4.0)*0.20
+                score+=max(0.0,1.0-gap/max(24,page_min*0.045))*0.20
+                score+=0.15 if arrowhead else 0.0
+                ranked.append((score,tx,ty,length,gap,arrowhead,[x0+lx,y0+ly,ww,hh]))
             ranked.sort(key=lambda z:z[0],reverse=True)
             if not ranked:
-                out[oi]={'status':'NOT_FOUND','confidence':0.0,'reason':'No nearby blue-ink stroke was associated with this orange mark.'}
+                out[oi]={'status':'NOT_FOUND','confidence':0.0,'arrowhead_detected':False,
+                         'reason':'No traceable blue-ink stroke starts near this orange markup.'}
                 continue
             best=ranked[0]
-            # Two similarly scored unrelated components make the destination ambiguous.
-            ambiguous=len(ranked)>1 and (best[0]-ranked[1][0])<0.08
-            score,c,tx,ty,length,gap,arrowhead=best
+            ambiguous=len(ranked)>1 and (best[0]-ranked[1][0])<0.07
+            score,tx,ty,length,gap,arrowhead,stroke_bbox=best
+            accepted=not ambiguous and score>=0.45 and arrowhead
             out[oi]={
-                'status':'AMBIGUOUS' if ambiguous or score<0.48 or not arrowhead else 'CANDIDATE',
-                'arrowhead_detected':bool(arrowhead),
-                'confidence':round(float(score),2),
+                'status':'CANDIDATE' if accepted else ('AMBIGUOUS' if ambiguous else 'NOT_CONFIRMED'),
+                'arrowhead_detected':bool(arrowhead),'confidence':round(float(score),2),
                 'tip_px':[int(round(tx)),int(round(ty))],
                 'tip_norm':[int(round(tx/max(w,1)*1000)),int(round(ty/max(h,1)*1000))],
-                'stroke_bbox':[c['x'],c['y'],c['w'],c['h']],
+                'stroke_bbox':[int(v) for v in stroke_bbox],
                 'stroke_length_px':round(length,1),'orange_to_stroke_gap_px':round(gap,1),
-                'reason':'Blue-ink component endpoint proposal; visual confirmation required.'
+                'origin':'orange_markup',
+                'reason':'Blue-ink stroke traced outward from the orange origin; endpoint is provisional until CAD registration is verified.'
             }
         return out
     except Exception as e:
