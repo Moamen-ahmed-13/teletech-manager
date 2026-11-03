@@ -1,0 +1,781 @@
+{
+ "pages": [
+  {
+   "page": 1,
+   "pdf": "AsBuilt_علوم_إنسانيه_جامعه_المنصوره_-_Copy_-_Copy_p1.pdf",
+   "registration_ok": true,
+   "reason": "",
+   "diag": {
+    "page_keypoints": 12000,
+    "cad_keypoints": 12002,
+    "good_matches": 297,
+    "model": "similarity",
+    "inliers": 532,
+    "inlier_ratio": 0.217,
+    "det": 2.9136,
+    "scale": 1.7069,
+    "rotation_deg": -0.57,
+    "heldout_median_err_px": 3.9,
+    "heldout_p90_err_px": 7.28,
+    "heldout_median_frac": 0.00084,
+    "reproj_median_px": 4.0,
+    "coverage": 0.546,
+    "inliers_by_third": [
+     237,
+     229,
+     66
+    ],
+    "page_work_size": [
+     1589,
+     2200
+    ]
+   },
+   "markups": [
+    {
+     "color": "orange",
+     "page_px": [
+      1761,
+      2828
+     ],
+     "cad_xy": [
+      50854.8,
+      -53744.5
+     ],
+     "match": {
+      "block": "D-V",
+      "depth": 0,
+      "world": [
+       50247.0,
+       -53508.1
+      ],
+      "distance": 652.1,
+      "next_distance": 4817.3
+     },
+     "arrow": {
+      "status": "CONFIRMED",
+      "confidence": 0.91,
+      "arrowhead_detected": true,
+      "tip_px": [
+       1693,
+       2938
+      ],
+      "tip_norm": [
+       719,
+       901
+      ],
+      "tail_px": [
+       1752,
+       2852
+      ],
+      "stroke_bbox": [
+       1687,
+       2852,
+       66,
+       99
+      ],
+      "stroke_length_px": 104.3,
+      "orange_to_stroke_gap_px": 3.0,
+      "head_ratio": 2.15,
+      "head_spread": 22.04,
+      "origin": "orange_markup",
+      "candidates": 1,
+      "reason": "Arrowhead found at stroke end; destination is the head tip."
+     },
+     "destination_cad": [
+      49483.6,
+      -55999.3
+     ],
+     "state": "CONFIRMED"
+    },
+    {
+     "color": "yellow",
+     "page_px": [
+      1244,
+      2710
+     ],
+     "cad_xy": [
+      40274.6,
+      -51447.3
+     ],
+     "match": {
+      "block": "ES-cctv",
+      "depth": 1,
+      "world": [
+       40200.0,
+       -51487.1
+      ],
+      "distance": 84.5,
+      "next_distance": 2751.6
+     },
+     "state": "CONFIRMED"
+    },
+    {
+     "color": "green",
+     "page_px": [
+      1248,
+      2489
+     ],
+     "cad_xy": [
+      40307.0,
+      -46926.0
+     ],
+     "action": "NO_CHANGE (Patch Panel unchanged)"
+    },
+    {
+     "color": "pink",
+     "page_px": [
+      1744,
+      1189
+     ],
+     "cad_xy": [
+      50177.0,
+      -20311.3
+     ],
+     "match": {
+      "block": "D-V",
+      "depth": 0,
+      "world": [
+       49913.0,
+       -20568.1
+      ],
+      "distance": 368.3,
+      "next_distance": 500.9
+     },
+     "state": "AMBIGUOUS",
+     "reason": "two endpoints at 368 and 501 units"
+    },
+    {
+     "color": "pink",
+     "page_px": [
+      981,
+      1576
+     ],
+     "cad_xy": [
+      34674.6,
+      -28355.6
+     ],
+     "match": {
+      "block": "D-V",
+      "depth": 0,
+      "world": [
+       34283.0,
+       -28311.3
+      ],
+      "distance": 394.2,
+      "next_distance": 3011.7
+     },
+     "state": "CONFIRMED"
+    },
+    {
+     "color": "pink",
+     "page_px": [
+      1755,
+      1582
+     ],
+     "cad_xy": [
+      50463.3,
+      -28316.0
+     ],
+     "match": {
+      "block": "D-V",
+      "depth": 0,
+      "world": [
+       50299.0,
+       -28768.1
+      ],
+      "distance": 481.0,
+      "next_distance": 3275.0
+     },
+     "state": "CONFIRMED"
+    },
+    {
+     "color": "pink",
+     "page_px": [
+      1812,
+      1646
+     ],
+     "cad_xy": [
+      51646.4,
+      -29620.8
+     ],
+     "match": {
+      "block": "D-V",
+      "depth": 0,
+      "world": [
+       50299.0,
+       -28768.1
+      ],
+      "distance": 1594.6,
+      "next_distance": 4993.9
+     },
+     "state": "NOT_MATCHED",
+     "reason": "nearest endpoint is 1595 units away (>900)"
+    }
+   ]
+  },
+  {
+   "page": 2,
+   "pdf": "AsBuilt_علوم_إنسانيه_جامعه_المنصوره_-_Copy_-_Copy_p2.pdf",
+   "registration_ok": true,
+   "reason": "",
+   "diag": {
+    "page_keypoints": 12000,
+    "cad_keypoints": 12002,
+    "good_matches": 330,
+    "model": "affine",
+    "inliers": 760,
+    "inlier_ratio": 0.334,
+    "det": 2.939,
+    "scale": 1.7144,
+    "rotation_deg": 0.35,
+    "heldout_median_err_px": 2.95,
+    "heldout_p90_err_px": 4.82,
+    "heldout_median_frac": 0.00064,
+    "reproj_median_px": 1.9,
+    "coverage": 0.311,
+    "inliers_by_third": [
+     363,
+     358,
+     39
+    ],
+    "page_work_size": [
+     1537,
+     2200
+    ]
+   },
+   "markups": [
+    {
+     "color": "yellow",
+     "page_px": [
+      1118,
+      377
+     ],
+     "cad_xy": [
+      13864.9,
+      -5159.5
+     ],
+     "match": {
+      "block": "ES-cctv",
+      "depth": 1,
+      "world": [
+       13858.0,
+       -4810.1
+      ],
+      "distance": 349.5,
+      "next_distance": 629.2
+     },
+     "state": "CONFIRMED"
+    },
+    {
+     "color": "yellow",
+     "page_px": [
+      1045,
+      2356
+     ],
+     "cad_xy": [
+      11775.6,
+      -52827.1
+     ],
+     "match": {
+      "block": "ES-cctv",
+      "depth": 1,
+      "world": [
+       11784.4,
+       -52432.0
+      ],
+      "distance": 395.3,
+      "next_distance": 1509.2
+     },
+     "state": "CONFIRMED"
+    },
+    {
+     "color": "green",
+     "page_px": [
+      1036,
+      2430
+     ],
+     "cad_xy": [
+      11556.6,
+      -54613.3
+     ],
+     "action": "NO_CHANGE (Patch Panel unchanged)"
+    },
+    {
+     "color": "pink",
+     "page_px": [
+      1003,
+      381
+     ],
+     "cad_xy": [
+      11068.1,
+      -5235.1
+     ],
+     "match": {
+      "block": "D-V",
+      "depth": 0,
+      "world": [
+       10620.0,
+       -4276.1
+      ],
+      "distance": 1058.5,
+      "next_distance": 1111.0
+     },
+     "state": "NOT_MATCHED",
+     "reason": "nearest endpoint is 1059 units away (>900)"
+    },
+    {
+     "color": "pink",
+     "page_px": [
+      564,
+      1908
+     ],
+     "cad_xy": [
+      164.7,
+      -41967.8
+     ],
+     "match": {
+      "block": "D-V",
+      "depth": 0,
+      "world": [
+       230.9,
+       -41594.8
+      ],
+      "distance": 378.9,
+      "next_distance": 3085.7
+     },
+     "state": "CONFIRMED"
+    },
+    {
+     "color": "pink",
+     "page_px": [
+      537,
+      2048
+     ],
+     "cad_xy": [
+      -497.8,
+      -45321.6
+     ],
+     "match": {
+      "block": "D-V",
+      "depth": 0,
+      "world": [
+       -321.0,
+       -45015.0
+      ],
+      "distance": 353.9,
+      "next_distance": 3304.4
+     },
+     "state": "CONFIRMED"
+    },
+    {
+     "color": "pink",
+     "page_px": [
+      542,
+      2204
+     ],
+     "cad_xy": [
+      -406.4,
+      -49087.8
+     ],
+     "match": {
+      "block": "D-V",
+      "depth": 0,
+      "world": [
+       -269.0,
+       -48618.1
+      ],
+      "distance": 489.4,
+      "next_distance": 3812.8
+     },
+     "state": "CONFIRMED"
+    },
+    {
+     "color": "pink",
+     "page_px": [
+      872,
+      2358
+     ],
+     "cad_xy": [
+      7579.7,
+      -52853.4
+     ],
+     "match": {
+      "block": "D-V",
+      "depth": 0,
+      "world": [
+       6640.0,
+       -49990.7
+      ],
+      "distance": 3013.0,
+      "next_distance": 3407.2
+     },
+     "state": "NOT_MATCHED",
+     "reason": "nearest endpoint is 3013 units away (>900)"
+    },
+    {
+     "color": "pink",
+     "page_px": [
+      525,
+      2376
+     ],
+     "cad_xy": [
+      -843.3,
+      -53237.2
+     ],
+     "match": {
+      "block": "D-V",
+      "depth": 0,
+      "world": [
+       -880.0,
+       -52871.1
+      ],
+      "distance": 367.9,
+      "next_distance": 689.6
+     },
+     "state": "CONFIRMED"
+    },
+    {
+     "color": "pink",
+     "page_px": [
+      529,
+      2429
+     ],
+     "cad_xy": [
+      -752.1,
+      -54521.8
+     ],
+     "match": {
+      "block": "D-V",
+      "depth": 0,
+      "world": [
+       -389.1,
+       -53756.0
+      ],
+      "distance": 847.5,
+      "next_distance": 1655.6
+     },
+     "state": "CONFIRMED"
+    }
+   ]
+  }
+ ],
+ "changes": [
+  {
+   "op": "MOVE_ENDPOINT",
+   "page": 1,
+   "color": "orange",
+   "patch_action": "KEEP",
+   "block": "D-V",
+   "from": [
+    50247.0,
+    -53508.1
+   ],
+   "x": 49483.59194751304,
+   "y": -55999.33027299532
+  },
+  {
+   "op": "SITE_REMOVE",
+   "page": 1,
+   "color": "yellow",
+   "patch_action": "RESERVE",
+   "block": "ES-cctv",
+   "world": [
+    40200.0,
+    -51487.1
+   ],
+   "dxf_handle_path": [
+    1252413,
+    104904
+   ]
+  },
+  {
+   "op": "SITE_REMOVE",
+   "page": 1,
+   "color": "pink",
+   "patch_action": "SHIFT",
+   "block": "D-V",
+   "world": [
+    34283.0,
+    -28311.3
+   ],
+   "dxf_handle_path": [
+    1248964
+   ]
+  },
+  {
+   "op": "SITE_REMOVE",
+   "page": 1,
+   "color": "pink",
+   "patch_action": "SHIFT",
+   "block": "D-V",
+   "world": [
+    50299.0,
+    -28768.1
+   ],
+   "dxf_handle_path": [
+    1251461
+   ]
+  },
+  {
+   "op": "SITE_REMOVE",
+   "page": 2,
+   "color": "yellow",
+   "patch_action": "RESERVE",
+   "block": "ES-cctv",
+   "world": [
+    13858.0,
+    -4810.1
+   ],
+   "dxf_handle_path": [
+    1252229,
+    104904
+   ]
+  },
+  {
+   "op": "SITE_REMOVE",
+   "page": 2,
+   "color": "yellow",
+   "patch_action": "RESERVE",
+   "block": "ES-cctv",
+   "world": [
+    11784.4,
+    -52432.0
+   ],
+   "dxf_handle_path": [
+    1249329,
+    104904
+   ]
+  },
+  {
+   "op": "SITE_REMOVE",
+   "page": 2,
+   "color": "pink",
+   "patch_action": "SHIFT",
+   "block": "D-V",
+   "world": [
+    230.9,
+    -41594.8
+   ],
+   "dxf_handle_path": [
+    1254877
+   ]
+  },
+  {
+   "op": "SITE_REMOVE",
+   "page": 2,
+   "color": "pink",
+   "patch_action": "SHIFT",
+   "block": "D-V",
+   "world": [
+    -321.0,
+    -45015.0
+   ],
+   "dxf_handle_path": [
+    1254840
+   ]
+  },
+  {
+   "op": "SITE_REMOVE",
+   "page": 2,
+   "color": "pink",
+   "patch_action": "SHIFT",
+   "block": "D-V",
+   "world": [
+    -269.0,
+    -48618.1
+   ],
+   "dxf_handle_path": [
+    1254804
+   ]
+  },
+  {
+   "op": "SITE_REMOVE",
+   "page": 2,
+   "color": "pink",
+   "patch_action": "SHIFT",
+   "block": "D-V",
+   "world": [
+    -880.0,
+    -52871.1
+   ],
+   "dxf_handle_path": [
+    1254950
+   ]
+  },
+  {
+   "op": "SITE_REMOVE",
+   "page": 2,
+   "color": "pink",
+   "patch_action": "SHIFT",
+   "block": "D-V",
+   "world": [
+    -389.1,
+    -53756.0
+   ],
+   "dxf_handle_path": [
+    1254914
+   ]
+  }
+ ],
+ "review": [
+  {
+   "page": 1,
+   "color": "pink",
+   "cad_xy": [
+    50177.0,
+    -20311.3
+   ],
+   "state": "AMBIGUOUS",
+   "reason": "two endpoints at 368 and 501 units"
+  },
+  {
+   "page": 1,
+   "color": "pink",
+   "cad_xy": [
+    51646.4,
+    -29620.8
+   ],
+   "state": "NOT_MATCHED",
+   "reason": "nearest endpoint is 1595 units away (>900)"
+  },
+  {
+   "page": 2,
+   "color": "pink",
+   "cad_xy": [
+    11068.1,
+    -5235.1
+   ],
+   "state": "NOT_MATCHED",
+   "reason": "nearest endpoint is 1059 units away (>900)"
+  },
+  {
+   "page": 2,
+   "color": "pink",
+   "cad_xy": [
+    7579.7,
+    -52853.4
+   ],
+   "state": "NOT_MATCHED",
+   "reason": "nearest endpoint is 3013 units away (>900)"
+  }
+ ],
+ "applied": [
+  {
+   "color": "orange",
+   "op": "MOVE",
+   "block": "D-V",
+   "depth": 0,
+   "from": [
+    50247.0,
+    -53508.1
+   ],
+   "to": [
+    49483.6,
+    -55999.3
+   ]
+  },
+  {
+   "color": "yellow",
+   "op": "DELETE",
+   "block": "ES-cctv",
+   "depth": 1,
+   "world": [
+    40200.0,
+    -51487.1
+   ]
+  },
+  {
+   "color": "pink",
+   "op": "DELETE",
+   "block": "D-V",
+   "depth": 0,
+   "world": [
+    34283.0,
+    -28311.3
+   ]
+  },
+  {
+   "color": "pink",
+   "op": "DELETE",
+   "block": "D-V",
+   "depth": 0,
+   "world": [
+    50299.0,
+    -28768.1
+   ]
+  },
+  {
+   "color": "yellow",
+   "op": "DELETE",
+   "block": "ES-cctv",
+   "depth": 1,
+   "world": [
+    13858.0,
+    -4810.1
+   ]
+  },
+  {
+   "color": "yellow",
+   "op": "DELETE",
+   "block": "ES-cctv",
+   "depth": 1,
+   "world": [
+    11784.4,
+    -52432.0
+   ]
+  },
+  {
+   "color": "pink",
+   "op": "DELETE",
+   "block": "D-V",
+   "depth": 0,
+   "world": [
+    230.9,
+    -41594.8
+   ]
+  },
+  {
+   "color": "pink",
+   "op": "DELETE",
+   "block": "D-V",
+   "depth": 0,
+   "world": [
+    -321.0,
+    -45015.0
+   ]
+  },
+  {
+   "color": "pink",
+   "op": "DELETE",
+   "block": "D-V",
+   "depth": 0,
+   "world": [
+    -269.0,
+    -48618.1
+   ]
+  },
+  {
+   "color": "pink",
+   "op": "DELETE",
+   "block": "D-V",
+   "depth": 0,
+   "world": [
+    -880.0,
+    -52871.1
+   ]
+  },
+  {
+   "color": "pink",
+   "op": "DELETE",
+   "block": "D-V",
+   "depth": 0,
+   "world": [
+    -389.1,
+    -53756.0
+   ]
+  }
+ ],
+ "original_sha256": "8ba1f5e82d2a56374ef717762a3bc95a93e9b01451b618c156f6bc8c73467f17",
+ "original_unchanged": true,
+ "output": "/home/claude/w/out/Mansoura_University_-_HUM_-_G_-_A_B_AsBuilt.dxf"
+}
