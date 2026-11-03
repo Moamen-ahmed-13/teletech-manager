@@ -1,0 +1,751 @@
+{
+  "pages": [
+    {
+      "page": 1,
+      "pdf": "AsBuilt علوم إنسانيه جامعه المنصوره - Copy - Copy_p1.pdf",
+      "pdf_page_index": 1,
+      "registration_ok": true,
+      "reason": "",
+      "diag": {
+        "page_keypoints": 12000,
+        "cad_keypoints": 12000,
+        "good_matches": 307,
+        "model": "similarity",
+        "inliers": 560,
+        "inlier_ratio": 0.231,
+        "det": 2.8184,
+        "scale": 1.6788,
+        "rotation_deg": -0.51,
+        "heldout_median_err_px": 4.38,
+        "heldout_p90_err_px": 7.13,
+        "heldout_median_frac": 0.00096,
+        "reproj_median_px": 4.38,
+        "coverage": 0.541,
+        "inliers_by_third": [
+          260,
+          228,
+          72
+        ],
+        "page_work_size": [
+          1589,
+          2200
+        ]
+      },
+      "markups": [
+        {
+          "color": "orange",
+          "page_px": [
+            1761.3,
+            2828.2
+          ],
+          "cad_xy": [
+            50843.98,
+            -53817.23
+          ],
+          "state": "CONFIRMED",
+          "match": {
+            "block": "D-V",
+            "depth": 0,
+            "world": [
+              50247.0,
+              -53508.08
+            ],
+            "distance": 672.28,
+            "next_distance": 4792.67
+          },
+          "arrow": {
+            "status": "CONFIRMED",
+            "confidence": 0.91,
+            "arrowhead_detected": true,
+            "tip_px": [
+              1693,
+              2938
+            ],
+            "tip_norm": [
+              719,
+              901
+            ],
+            "tail_px": [
+              1752,
+              2852
+            ],
+            "stroke_bbox": [
+              1687,
+              2852,
+              66,
+              99
+            ],
+            "stroke_length_px": 104.3,
+            "orange_to_stroke_gap_px": 3.0,
+            "head_ratio": 2.15,
+            "head_spread": 22.04,
+            "origin": "orange_markup",
+            "candidates": 1,
+            "reason": "Arrowhead found at stroke end; destination is the head tip."
+          },
+          "action": "MOVE_ENDPOINT",
+          "destination_cad": [
+            49471.17,
+            -56069.51
+          ],
+          "patch_action": "KEEP"
+        },
+        {
+          "color": "yellow",
+          "page_px": [
+            1243.9,
+            2710.4
+          ],
+          "cad_xy": [
+            40271.29,
+            -51510.31
+          ],
+          "state": "NOT_MATCHED",
+          "match": {
+            "block": "D-W",
+            "depth": 0,
+            "world": [
+              40600.0,
+              -48715.0
+            ],
+            "distance": 2814.57,
+            "next_distance": 3208.7
+          },
+          "reason": "Nearest endpoint is 2814.6 CAD units away (limit 900)."
+        },
+        {
+          "color": "green",
+          "page_px": [
+            1247.6,
+            2488.8
+          ],
+          "cad_xy": [
+            40308.32,
+            -46991.22
+          ],
+          "state": "NO_CHANGE",
+          "action": "Patch Panel unchanged"
+        },
+        {
+          "color": "pink",
+          "page_px": [
+            1744.4,
+            1189.1
+          ],
+          "cad_xy": [
+            50200.76,
+            -20399.57
+          ],
+          "state": "AMBIGUOUS",
+          "match": {
+            "block": "D-V",
+            "depth": 0,
+            "world": [
+              49913.0,
+              -20568.08
+            ],
+            "distance": 333.47,
+            "next_distance": 445.88
+          },
+          "reason": "Two endpoints are too close in match score (333.5, 445.9)."
+        },
+        {
+          "color": "pink",
+          "page_px": [
+            980.6,
+            1575.8
+          ],
+          "cad_xy": [
+            34697.72,
+            -28424.12
+          ],
+          "state": "CONFIRMED",
+          "match": {
+            "block": "D-V",
+            "depth": 0,
+            "world": [
+              34282.96,
+              -28311.28
+            ],
+            "distance": 429.83,
+            "next_distance": 3037.64
+          },
+          "action": "SITE_REMOVE",
+          "patch_action": "SHIFT"
+        },
+        {
+          "color": "pink",
+          "page_px": [
+            1754.5,
+            1581.6
+          ],
+          "cad_xy": [
+            50478.75,
+            -28400.74
+          ],
+          "state": "CONFIRMED",
+          "match": {
+            "block": "D-V",
+            "depth": 0,
+            "world": [
+              50299.0,
+              -28768.08
+            ],
+            "distance": 408.96,
+            "next_distance": 3336.26
+          },
+          "action": "SITE_REMOVE",
+          "patch_action": "SHIFT"
+        },
+        {
+          "color": "pink",
+          "page_px": [
+            1811.9,
+            1646.1
+          ],
+          "cad_xy": [
+            51659.96,
+            -29706.04
+          ],
+          "state": "NOT_MATCHED",
+          "match": {
+            "block": "D-V",
+            "depth": 0,
+            "world": [
+              50299.0,
+              -28768.08
+            ],
+            "distance": 1652.87,
+            "next_distance": 5070.2
+          },
+          "reason": "Nearest endpoint is 1652.9 CAD units away (limit 900)."
+        }
+      ]
+    },
+    {
+      "page": 2,
+      "pdf": "AsBuilt علوم إنسانيه جامعه المنصوره - Copy - Copy_p2.pdf",
+      "pdf_page_index": 1,
+      "registration_ok": true,
+      "reason": "",
+      "diag": {
+        "page_keypoints": 12000,
+        "cad_keypoints": 12000,
+        "good_matches": 370,
+        "model": "affine",
+        "inliers": 844,
+        "inlier_ratio": 0.357,
+        "det": 2.8441,
+        "scale": 1.6864,
+        "rotation_deg": 0.39,
+        "heldout_median_err_px": 2.99,
+        "heldout_p90_err_px": 5.18,
+        "heldout_median_frac": 0.00066,
+        "reproj_median_px": 1.79,
+        "coverage": 0.33,
+        "inliers_by_third": [
+          379,
+          411,
+          54
+        ],
+        "page_work_size": [
+          1537,
+          2200
+        ]
+      },
+      "markups": [
+        {
+          "color": "yellow",
+          "page_px": [
+            1118.3,
+            377.1
+          ],
+          "cad_xy": [
+            13863.28,
+            -5269.06
+          ],
+          "state": "CONFIRMED",
+          "match": {
+            "block": "D-V BOX",
+            "depth": 0,
+            "world": [
+              13857.6,
+              -5788.67
+            ],
+            "distance": 519.64,
+            "next_distance": 1163.05
+          },
+          "action": "SITE_REMOVE",
+          "patch_action": "RESERVE"
+        },
+        {
+          "color": "yellow",
+          "page_px": [
+            1045.0,
+            2355.9
+          ],
+          "cad_xy": [
+            11785.69,
+            -52917.24
+          ],
+          "state": "NOT_MATCHED",
+          "match": {
+            "block": "D-W",
+            "depth": 0,
+            "world": [
+              11635.0,
+              -54329.75
+            ],
+            "distance": 1420.52,
+            "next_distance": 4587.63
+          },
+          "reason": "Nearest endpoint is 1420.5 CAD units away (limit 900)."
+        },
+        {
+          "color": "green",
+          "page_px": [
+            1036.4,
+            2430.0
+          ],
+          "cad_xy": [
+            11567.17,
+            -54702.57
+          ],
+          "state": "NO_CHANGE",
+          "action": "Patch Panel unchanged"
+        },
+        {
+          "color": "pink",
+          "page_px": [
+            1003.1,
+            381.0
+          ],
+          "cad_xy": [
+            11067.06,
+            -5342.52
+          ],
+          "state": "NOT_MATCHED",
+          "match": {
+            "block": "DD",
+            "depth": 0,
+            "world": [
+              10640.0,
+              -6260.24
+            ],
+            "distance": 1012.23,
+            "next_distance": 1156.35
+          },
+          "reason": "Nearest endpoint is 1012.2 CAD units away (limit 900)."
+        },
+        {
+          "color": "pink",
+          "page_px": [
+            563.7,
+            1908.2
+          ],
+          "cad_xy": [
+            174.51,
+            -42053.46
+          ],
+          "state": "CONFIRMED",
+          "match": {
+            "block": "D-V",
+            "depth": 0,
+            "world": [
+              230.9,
+              -41594.76
+            ],
+            "distance": 462.15,
+            "next_distance": 3002.71
+          },
+          "action": "SITE_REMOVE",
+          "patch_action": "SHIFT"
+        },
+        {
+          "color": "pink",
+          "page_px": [
+            537.3,
+            2047.5
+          ],
+          "cad_xy": [
+            -487.13,
+            -45405.47
+          ],
+          "state": "CONFIRMED",
+          "match": {
+            "block": "D-V",
+            "depth": 0,
+            "world": [
+              -321.0,
+              -45015.0
+            ],
+            "distance": 424.34,
+            "next_distance": 3220.01
+          },
+          "action": "SITE_REMOVE",
+          "patch_action": "SHIFT"
+        },
+        {
+          "color": "pink",
+          "page_px": [
+            542.1,
+            2203.8
+          ],
+          "cad_xy": [
+            -394.87,
+            -49170.3
+          ],
+          "state": "CONFIRMED",
+          "match": {
+            "block": "D-V",
+            "depth": 0,
+            "world": [
+              -269.0,
+              -48618.08
+            ],
+            "distance": 566.39,
+            "next_distance": 3732.44
+          },
+          "action": "SITE_REMOVE",
+          "patch_action": "SHIFT"
+        },
+        {
+          "color": "pink",
+          "page_px": [
+            872.1,
+            2358.0
+          ],
+          "cad_xy": [
+            7590.59,
+            -52940.4
+          ],
+          "state": "NOT_MATCHED",
+          "match": {
+            "block": "D-V",
+            "depth": 0,
+            "world": [
+              6640.0,
+              -49990.71
+            ],
+            "distance": 3099.08,
+            "next_distance": 3326.72
+          },
+          "reason": "Nearest endpoint is 3099.1 CAD units away (limit 900)."
+        },
+        {
+          "color": "pink",
+          "page_px": [
+            525.2,
+            2376.1
+          ],
+          "cad_xy": [
+            -830.71,
+            -53317.82
+          ],
+          "state": "AMBIGUOUS",
+          "match": {
+            "block": "D-V",
+            "depth": 0,
+            "world": [
+              -880.0,
+              -52871.08
+            ],
+            "distance": 449.45,
+            "next_distance": 622.13
+          },
+          "reason": "Two endpoints are too close in match score (449.4, 622.1)."
+        },
+        {
+          "color": "pink",
+          "page_px": [
+            529.3,
+            2429.4
+          ],
+          "cad_xy": [
+            -739.23,
+            -54602.0
+          ],
+          "state": "NOT_MATCHED",
+          "match": {
+            "block": "D-V",
+            "depth": 0,
+            "world": [
+              -389.08,
+              -53756.0
+            ],
+            "distance": 915.6,
+            "next_distance": 1736.64
+          },
+          "reason": "Nearest endpoint is 915.6 CAD units away (limit 900)."
+        }
+      ]
+    }
+  ],
+  "changes": [
+    {
+      "op": "MOVE_ENDPOINT",
+      "page": 1,
+      "color": "orange",
+      "patch_action": "KEEP",
+      "block": "D-V",
+      "from": [
+        50247.0,
+        -53508.07976980053
+      ],
+      "x": 49471.17128927015,
+      "y": -56069.509449806865
+    },
+    {
+      "op": "SITE_REMOVE",
+      "page": 1,
+      "color": "pink",
+      "patch_action": "SHIFT",
+      "block": "D-V",
+      "world": [
+        34282.96109801555,
+        -28311.28169605198
+      ],
+      "dxf_handle_path": [
+        "67488"
+      ]
+    },
+    {
+      "op": "SITE_REMOVE",
+      "page": 1,
+      "color": "pink",
+      "patch_action": "SHIFT",
+      "block": "D-V",
+      "world": [
+        50298.99999999956,
+        -28768.07976978912
+      ],
+      "dxf_handle_path": [
+        "67612"
+      ]
+    },
+    {
+      "op": "SITE_REMOVE",
+      "page": 2,
+      "color": "yellow",
+      "patch_action": "RESERVE",
+      "block": "D-V BOX",
+      "world": [
+        13857.59999999958,
+        -5788.669662293918
+      ],
+      "dxf_handle_path": [
+        "675B4"
+      ]
+    },
+    {
+      "op": "SITE_REMOVE",
+      "page": 2,
+      "color": "pink",
+      "patch_action": "SHIFT",
+      "block": "D-V",
+      "world": [
+        230.9042267787008,
+        -41594.76213326485
+      ],
+      "dxf_handle_path": [
+        "72411"
+      ]
+    },
+    {
+      "op": "SITE_REMOVE",
+      "page": 2,
+      "color": "pink",
+      "patch_action": "SHIFT",
+      "block": "D-V",
+      "world": [
+        -321.0,
+        -45015.0
+      ],
+      "dxf_handle_path": [
+        "7240E"
+      ]
+    },
+    {
+      "op": "SITE_REMOVE",
+      "page": 2,
+      "color": "pink",
+      "patch_action": "SHIFT",
+      "block": "D-V",
+      "world": [
+        -269.0000000000032,
+        -48618.07976980036
+      ],
+      "dxf_handle_path": [
+        "7240B"
+      ]
+    }
+  ],
+  "review": [
+    {
+      "page": 1,
+      "color": "yellow",
+      "cad_xy": [
+        40271.29,
+        -51510.31
+      ],
+      "state": "NOT_MATCHED",
+      "reason": "Nearest endpoint is 2814.6 CAD units away (limit 900)."
+    },
+    {
+      "page": 1,
+      "color": "pink",
+      "cad_xy": [
+        50200.76,
+        -20399.57
+      ],
+      "state": "AMBIGUOUS",
+      "reason": "Two endpoints are too close in match score (333.5, 445.9)."
+    },
+    {
+      "page": 1,
+      "color": "pink",
+      "cad_xy": [
+        51659.96,
+        -29706.04
+      ],
+      "state": "NOT_MATCHED",
+      "reason": "Nearest endpoint is 1652.9 CAD units away (limit 900)."
+    },
+    {
+      "page": 2,
+      "color": "yellow",
+      "cad_xy": [
+        11785.69,
+        -52917.24
+      ],
+      "state": "NOT_MATCHED",
+      "reason": "Nearest endpoint is 1420.5 CAD units away (limit 900)."
+    },
+    {
+      "page": 2,
+      "color": "pink",
+      "cad_xy": [
+        11067.06,
+        -5342.52
+      ],
+      "state": "NOT_MATCHED",
+      "reason": "Nearest endpoint is 1012.2 CAD units away (limit 900)."
+    },
+    {
+      "page": 2,
+      "color": "pink",
+      "cad_xy": [
+        7590.59,
+        -52940.4
+      ],
+      "state": "NOT_MATCHED",
+      "reason": "Nearest endpoint is 3099.1 CAD units away (limit 900)."
+    },
+    {
+      "page": 2,
+      "color": "pink",
+      "cad_xy": [
+        -830.71,
+        -53317.82
+      ],
+      "state": "AMBIGUOUS",
+      "reason": "Two endpoints are too close in match score (449.4, 622.1)."
+    },
+    {
+      "page": 2,
+      "color": "pink",
+      "cad_xy": [
+        -739.23,
+        -54602.0
+      ],
+      "state": "NOT_MATCHED",
+      "reason": "Nearest endpoint is 915.6 CAD units away (limit 900)."
+    }
+  ],
+  "applied": [
+    {
+      "color": "orange",
+      "op": "MOVE",
+      "block": "D-V",
+      "depth": 0,
+      "from": [
+        50247.0,
+        -53508.07976980053
+      ],
+      "to": [
+        49471.17128927015,
+        -56069.509449806865
+      ]
+    },
+    {
+      "color": "pink",
+      "op": "DELETE",
+      "block": "D-V",
+      "depth": 0,
+      "world": [
+        34282.96109801555,
+        -28311.28169605198
+      ]
+    },
+    {
+      "color": "pink",
+      "op": "DELETE",
+      "block": "D-V",
+      "depth": 0,
+      "world": [
+        50298.99999999956,
+        -28768.07976978912
+      ]
+    },
+    {
+      "color": "yellow",
+      "op": "DELETE",
+      "block": "D-V BOX",
+      "depth": 0,
+      "world": [
+        13857.59999999958,
+        -5788.669662293918
+      ]
+    },
+    {
+      "color": "pink",
+      "op": "DELETE",
+      "block": "D-V",
+      "depth": 0,
+      "world": [
+        230.9042267787008,
+        -41594.76213326485
+      ]
+    },
+    {
+      "color": "pink",
+      "op": "DELETE",
+      "block": "D-V",
+      "depth": 0,
+      "world": [
+        -321.0,
+        -45015.0
+      ]
+    },
+    {
+      "color": "pink",
+      "op": "DELETE",
+      "block": "D-V",
+      "depth": 0,
+      "world": [
+        -269.0000000000032,
+        -48618.07976980036
+      ]
+    }
+  ],
+  "page_failures": [],
+  "original_sha256": "8ba1f5e82d2a56374ef717762a3bc95a93e9b01451b618c156f6bc8c73467f17",
+  "original_unchanged": true,
+  "output": "exports\\asbuilt_auto_ground\\Mansoura University - HUM - G - A.B_AsBuilt.dxf",
+  "summary": {
+    "pages_processed": 2,
+    "changes_applied": 7,
+    "review_items": 8,
+    "registration_failures": 0
+  }
+}
