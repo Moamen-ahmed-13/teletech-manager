@@ -1631,7 +1631,7 @@ def _parse_visible_dxf(path, with_rooms=False):
                 if 'ROOF' in txt.upper():
                     occurrences.append({'handle':_dxf_first(e,5,''),'block':'__ROOF_TEXT__','layer':_dxf_first(e,8,'0'),
                                         'x':rx,'y':ry,'text':txt,'rotation':0.0,'attributes':{},
-                                        'ancestors':list(ancestors),'ancestor_handles':list(ancestor_handles),'depth':depth,'legend_branch':False,'root':depth==0})
+                                        'ancestors':list(ancestors),'ancestor_handles':list(ancestor_handles),'depth':depth,'legend_branch':False,'root':depth==0,'entity_type':'INSERT'})
                 ridx=_rack_index_from_text(txt)
                 if ridx in {1,2}:
                     occurrences.append({'handle':_dxf_first(e,5,''),'block':'__RACK_TEXT__','layer':_dxf_first(e,8,'0'),
@@ -7836,7 +7836,7 @@ def _asbuilt_targets(floor,label_pattern=None):
             'parent_transform':list(rec.get('parent_transform') or [1,0,0,1,0,0]),
             'insert_x':float(rec.get('insert_x') if rec.get('insert_x') is not None else rec.get('x') or 0.0),
             'insert_y':float(rec.get('insert_y') if rec.get('insert_y') is not None else rec.get('y') or 0.0),
-            'entity_type':'INSERT',
+            'entity_type':str(rec.get('entity_type') or 'INSERT'),
             'editable_direct':bool(root and handle),
         })
 
@@ -8388,7 +8388,9 @@ def generate_asbuilt_project_package(changes,label_pattern=None):
       'Run the matching *_RUN.scr in each ORIGINAL floor drawing using full AutoCAD Desktop.\n'
       'Then SAVEAS each revised drawing to a new *_ASBUILT.dwg file.\n'
       'Combined ASBUILT Excel files already apply every reviewed SITE_REMOVE across all floors.\n'
-      'SHIFT repacks following ports. RESERVE keeps the original patch-port position reserved.\n',encoding='utf-8')
+      'SHIFT repacks following ports. RESERVE keeps the original patch-port position reserved.\n'
+      'Nested static block edits use a private clone path; dynamic/xref/anonymous or attributed paths are not modified.\n'
+      'Blue-arrow destination coordinates are estimated from the analyzed CAD endpoint envelope and must be reviewed before adding the move.\n',encoding='utf-8')
     clean_changes=[]
     for c in changes:
         clean_changes.append({k:v for k,v in c.items() if k not in {'api_key'}})
@@ -9422,7 +9424,7 @@ window.renderVisionReview=function(j){
  h+='</div><div class="actions" style="display:flex;flex-direction:row;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:8px;margin-top:8px"><button id="bulkAdd" style="width:auto;min-width:0;flex:0 0 auto">Add selected to revision list</button><button id="bulkAll" class="alt" style="width:auto;min-width:0;flex:0 0 auto">Select all matched</button><button id="bulkNone" class="alt" style="width:auto;min-width:0;flex:0 0 auto">Clear</button><span id="bulkMsg" class="miniNote"></span></div></div>';
  h+='<div style="max-height:420px;overflow:auto"><table><thead><tr><th>Use</th><th>Page</th><th>Floor</th><th>Color</th><th>CAD endpoint</th><th>Match</th><th>Action</th></tr></thead><tbody>';
  inv.forEach((m,i)=>{const o=m.candidate_options||[],d=m.arrow_destination_options||[],pct=Math.round(Number((o[0]||{}).match_confidence||0)*100),dpct=Math.round(Number((d[0]||{}).match_confidence||0)*100),arrow=m.blue_arrow_detection||{},rule=RULES[m.color],moveReady=rule&&rule.kind==='move'&&arrow.status==='CANDIDATE'&&arrow.arrowhead_detected&&Array.isArray(m.arrow_destination_xy)&&m.arrow_destination_xy.length===2&&pct>=78,blocked=!rule||!o.length||pct<78||(rule.kind==='move'&&!moveReady);
-  const tip=m.arrow_destination_xy||[],destLabel=tip.length?'Arrow tip mapped to CAD X='+Number(tip[0]).toFixed(2)+', Y='+Number(tip[1]).toFixed(2):'No CAD coordinate transform';const destHtml=rule&&rule.kind==='move'?'<div class="miniNote" style="margin-top:5px">Blue pen arrow: '+esc(arrow.status||'NOT_FOUND')+' · '+Math.round(Number(arrow.confidence||0)*100)+'% · arrowhead '+(arrow.arrowhead_detected?'detected':'not confirmed')+'<br>'+esc(destLabel)+'</div><select class="bdest" style="min-width:260px;margin-top:4px" '+(!tip.length?'disabled':'')+'>'+(tip.length?'<option value="">Confirm arrow destination...</option><option value="__ARROW_TIP__">Use detected arrow tip coordinates</option>'+d.map(x=>'<option value="'+esc(x.target_id||'')+'">Nearest CAD: '+esc((x.label||x.block||x.target_id||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No mapped arrow tip</option>')+'</select>':'<span>'+esc(rule?rule.patch:'REVIEW')+'</span>';
+  const tip=m.arrow_destination_xy||[],destLabel=tip.length?'Arrow tip estimate (CAD endpoint envelope) X='+Number(tip[0]).toFixed(2)+', Y='+Number(tip[1]).toFixed(2):'No CAD coordinate transform';const destHtml=rule&&rule.kind==='move'?'<div class="miniNote" style="margin-top:5px">Blue pen arrow: '+esc(arrow.status||'NOT_FOUND')+' · '+Math.round(Number(arrow.confidence||0)*100)+'% · arrowhead '+(arrow.arrowhead_detected?'detected':'not confirmed')+'<br>'+esc(destLabel)+'</div><select class="bdest" style="min-width:260px;margin-top:4px" '+(!tip.length?'disabled':'')+'>'+(tip.length?'<option value="">Confirm arrow destination...</option><option value="__ARROW_TIP__">Use detected arrow tip coordinates</option>'+d.map(x=>'<option value="'+esc(x.target_id||'')+'">Nearest CAD: '+esc((x.label||x.block||x.target_id||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No mapped arrow tip</option>')+'</select>':'<span>'+esc(rule?rule.patch:'REVIEW')+'</span>';
   h+='<tr data-b="'+i+'"><td><input type="checkbox" class="bu" '+''+(blocked?' disabled':'')+'></td><td>'+Number(m.page_number||0)+'</td><td>'+esc(m.floor_hint||'')+'</td><td>'+colorDot(m.color)+'</td><td><select class="bt" style="min-width:260px" '+(!o.length?'disabled':'')+'>'+(o.length?'<option value="">Review source endpoint...</option>'+o.map(x=>'<option value="'+esc(x.target_id||'')+'">'+esc((x.label||x.block||x.target_id||'')+' | '+(x.service||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No CAD candidate</option>')+'</select></td><td class="'+(pct>=78?'confHigh':pct>=60?'confMid':'confLow')+'">Source '+pct+'%'+(rule&&rule.kind==='move'?'<div class="miniNote">Destination '+dpct+'%</div>':'')+'</td><td>'+(rule&&rule.kind==='move'?'<span class="miniNote">MOVE_ENDPOINT · detected from blue pen</span>'+destHtml:destHtml)+'</td></tr>';
  });
  box.innerHTML=h+'</tbody></table></div>';
