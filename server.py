@@ -8172,10 +8172,10 @@ def generate_asbuilt_package(floor,changes,label_pattern=None):
       "  (if (or (= n 0) (/= n (length handles))) nil",
       "    (progn",
       "      (setq target (handent targeth))",
-      "      (if (or (null target) (/= \"INSERT\" (cdr (assoc 0 (entget target))))) (setq valid nil))",
+      "      (if (or (null target) (/= \"INSERT\" (cdr (assoc 0 (entget target)))) (equal 1 (cdr (assoc 66 (entget target))))) (setq valid nil))",
       "      (while (and valid (< j n))",
       "        (setq ent (handent (nth j handles)))",
-      "        (if (or (null ent) (/= \"INSERT\" (cdr (assoc 0 (entget ent)))) (/= (strcase (nth j blocks)) (strcase (cdr (assoc 2 (entget ent))))))",
+      "        (if (or (null ent) (/= \"INSERT\" (cdr (assoc 0 (entget ent)))) (equal 1 (cdr (assoc 66 (entget ent)))) (/= (strcase (nth j blocks)) (strcase (cdr (assoc 2 (entget ent))))))",
       "          (setq valid nil)",
       "          (if (> j 0)",
       "            (progn",
@@ -8282,7 +8282,7 @@ def generate_asbuilt_package(floor,changes,label_pattern=None):
       '4. Use SAVEAS and save a NEW file, for example *_ASBUILT.dwg. Do not overwrite the original.\n'
       '5. If this package contains SITE_REMOVE changes, the included ASBUILT Excel files already remove those endpoints from Quantity/Labeling.\n'
       '6. Port Map rule: SHIFT repacks following ports; RESERVE leaves a RES slot and records the decision in the sheet Legend.\n'
-      '7. Nested/read-only CAD symbols are listed as MANUAL CAD DELETE REQUIRED; Excel is still adjusted safely.\n',encoding='utf-8')
+      '7. Nested static block endpoints use a private cloned block-instance path. Dynamic/xref/anonymous or attributed paths are left unchanged and emit a warning.\n',encoding='utf-8')
     man={'generated_at':ts,'floor':floor,'source_drawing':str(src),'changes':normalized}
     # JSON-safe copy without nested full target records if they contain non-serializable values.
     def clean(o):
