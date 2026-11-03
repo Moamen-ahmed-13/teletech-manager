@@ -7347,10 +7347,12 @@ def _asbuilt_register_page_to_floor(page_image_path, floor):
             bbox = (float(np.percentile(all_points[:, 0], 1)), float(np.percentile(all_points[:, 1], 1)),
                     float(np.percentile(all_points[:, 0], 99)), float(np.percentile(all_points[:, 1], 99)))
             cad_image, pixels_per_unit = _asbuilt_render_cad(polylines, bbox, 3000, 24)
+            # SIFT registration requires a single-channel image.
+            cad_gray = cv2.cvtColor(cad_image, cv2.COLOR_BGR2GRAY)
             x0, y0, _, y1 = [float(v) for v in bbox]
             px_to_world = np.array([[1.0 / pixels_per_unit, 0.0, x0 - 24.0 / pixels_per_unit],
                                     [0.0, -1.0 / pixels_per_unit, y1 + 24.0 / pixels_per_unit]], dtype=float)
-            cached = (cad_image, px_to_world)
+            cached = (cad_gray, px_to_world)
             _ASBUILT_REGISTRATION_CACHE.clear()
             _ASBUILT_REGISTRATION_CACHE[cache_key] = cached
         cad_image, px_to_world = cached
