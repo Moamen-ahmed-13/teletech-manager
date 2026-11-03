@@ -30,6 +30,19 @@ except ImportError:
     cv2 = None
     np = None
 
+# Reuse the same deterministic page-to-DXF registration used by asbuilt_apply.py.
+try:
+    import dxfmini as _ASBUILT_DXFMINI
+    from render import render as _asbuilt_render_cad
+    import asbuilt_registration as _ASBUILT_REGISTRATION
+except Exception as _asbuilt_registration_import_error:
+    _ASBUILT_DXFMINI = None
+    _asbuilt_render_cad = None
+    _ASBUILT_REGISTRATION = None
+    print(f'[AS-BUILT] page registration unavailable: {_asbuilt_registration_import_error}')
+
+_ASBUILT_REGISTRATION_CACHE = {}
+
 # As-Built is intentionally CODE-ONLY in this build.
 # No GLM/Qwen/vision-agent is called by the As-Built workflow.
 # Optional OCR is kept disabled by default and is never required for scanning.
@@ -7268,21 +7281,31 @@ def _asbuilt_sheet_floor(page_number, total_pages):
     return pair_floor.get(idx,'')
 
 
-def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint=''):
+def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',page_to_cad_affine=None):
     """Rank existing CAD endpoints by normalized sheet position; review-only."""
     try: sx=float(markup.get('x_norm') or 500); sy=float(markup.get('y_norm') or 500)
     except Exception: sx=sy=500.0
+    mapped_xy=_asbuilt_norm_to_cad_xy(sx,sy,catalog,floor_hint=floor_hint,page_to_cad_affine=page_to_cad_affine)
     scored=[]
     for t in catalog or []:
         floor=str(t.get('floor') or '')
         if floor_hint and floor != floor_hint: continue
-        dx=float(t.get('nx') or 0)-sx; dy=float(t.get('ny') or 0)-sy
-        dist=(dx*dx+dy*dy)**0.5
-        if dist<=60: conf=.90
-        elif dist<=110: conf=.78
-        elif dist<=180: conf=.62
-        elif dist<=280: conf=.45
-        else: conf=.25
+        if mapped_xy is not None:
+            dx=float(t.get('x') or 0)-mapped_xy[0]; dy=float(t.get('y') or 0)-mapped_xy[1]
+            dist=(dx*dx+dy*dy)**0.5
+            if dist<=100: conf=.95
+            elif dist<=250: conf=.88
+            elif dist<=500: conf=.78
+            elif dist<=900: conf=.62
+            else: conf=.25
+        else:
+            dx=float(t.get('nx') or 0)-sx; dy=float(t.get('ny') or 0)-sy
+            dist=(dx*dx+dy*dy)**0.5
+            if dist<=60: conf=.90
+            elif dist<=110: conf=.78
+            elif dist<=180: conf=.62
+            elif dist<=280: conf=.45
+            else: conf=.25
         scored.append((dist,t,conf))
     # HARD RULE: never fall back to another floor. If the page floor has no
     # candidates, leave it unmatched for review instead of suggesting a wrong floor.
@@ -7298,7 +7321,60 @@ def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='')
     return out
 
 
-def _asbuilt_norm_to_cad_xy(x_norm,y_norm,catalog,floor_hint=''):
+def _asbuilt_register_page_to_floor(page_image_path, floor):
+    """Register one uploaded As-Built page to the original DXF for its assigned floor.
+
+    Returns an affine over normalized page coordinates (0..1000), or None.
+    This mirrors asbuilt_apply.py and never writes to the source DXF.
+    """
+    if cv2 is None or np is None or _ASBUILT_DXFMINI is None or _asbuilt_render_cad is None or _ASBUILT_REGISTRATION is None:
+        return None, {'ok': False, 'reason': 'Registration dependencies are unavailable.'}
+    try:
+        floor_result = PROJECT_RESULTS.get(str(floor)) or {}
+        drawing_path = str(floor_result.get('drawing') or '').strip()
+        if not drawing_path or not Path(drawing_path).is_file():
+            return None, {'ok': False, 'reason': f'Original CAD drawing for {floor} was not found.'}
+        stat = Path(drawing_path).stat()
+        cache_key = (str(Path(drawing_path).resolve()), stat.st_mtime_ns, stat.st_size)
+        cached = _ASBUILT_REGISTRATION_CACHE.get(cache_key)
+        if cached is None:
+            entities, blocks = _ASBUILT_DXFMINI.read_dxf(drawing_path)
+            polylines = _ASBUILT_DXFMINI.flatten(entities, blocks)
+            renderable = [np.asarray(line, dtype=float) for line in polylines if len(line) >= 2]
+            if not renderable:
+                return None, {'ok': False, 'reason': f'No renderable CAD linework for {floor}.'}
+            all_points = np.concatenate(renderable, axis=0)
+            bbox = (float(np.percentile(all_points[:, 0], 1)), float(np.percentile(all_points[:, 1], 1)),
+                    float(np.percentile(all_points[:, 0], 99)), float(np.percentile(all_points[:, 1], 99)))
+            cad_image, pixels_per_unit = _asbuilt_render_cad(polylines, bbox, 3000, 24)
+            x0, y0, _, y1 = [float(v) for v in bbox]
+            px_to_world = np.array([[1.0 / pixels_per_unit, 0.0, x0 - 24.0 / pixels_per_unit],
+                                    [0.0, -1.0 / pixels_per_unit, y1 + 24.0 / pixels_per_unit]], dtype=float)
+            cached = (cad_image, px_to_world)
+            _ASBUILT_REGISTRATION_CACHE.clear()
+            _ASBUILT_REGISTRATION_CACHE[cache_key] = cached
+        cad_image, px_to_world = cached
+        page_image = cv2.imread(str(page_image_path), cv2.IMREAD_COLOR)
+        if page_image is None:
+            return None, {'ok': False, 'reason': 'Could not read the rendered As-Built page image.'}
+        registration = _ASBUILT_REGISTRATION.register_page_to_cad(page_image, cad_image, px_to_world)
+        if not registration.get('ok'):
+            return None, {'ok': False, 'reason': registration.get('reason') or 'Page-to-CAD registration rejected.',
+                          'diagnostics': registration.get('diagnostics') or {}}
+        M = np.asarray(registration['page_px_to_cad'], dtype=float)
+        page_h, page_w = page_image.shape[:2]
+        sx, sy = page_w / 1000.0, page_h / 1000.0
+        affine = [float(M[0,0]*sx), float(M[0,1]*sy),
+                  float(M[1,0]*sx), float(M[1,1]*sy),
+                  float(M[0,2]), float(M[1,2])]
+        if not all(math.isfinite(v) for v in affine) or abs(affine[0]*affine[3]-affine[1]*affine[2]) < 1e-12:
+            return None, {'ok': False, 'reason': 'Computed page-to-CAD transform is invalid.'}
+        return affine, {'ok': True, 'diagnostics': registration.get('diagnostics') or {}}
+    except Exception as exc:
+        return None, {'ok': False, 'reason': f'{type(exc).__name__}: {exc}'}
+
+
+def _asbuilt_norm_to_cad_xy(x_norm,y_norm,catalog,floor_hint='',page_to_cad_affine=None):
     """Convert page coordinates only when a verified page-to-CAD affine transform exists.
 
     Endpoint-envelope scaling is intentionally disabled: scanned As-Built pages may
@@ -7309,6 +7385,12 @@ def _asbuilt_norm_to_cad_xy(x_norm,y_norm,catalog,floor_hint=''):
     where CAD_X=a*u+b*v+tx and CAD_Y=c*u+d*v+ty, with u/v in 0..1000.
     """
     try:
+        if isinstance(page_to_cad_affine, (list, tuple)) and len(page_to_cad_affine) == 6:
+            a,b,c,d,tx,ty=[float(v) for v in page_to_cad_affine]
+            if all(math.isfinite(v) for v in (a,b,c,d,tx,ty)) and abs(a*d-b*c)>=1e-12:
+                u=max(0.0,min(1000.0,float(x_norm)))
+                v=max(0.0,min(1000.0,float(y_norm)))
+                return [a*u+b*v+tx,c*u+d*v+ty]
         rows=[t for t in (catalog or []) if isinstance(t,dict) and
               (not floor_hint or str(t.get('floor') or '')==str(floor_hint))]
         transforms=[]
@@ -7349,7 +7431,7 @@ def _asbuilt_detect_blue_arrow_tips(image_path, orange_regions):
     except Exception as e:
         return {'_error':{'status':'ERROR','reason':'Arrow detector failed: '+str(e)}}
 
-def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=None, per_floor=None, floor_hint=''):
+def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=None, per_floor=None, floor_hint='',page_to_cad_affine=None):
     """Deterministic code-only markup inventory from OpenCV regions.
 
     This is intentionally NOT an entity matcher. Every detected colored region is
@@ -7414,7 +7496,7 @@ def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=No
                 elif arrow.get('status')=='CONFIRMED' and tip and len(tip)>=2:
                     row['arrow_destination_norm']=[int(tip[0]),int(tip[1])]
                     row['arrow_destination_px']=arrow.get('tip_px')
-                    xy=_asbuilt_norm_to_cad_xy(tip[0],tip[1],catalog,floor_hint=floor_hint)
+                    xy=_asbuilt_norm_to_cad_xy(tip[0],tip[1],catalog,floor_hint=floor_hint,page_to_cad_affine=page_to_cad_affine)
                     if xy is None:
                         row['relocation_state']='REGISTRATION_FAILED'
                         row['relocation_block_reason']='Arrow found, but no verified PDF-to-DXF registration exists for this page; CAD point not moved.'
@@ -7423,9 +7505,9 @@ def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=No
                         row['relocation_state']='CONFIRMED'
                         row['relocation_block_reason']=''
                         dest_probe={'x_norm':int(tip[0]),'y_norm':int(tip[1])}
-                        row['arrow_destination_options']=_asbuilt_match_markup_to_cad(dest_probe,catalog,per_floor,floor_hint=floor_hint) if catalog else []
+                        row['arrow_destination_options']=_asbuilt_match_markup_to_cad(dest_probe,catalog,per_floor,floor_hint=floor_hint,page_to_cad_affine=page_to_cad_affine) if catalog else []
             if catalog:
-                opts=_asbuilt_match_markup_to_cad(row,catalog,per_floor,floor_hint=floor_hint)
+                opts=_asbuilt_match_markup_to_cad(row,catalog,per_floor,floor_hint=floor_hint,page_to_cad_affine=page_to_cad_affine)
                 row['candidate_options']=opts
                 if opts:
                     row['suggested_target_id']=opts[0].get('target_id') or ''
@@ -7554,9 +7636,16 @@ def asbuilt_chat_start(path,filename,api_key='',model='',label_pattern=None,firs
                 'error':str(cv.get('error') or 'OpenCV unavailable')
             })
 
-        rows.append(row)
         floor_hint=sheet_floor
-        inventory.extend(_asbuilt_code_markup_inventory(cv,pno,'',catalog=match_catalog,per_floor=match_per_floor,floor_hint=floor_hint))
+        page_affine, registration_info = _asbuilt_register_page_to_floor(pg.get('path'), floor_hint)
+        row['cad_registration_ok']=bool(registration_info.get('ok'))
+        row['cad_registration_reason']=str(registration_info.get('reason') or '')
+        row['cad_registration_diagnostics']=registration_info.get('diagnostics') or {}
+        rows.append(row)
+        inventory.extend(_asbuilt_code_markup_inventory(
+            cv,pno,'',catalog=match_catalog,per_floor=match_per_floor,
+            floor_hint=floor_hint,page_to_cad_affine=page_affine
+        ))
 
     chat_id=uuid.uuid4().hex
     result={
