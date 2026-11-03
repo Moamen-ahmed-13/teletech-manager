@@ -7299,17 +7299,38 @@ def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='')
 
 
 def _asbuilt_norm_to_cad_xy(x_norm,y_norm,catalog,floor_hint=''):
-    """Map page-normalized coordinates to the analyzed floor endpoint envelope."""
-    rows=[t for t in (catalog or []) if not floor_hint or str(t.get('floor') or '')==str(floor_hint)]
-    if len(rows)<2:
-        return None
-    xs=[float(t.get('x') or 0.0) for t in rows]
-    ys=[float(t.get('y') or 0.0) for t in rows]
-    minx,maxx=min(xs),max(xs); miny,maxy=min(ys),max(ys)
-    dx=max(maxx-minx,1e-9); dy=max(maxy-miny,1e-9)
+    """Convert page coordinates only when a verified page-to-CAD affine transform exists.
+
+    Endpoint-envelope scaling is intentionally disabled: scanned As-Built pages may
+    be cropped, rotated, skewed or include margins, so that estimate can move an
+    endpoint to a completely unrelated CAD location.
+    Expected transform format on floor catalog rows:
+      page_to_cad_affine = [a, b, c, d, tx, ty]
+    where CAD_X=a*u+b*v+tx and CAD_Y=c*u+d*v+ty, with u/v in 0..1000.
+    """
     try:
-        sx=max(0.0,min(1000.0,float(x_norm))); sy=max(0.0,min(1000.0,float(y_norm)))
-        return [minx+(sx/1000.0)*dx,maxy-(sy/1000.0)*dy]
+        rows=[t for t in (catalog or []) if isinstance(t,dict) and
+              (not floor_hint or str(t.get('floor') or '')==str(floor_hint))]
+        transforms=[]
+        for row in rows:
+            raw=row.get('page_to_cad_affine')
+            if isinstance(raw,(list,tuple)) and len(raw)==6:
+                vals=[float(v) for v in raw]
+                if all(math.isfinite(v) for v in vals):
+                    transforms.append(vals)
+        if not transforms:
+            return None
+        # All supplied transforms for this floor must agree; never guess which page
+        # registration applies to the selected point.
+        t0=transforms[0]
+        if any(any(abs(a-b)>1e-8 for a,b in zip(t0,t)) for t in transforms[1:]):
+            return None
+        a,b,c,d,tx,ty=t0
+        if abs(a*d-b*c)<1e-12:
+            return None
+        u=max(0.0,min(1000.0,float(x_norm)))
+        v=max(0.0,min(1000.0,float(y_norm)))
+        return [a*u+b*v+tx,c*u+d*v+ty]
     except Exception:
         return None
 

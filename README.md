@@ -1,1 +1,0 @@
-# teletech-manager
