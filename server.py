@@ -8289,7 +8289,12 @@ def generate_asbuilt_package(floor,changes,label_pattern=None):
     lsp_abs=str(lsp.resolve()).replace('\\','/')
     scr.write_text(f'(load "{lsp_abs}")\r\n',encoding='utf-8')
     site_changes=[x for x in normalized if x.get('op')=='SITE_REMOVE']
-    adjusted_files=export_project_asbuilt(PROJECT_RESULTS,site_changes,label_pattern=label_pattern) if site_changes else {}
+    export_floors={floor}
+    if floor=='Roof Floor' and 'Third Floor' in PROJECT_RESULTS:
+        export_floors.add('Third Floor')
+    scoped_results={f:PROJECT_RESULTS[f] for f in export_floors if f in PROJECT_RESULTS}
+    scoped_site_changes=[c for c in site_changes if str(c.get('floor') or '') in export_floors]
+    adjusted_files=export_project_asbuilt(scoped_results,scoped_site_changes,label_pattern=label_pattern) if scoped_site_changes else {}
     readme.write_text(
       'TELETECH As-Built Desktop AutoCAD package\n\n'
       f'Floor: {floor}\nOriginal drawing: {src.name}\nChanges: {len(normalized)}\n\n'
