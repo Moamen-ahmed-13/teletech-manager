@@ -7314,7 +7314,7 @@ def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',
     spacing=nearest[len(nearest)//2] if nearest else 1.0
     spacing=max(float(spacing),1e-6)
     norm=lambda v: re.sub(r'[^A-Z0-9\\u0600-\\u06FF]+',' ',str(v or '').upper()).strip()
-    hint=norm(' '.join(str(markup.get(k) or '') for k in ('ocr_text','service_hint','nearby_text','evidence')))
+    hint=norm(' '.join(str(markup.get(k) or '') for k in ('ocr_text','service_hint','nearby_text')))
     hint_tokens=[w for w in hint.split() if len(w)>=2]
     scored=[]
     for t,(tx,ty) in zip(floor_rows,coords):
