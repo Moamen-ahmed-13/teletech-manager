@@ -7298,6 +7298,22 @@ def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='')
     return out
 
 
+def _asbuilt_norm_to_cad_xy(x_norm,y_norm,catalog,floor_hint=''):
+    """Map page-normalized coordinates to the analyzed floor endpoint envelope."""
+    rows=[t for t in (catalog or []) if not floor_hint or str(t.get('floor') or '')==str(floor_hint)]
+    if len(rows)<2:
+        return None
+    xs=[float(t.get('x') or 0.0) for t in rows]
+    ys=[float(t.get('y') or 0.0) for t in rows]
+    minx,maxx=min(xs),max(xs); miny,maxy=min(ys),max(ys)
+    dx=max(maxx-minx,1e-9); dy=max(maxy-miny,1e-9)
+    try:
+        sx=max(0.0,min(1000.0,float(x_norm))); sy=max(0.0,min(1000.0,float(y_norm)))
+        return [minx+(sx/1000.0)*dx,maxy-(sy/1000.0)*dy]
+    except Exception:
+        return None
+
+
 def _asbuilt_detect_blue_arrow_tips(image_path, orange_regions):
     """Detect blue-ink arrow strokes associated with orange move marks.
 
@@ -7462,6 +7478,7 @@ def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=No
                 if tip and len(tip)>=2:
                     dest_probe={'x_norm':int(tip[0]),'y_norm':int(tip[1])}
                     row['arrow_destination_norm']=[int(tip[0]),int(tip[1])]
+                    row['arrow_destination_xy']=_asbuilt_norm_to_cad_xy(tip[0],tip[1],catalog,floor_hint=floor_hint)
                     row['arrow_destination_options']=_asbuilt_match_markup_to_cad(dest_probe,catalog,per_floor,floor_hint=floor_hint) if catalog else []
                 else:
                     row['arrow_destination_options']=[]
