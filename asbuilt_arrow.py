@@ -14,19 +14,19 @@ def _blue_mask(bgr):
     hsv=cv2.cvtColor(bgr,cv2.COLOR_BGR2HSV)
     h,s,v=hsv[:,:,0],hsv[:,:,1],hsv[:,:,2]
     # ballpoint blue ink: hue ~100-135, moderately saturated, not paper-white; includes dark navy ink
-    return ((h>=95)&(h<=135)&(s>=60)&(v>=35)&(v<=235)).astype(np.uint8)
+    return ((h>=85)&(h<=140)&(s>=45)&(v>=30)&(v<=245)).astype(np.uint8)
 
 
 def _local_groups(bgr,ox,oy,ow,oh,pm,others):
     """Relaxed local blue mask around one orange marker; fragments (broken ballpoint strokes) are chained
     into groups when their pixel gap is small. Returns [(xs,ys,gap_to_orange)] in full-image coords."""
-    H,W=bgr.shape[:2];pad=int(pm*0.12)
+    H,W=bgr.shape[:2];pad=int(pm*0.35)
     x0=max(0,int(ox-pad));y0=max(0,int(oy-pad));x1=min(W,int(ox+ow+pad));y1=min(H,int(oy+oh+pad))
     c=bgr[y0:y1,x0:x1];hsv=cv2.cvtColor(c,cv2.COLOR_BGR2HSV)
     v=hsv[:,:,2];paper=cv2.medianBlur(v,31)
     b,g,r=[c[:,:,i].astype(np.int16) for i in range(3)]
     blueness=b-(r+g)//2
-    m=((hsv[:,:,0]>=95)&(hsv[:,:,0]<=135)&(hsv[:,:,1]>=28)&(blueness>=12)&(v.astype(np.int16)<paper.astype(np.int16)-18)).astype(np.uint8)
+    m=((hsv[:,:,0]>=85)&(hsv[:,:,0]<=140)&(hsv[:,:,1]>=22)&(blueness>=12)&(v.astype(np.int16)<paper.astype(np.int16)-18)).astype(np.uint8)
     for bb in [(ox,oy,ow,oh)]+others:
         bx,by,bw,bh=[int(v_) for v_ in bb];m[max(0,by-3-y0):max(0,by+bh+3-y0),max(0,bx-3-x0):max(0,bx+bw+3-x0)]=0
     n,lab,st,_=cv2.connectedComponentsWithStats(m,8)
@@ -35,7 +35,7 @@ def _local_groups(bgr,ox,oy,ow,oh,pm,others):
         if st[k,4]<5: continue
         ys,xs=np.where(lab==k);comps.append((xs+x0,ys+y0))
     if not comps: return []
-    link=max(12.0,pm*0.014);par=list(range(len(comps)))
+    link=max(16.0,pm*0.018);par=list(range(len(comps)))
     def f(i):
         while par[i]!=i: par[i]=par[par[i]];i=par[i]
         return i
@@ -43,7 +43,7 @@ def _local_groups(bgr,ox,oy,ow,oh,pm,others):
     for i in range(len(comps)):
         for j in range(i+1,len(comps)):
             a=np.stack(comps[i],1).astype(np.float32);b_=np.stack(comps[j],1).astype(np.float32)
-            if abs(a[:,0].mean()-b_[:,0].mean())>pm*0.2 or abs(a[:,1].mean()-b_[:,1].mean())>pm*0.2: continue
+            if abs(a[:,0].mean()-b_[:,0].mean())>pm*0.42 or abs(a[:,1].mean()-b_[:,1].mean())>pm*0.42: continue
             d=np.linalg.norm(a[:,None,:]-b_[None,:,:],axis=2) if len(a)*len(b_)<250000 else None
             if d is None: continue
             ia,ib=np.unravel_index(np.argmin(d),d.shape)
@@ -90,7 +90,7 @@ def detect_blue_arrow_tips(image, orange_regions):
     for oi,bb in enumerate(regs,1):
         if not bb: out[oi]={'status':'NOT_FOUND','confidence':0.0,'reason':'Orange region has no bbox.'};continue
         ox,oy,ow,oh=[float(v) for v in bb[:4]];ocx,ocy=ox+ow/2,oy+oh/2
-        max_gap=max(26.0,pm*0.02);max_len=pm*0.30;min_len=max(30.0,pm*0.012)
+        max_gap=max(40.0,pm*0.035);max_len=pm*0.42;min_len=max(24.0,pm*0.009)
         cands=[]
         others=[bj for oj,bj in enumerate(regs,1) if oj!=oi and bj]
         for gi,(xs,ys,gap) in enumerate(_local_groups(bgr,ox,oy,ow,oh,pm,others)):
