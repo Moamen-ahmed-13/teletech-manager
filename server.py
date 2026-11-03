@@ -8198,16 +8198,26 @@ def generate_asbuilt_package(floor,changes,label_pattern=None):
         op=ch['op']
         lines.append(f'(princ "\\nTELETECH As-Built change {idx}: {op}\\n")')
         if op=='MOVE_ENDPOINT':
-            t=ch['target']; h=_lsp_escape(t['handle']); ox=float(t['x']); oy=float(t['y']); nx=float(ch['x']); ny=float(ch['y'])
-            lines += [
-              f'(setq *tt-e* (handent "{h}"))',
-              f'(if *tt-e* (vla-Move (vlax-ename->vla-object *tt-e*) (vlax-3d-point (list {ox:.12g} {oy:.12g} 0.0)) (vlax-3d-point (list {nx:.12g} {ny:.12g} 0.0))) (princ "\\nWARNING: target handle not found.\\n"))'
-            ]
+            t=ch['target']; h=_lsp_escape(t['handle']); nx=float(ch['x']); ny=float(ch['y'])
+            if ch.get('nested_clone'):
+                blocks=' '.join('"'+_lsp_escape(x)+'"' for x in t.get('ancestor_blocks') or [])
+                handles=' '.join('"'+_lsp_escape(x)+'"' for x in t.get('ancestor_handles') or [])
+                lx=float(ch['local_x']); ly=float(ch['local_y'])
+                lines += [f'(setq *tt-cloned* (tt:clone-path (quote ({blocks})) (quote ({handles})) "{h}" nil))',
+                          '(if (and *tt-cloned* (cadr *tt-cloned*) (setq *tt-e* (handent (cadr *tt-cloned*))))',
+                          f'  (progn (setq *tt-oldp* (cdr (assoc 10 (entget *tt-e*)))) (if *tt-oldp* (vla-Move (vlax-ename->vla-object *tt-e*) (vlax-3d-point *tt-oldp*) (vlax-3d-point (list {lx:.12g} {ly:.12g} 0.0))) (princ "\\nWARNING: cloned nested INSERT has no insertion point.\\n")))',
+                          '  (princ "\\nWARNING: nested instance-safe move could not be completed; inspect clone path.\\n"))']
+            else:
+                ox=float(t.get('insert_x',t['x'])); oy=float(t.get('insert_y',t['y']))
+                lines += [f'(setq *tt-e* (handent "{h}"))',
+                          f'(if *tt-e* (vla-Move (vlax-ename->vla-object *tt-e*) (vlax-3d-point (list {ox:.12g} {oy:.12g} 0.0)) (vlax-3d-point (list {nx:.12g} {ny:.12g} 0.0))) (princ "\\nWARNING: target handle not found.\\n"))']
         elif op in {'DELETE_ENDPOINT','SITE_REMOVE'}:
             t=ch['target']; h=_lsp_escape(t.get('handle',''))
-            if op=='SITE_REMOVE' and ch.get('cad_manual_required'):
-                msg=_lsp_escape(t.get('label') or t.get('block') or 'endpoint')
-                lines.append(f'(princ "\\nMANUAL CAD DELETE REQUIRED: {msg} is nested/read-only. Excel outputs were adjusted.\\n")')
+            if ch.get('nested_clone'):
+                blocks=' '.join('"'+_lsp_escape(x)+'"' for x in t.get('ancestor_blocks') or [])
+                handles=' '.join('"'+_lsp_escape(x)+'"' for x in t.get('ancestor_handles') or [])
+                lines += [f'(setq *tt-cloned* (tt:clone-path (quote ({blocks})) (quote ({handles})) "{h}" T))',
+                          '(if *tt-cloned* (princ "\\nNested endpoint removed from a private block-instance clone.\\n") (princ "\\nWARNING: nested clone/delete unsupported for this block; original instance left unchanged.\\n"))']
             else:
                 lines += [f'(setq *tt-e* (handent "{h}"))',
                           '(if *tt-e* (entdel *tt-e*) (princ "\\nWARNING: target handle not found.\\n"))']
