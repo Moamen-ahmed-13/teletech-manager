@@ -8142,6 +8142,28 @@ def generate_asbuilt_package(floor,changes,label_pattern=None):
         else:
             raise RuntimeError(f'Change #{idx}: unsupported operation {op or "(blank)"}.')
 
+    # Each nested block-instance path is cloned from its original definitions.
+    # Do not allow two nested edits to the same root INSERT in one script: the
+    # second clone would otherwise start from the original definition and could
+    # overwrite the first edit. Fail before producing a misleading package.
+    nested_root_changes={}
+    for ch in normalized:
+        if not ch.get('nested_clone'):
+            continue
+        t=ch.get('target') or {}
+        roots=list(t.get('ancestor_handles') or [])
+        if not roots:
+            raise RuntimeError('Nested edit is missing its root INSERT handle.')
+        root_handle=str(roots[0])
+        if root_handle in nested_root_changes:
+            raise RuntimeError(f'Cannot safely combine multiple nested edits under root INSERT {root_handle} in one package. Review/export them separately.')
+        nested_root_changes[root_handle]=ch
+    for ch in normalized:
+        if ch.get('op')=='DELETE_ENDPOINT' and not ch.get('nested_clone'):
+            h=str((ch.get('target') or {}).get('handle') or '')
+            if h in nested_root_changes:
+                raise RuntimeError(f'Root INSERT {h} is both deleted and used by a nested edit; split these changes into separate packages.')
+
     lines=[
       '(vl-load-com)',
       '(setq *tt-old-cmdecho* (getvar "CMDECHO"))',
