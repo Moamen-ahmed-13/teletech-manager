@@ -1,0 +1,7 @@
+# Optional dependencies for the isolated As-Built PDF -> DXF processor
+numpy>=1.26
+opencv-python-headless>=4.9
+scipy>=1.11
+scikit-image>=0.22
+pypdfium2>=4.30
+ezdxf>=1.3
