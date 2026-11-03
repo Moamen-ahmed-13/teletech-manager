@@ -32,12 +32,15 @@ def file_sha256(path):
 def detect_markups(image):
     """Find colored highlighter regions. Red and magenta both normalize to pink."""
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-    H, W = image.shape[:2]
+    height, width = image.shape[:2]
+    hue = hsv[:, :, 0]
+    saturation = hsv[:, :, 1]
+    value = hsv[:, :, 2]
     masks = {
-        'orange': ((H >= 6) & (H <= 22) & (hsv[:, :, 1] >= 95) & (hsv[:, :, 2] >= 150)),
-        'yellow': ((H >= 23) & (H <= 38) & (hsv[:, :, 1] >= 95) & (hsv[:, :, 2] >= 150)),
-        'green': ((H >= 40) & (H <= 90) & (hsv[:, :, 1] >= 95) & (hsv[:, :, 2] >= 150)),
-        'pink': (((H >= 160) | (H <= 5)) & (hsv[:, :, 1] >= 95) & (hsv[:, :, 2] >= 150)),
+        'orange': ((hue >= 6) & (hue <= 22) & (saturation >= 95) & (value >= 150)),
+        'yellow': ((hue >= 23) & (hue <= 38) & (saturation >= 95) & (value >= 150)),
+        'green': ((hue >= 40) & (hue <= 90) & (saturation >= 95) & (value >= 150)),
+        'pink': (((hue >= 160) | (hue <= 5)) & (saturation >= 95) & (value >= 150)),
     }
     out = []
     kernel = np.ones((9, 9), np.uint8)
@@ -48,7 +51,7 @@ def detect_markups(image):
             x, y, w, h, area = [int(v) for v in stats[k]]
             if not 120 <= area <= 9000:
                 continue
-            legend = x > W * 0.70 and y < H * 0.20 and w / max(h, 1) >= 2.0
+            legend = x > width * 0.70 and y < height * 0.20 and w / max(h, 1) >= 2.0
             out.append({'color': color, 'bbox': [x, y, w, h],
                         'center': [float(centers[k][0]), float(centers[k][1])],
                         'area': area, 'legend': bool(legend)})
