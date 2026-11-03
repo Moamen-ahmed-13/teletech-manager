@@ -7354,7 +7354,33 @@ def _asbuilt_detect_blue_arrow_tips(image_path, orange_regions):
                 score=min(1.0,length/max(min(w,h)*0.18,1))*0.55
                 score+=min(1.0,elong/5.0)*0.25
                 score+=max(0.0,1.0-gap/max(pad,1))*0.20
-                ranked.append((score,c,tx,ty,length,gap))
+                # A long blue CAD line is not enough: require two short strokes
+                # converging at the far endpoint to support an arrowhead.
+                hp=max(18,int(min(w,h)*0.012))
+                rx0=max(0,int(tx)-hp); ry0=max(0,int(ty)-hp)
+                rx1=min(w,int(tx)+hp+1); ry1=min(h,int(ty)+hp+1)
+                roi=(blue[ry0:ry1,rx0:rx1]*255).astype(np.uint8)
+                hlines=cv2.HoughLinesP(roi,1,np.pi/180,threshold=7,minLineLength=7,maxLineGap=5)
+                near=[]
+                if hlines is not None:
+                    for ln in hlines[:,0,:]:
+                        x1,y1,x2,y2=[float(v) for v in ln]
+                        p1=(x1+rx0,y1+ry0); p2=(x2+rx0,y2+ry0)
+                        d1=((p1[0]-tx)**2+(p1[1]-ty)**2)**0.5
+                        d2=((p2[0]-tx)**2+(p2[1]-ty)**2)**0.5
+                        if min(d1,d2)<=max(9,min(w,h)*0.004):
+                            ang=(math.degrees(math.atan2(y2-y1,x2-x1))%180.0)
+                            near.append(ang)
+                arrowhead=False
+                for ai in range(len(near)):
+                    for aj in range(ai+1,len(near)):
+                        ad=abs(near[ai]-near[aj]); ad=min(ad,180-ad)
+                        if 18.0<=ad<=115.0:
+                            arrowhead=True; break
+                    if arrowhead: break
+                if not arrowhead:
+                    score*=0.72
+                ranked.append((score,c,tx,ty,length,gap,arrowhead))
             ranked.sort(key=lambda z:z[0],reverse=True)
             if not ranked:
                 out[oi]={'status':'NOT_FOUND','confidence':0.0,'reason':'No nearby blue-ink stroke was associated with this orange mark.'}
@@ -7362,9 +7388,10 @@ def _asbuilt_detect_blue_arrow_tips(image_path, orange_regions):
             best=ranked[0]
             # Two similarly scored unrelated components make the destination ambiguous.
             ambiguous=len(ranked)>1 and (best[0]-ranked[1][0])<0.08
-            score,c,tx,ty,length,gap=best
+            score,c,tx,ty,length,gap,arrowhead=best
             out[oi]={
-                'status':'AMBIGUOUS' if ambiguous or score<0.48 else 'CANDIDATE',
+                'status':'AMBIGUOUS' if ambiguous or score<0.48 or not arrowhead else 'CANDIDATE',
+                'arrowhead_detected':bool(arrowhead),
                 'confidence':round(float(score),2),
                 'tip_px':[int(round(tx)),int(round(ty))],
                 'tip_norm':[int(round(tx/max(w,1)*1000)),int(round(ty/max(h,1)*1000))],
@@ -9376,9 +9403,9 @@ window.renderVisionReview=function(j){
  }
  h+='</div><div class="actions" style="display:flex;flex-direction:row;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:8px;margin-top:8px"><button id="bulkAdd" style="width:auto;min-width:0;flex:0 0 auto">Add selected to revision list</button><button id="bulkAll" class="alt" style="width:auto;min-width:0;flex:0 0 auto">Select all matched</button><button id="bulkNone" class="alt" style="width:auto;min-width:0;flex:0 0 auto">Clear</button><span id="bulkMsg" class="miniNote"></span></div></div>';
  h+='<div style="max-height:420px;overflow:auto"><table><thead><tr><th>Use</th><th>Page</th><th>Floor</th><th>Color</th><th>CAD endpoint</th><th>Match</th><th>Action</th></tr></thead><tbody>';
- inv.forEach((m,i)=>{const o=m.candidate_options||[],d=m.arrow_destination_options||[],pct=Math.round(Number((o[0]||{}).match_confidence||0)*100),dpct=Math.round(Number((d[0]||{}).match_confidence||0)*100),arrow=m.blue_arrow_detection||{},rule=RULES[m.color],moveReady=rule&&rule.kind==='move'&&arrow.status==='CANDIDATE'&&d.length&&dpct>=78,blocked=!rule||!o.length||(rule.kind==='move'&&!moveReady);
-  const destHtml=rule&&rule.kind==='move'?'<div class="miniNote" style="margin-top:5px">Blue pen arrow: '+esc(arrow.status||'NOT_FOUND')+' · '+Math.round(Number(arrow.confidence||0)*100)+'%</div><select class="bdest" style="min-width:260px;margin-top:4px" '+(!d.length?'disabled':'')+'>'+(d.length?d.map(x=>'<option value="'+esc(x.target_id||'')+'">'+esc((x.label||x.block||x.target_id||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No destination candidate</option>')+'</select>':'<span>'+esc(rule?rule.patch:'REVIEW')+'</span>';
-  h+='<tr data-b="'+i+'"><td><input type="checkbox" class="bu" '+(pct>=78&&!blocked&&rule.kind!=='move'?'checked':'')+(blocked?' disabled':'')+'></td><td>'+Number(m.page_number||0)+'</td><td>'+esc(m.floor_hint||'')+'</td><td>'+colorDot(m.color)+'</td><td><select class="bt" style="min-width:260px" '+(!o.length?'disabled':'')+'>'+(o.length?o.map(x=>'<option value="'+esc(x.target_id||'')+'">'+esc((x.label||x.block||x.target_id||'')+' | '+(x.service||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No CAD candidate</option>')+'</select></td><td class="'+(pct>=78?'confHigh':pct>=60?'confMid':'confLow')+'">Source '+pct+'%'+(rule&&rule.kind==='move'?'<div class="miniNote">Destination '+dpct+'%</div>':'')+'</td><td>'+(rule&&rule.kind==='move'?'<span class="miniNote">MOVE_ENDPOINT · detected from blue pen</span>'+destHtml:destHtml)+'</td></tr>';
+ inv.forEach((m,i)=>{const o=m.candidate_options||[],d=m.arrow_destination_options||[],pct=Math.round(Number((o[0]||{}).match_confidence||0)*100),dpct=Math.round(Number((d[0]||{}).match_confidence||0)*100),arrow=m.blue_arrow_detection||{},rule=RULES[m.color],moveReady=rule&&rule.kind==='move'&&arrow.status==='CANDIDATE'&&arrow.arrowhead_detected&&d.length&&dpct>=78,blocked=!rule||!o.length||pct<78||(rule.kind==='move'&&!moveReady);
+  const destHtml=rule&&rule.kind==='move'?'<div class="miniNote" style="margin-top:5px">Blue pen arrow: '+esc(arrow.status||'NOT_FOUND')+' · '+Math.round(Number(arrow.confidence||0)*100)+'% · head '+(arrow.arrowhead_detected?'yes':'not confirmed')+'</div><select class="bdest" style="min-width:260px;margin-top:4px" '+(!d.length?'disabled':'')+'>'+(d.length?'<option value="">Review destination...</option>'+d.map(x=>'<option value="'+esc(x.target_id||'')+'">'+esc((x.label||x.block||x.target_id||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No destination candidate</option>')+'</select>':'<span>'+esc(rule?rule.patch:'REVIEW')+'</span>';
+  h+='<tr data-b="'+i+'"><td><input type="checkbox" class="bu" '+''+(blocked?' disabled':'')+'></td><td>'+Number(m.page_number||0)+'</td><td>'+esc(m.floor_hint||'')+'</td><td>'+colorDot(m.color)+'</td><td><select class="bt" style="min-width:260px" '+(!o.length?'disabled':'')+'>'+(o.length?'<option value="">Review source endpoint...</option>'+o.map(x=>'<option value="'+esc(x.target_id||'')+'">'+esc((x.label||x.block||x.target_id||'')+' | '+(x.service||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No CAD candidate</option>')+'</select></td><td class="'+(pct>=78?'confHigh':pct>=60?'confMid':'confLow')+'">Source '+pct+'%'+(rule&&rule.kind==='move'?'<div class="miniNote">Destination '+dpct+'%</div>':'')+'</td><td>'+(rule&&rule.kind==='move'?'<span class="miniNote">MOVE_ENDPOINT · detected from blue pen</span>'+destHtml:destHtml)+'</td></tr>';
  });
  box.innerHTML=h+'</tbody></table></div>';
  const msg=t=>$('bulkMsg').textContent=t,rows=()=>[...box.querySelectorAll('tr[data-b]')];
