@@ -1,0 +1,22 @@
+name: Python syntax check
+
+on:
+  push:
+    branches:
+      - Moamen-ahmed-13-patch-1
+  pull_request:
+    branches:
+      - Moamen-ahmed-13-patch-1
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Compile server.py
+        run: python -m py_compile server.py
