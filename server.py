@@ -7060,7 +7060,7 @@ def _asbuilt_cv_color_inventory(image_path, legend_path=None):
         green_min=40
 
         masks={
-            'pink':((hsv[:,:,0]>=155)&(hsv[:,:,0]<=179)&(hsv[:,:,1]>=70)&(hsv[:,:,2]>=100)),
+            'pink':(((hsv[:,:,0]>=155)&(hsv[:,:,0]<=179)&(hsv[:,:,1]>=70)&(hsv[:,:,2]>=100))|((hsv[:,:,0]>=0)&(hsv[:,:,0]<=4)&(hsv[:,:,1]>=70)&(hsv[:,:,2]>=100))),
             'yellow':((hsv[:,:,0]>=20)&(hsv[:,:,0]<=40)&(hsv[:,:,1]>=60)&(hsv[:,:,2]>=100)),
             'orange':((hsv[:,:,0]>=5)&(hsv[:,:,0]<=20)&(hsv[:,:,1]>=80)&(hsv[:,:,2]>=100)),
             'green':((hsv[:,:,0]>=40)&(hsv[:,:,0]<=90)&(hsv[:,:,1]>=55)&(hsv[:,:,2]>=70)),
@@ -7418,13 +7418,9 @@ def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=No
         for idx,r in enumerate((cv_info.get('regions') or {}).get(color) or [],1):
             bbox=r.get('bbox') or [0,0,0,0]
             area=float(r.get('area') or 0)
-            # Conservative confidence: size alone never makes a CAD decision.
-            conf=0.55
-            if area >= 500: conf=0.70
-            if area >= 1500: conf=0.78
-            # Project-validated counting rule: candidates below 78% are not
-            # included in the actionable markup inventory. They remain visible
-            # only as low-confidence detector noise in the raw CV evidence.
+            # Preserve the detector's shape/fill confidence. Do not replace it
+            # with a second, unrelated area-only threshold here.
+            conf=float(r.get('confidence') or 0.0)
             if conf < ASBUILT_MIN_MARKUP_CONFIDENCE:
                 continue
             row={
@@ -8344,7 +8340,7 @@ def generate_asbuilt_project_package(changes,label_pattern=None):
             normalized_site.append({'op':'SITE_REMOVE','target':t,'target_id':tid,'floor':floor,
                                     'site_status':status,'patch_action':action,
                                     'note':str(ch.get('note') or ''),
-                                    'cad_manual_required':not bool(t.get('editable_direct'))})
+                                    'cad_manual_required':False,'cad_nested_clone':not bool(t.get('editable_direct'))})
 
     # Reuse the proven single-floor CAD script writer, but assemble one clean master ZIP.
     floor_outputs=[]
