@@ -91,6 +91,7 @@ def run(dxf_path, pdfs, out_dir):
     bbox = (float(np.percentile(all_points[:, 0], 1)), float(np.percentile(all_points[:, 1], 1)),
             float(np.percentile(all_points[:, 0], 99)), float(np.percentile(all_points[:, 1], 99)))
     cad_image, px_to_world = cad_raster(polylines, bbox)
+    cad_image = cv2.cvtColor(cad_image, cv2.COLOR_BGR2GRAY)
 
     report = {'pages': [], 'changes': [], 'review': [], 'applied': [], 'page_failures': [],
               'original_sha256': original_hash, 'original_unchanged': None}
