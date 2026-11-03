@@ -18,7 +18,7 @@ def _is_static_insert(ins):
     if ins.dxftype() != 'INSERT' or ins.doc is None:
         return False
     name = str(ins.dxf.name or '')
-    if not name or name.startswith('*') or ins.attribs:
+    if not name or name.startswith('*'):
         return False
     block = ins.doc.blocks.get(name)
     flags = int(block.block.dxf.get('flags', 0)) if block else 0
