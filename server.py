@@ -7375,18 +7375,22 @@ def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',
     # may differ because of cropping, rotation, skew or scan margins.
     registration_verified = mapped_xy is not None
     local_support = None
+    center_support = None
     grid=(registration_diagnostics or {}).get('inlier_grid_5x5')
     if registration_verified and isinstance(grid,list) and len(grid)==5:
         try:
             gx=max(0,min(4,int(float(sx)/1000.0*5)))
             gy=max(0,min(4,int(float(sy)/1000.0*5)))
-            local_support=int(grid[gy][gx])
-            # Do not trust a page-wide transform equally everywhere. Sparse local
-            # feature support means this particular markup must stay in human review.
-            if local_support<3:
-                confidence=min(confidence,0.65)
-            elif local_support<7:
-                confidence=min(confidence,0.77)
+            # A point can sit on a cell boundary. Sum the immediate 3x3
+            # neighborhood, retaining the support around the markup itself.
+            local_support=int(sum(grid[yy][xx]
+                for yy in range(max(0,gy-1),min(5,gy+2))
+                for xx in range(max(0,gx-1),min(5,gx+2))))
+            center_support=int(grid[gy][gx])
+            if local_support<5:
+                confidence=min(confidence,0.60)
+            elif local_support<12:
+                confidence=min(confidence,0.74)
         except Exception:
             local_support=None
     if not registration_verified:
@@ -7401,7 +7405,7 @@ def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',
                     'cad_y_norm':int(t.get('ny') or 0),'distance_norm':round(dist,1),
                     'distance_in_endpoint_spacing':round(units,3),
                     'semantic_match':bool(semantic_hits),'match_confidence':round(float(local_conf),2),
-                    'registration_verified':registration_verified,'local_registration_support':local_support,
+                    'registration_verified':registration_verified,'local_registration_support':local_support,'registration_center_cell_support':center_support,
                     'editable_direct':bool(t.get('editable_direct'))})
     return out
 
@@ -7600,6 +7604,18 @@ def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=No
                     row['suggested_target_label']=opts[0].get('label') or ''
                     row['match_confidence']=float(opts[0].get('match_confidence') or 0)
                     row['match_status']='CANDIDATE_MATCH' if row['match_confidence']>=0.78 else 'REVIEW_MATCH'
+                # The source endpoint cannot also be offered as the relocation
+                # destination. Keep the mapped arrow-tip coordinate available;
+                # if it resolves back to the source, require a different review choice.
+                if color=='orange' and row.get('arrow_destination_options'):
+                    source_id=str(row.get('suggested_target_id') or '')
+                    row['arrow_destination_options']=[
+                        option for option in row['arrow_destination_options']
+                        if str(option.get('target_id') or '') != source_id
+                    ]
+                    if source_id and not row['arrow_destination_options']:
+                        row['relocation_state']='DESTINATION_CONFLICT'
+                        row['relocation_block_reason']='Arrow destination resolves to the same endpoint as its source; select a different destination or review the arrow.'
             inv.append(row)
     return inv
 

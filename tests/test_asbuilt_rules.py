@@ -1,0 +1,40 @@
+import unittest
+
+from asbuilt_apply import markup_policy, relocation_destination_conflict
+
+
+class AsBuiltRuleTests(unittest.TestCase):
+    def test_yellow_keeps_site_and_reserves_patch_panel_slot(self):
+        self.assertEqual(markup_policy('yellow'), {
+            'site_action': 'KEEP',
+            'patch_panel_action': 'RESERVE_SLOT',
+            'label_action': 'KEEP',
+        })
+
+    def test_pink_removes_site_and_shifts_label(self):
+        self.assertEqual(markup_policy('pink'), {
+            'site_action': 'DELETE',
+            'patch_panel_action': 'NO_SLOT',
+            'label_action': 'SHIFT',
+        })
+
+    def test_orange_keeps_patch_panel_slot(self):
+        self.assertEqual(markup_policy('orange')['patch_panel_action'], 'KEEP_SLOT')
+
+    def test_move_rejects_same_source_destination(self):
+        reason = relocation_destination_conflict([100, 100], [100.1, 100], [], 0, 1.0)
+        self.assertIn('no-op', reason)
+
+    def test_move_rejects_collision_with_other_endpoint(self):
+        instances = [{'world': [100, 100]}, {'world': [250, 250]}]
+        reason = relocation_destination_conflict([100, 100], [250.5, 250], instances, 0, 1.0)
+        self.assertIn('overlaps another', reason)
+
+    def test_move_allows_clear_destination(self):
+        instances = [{'world': [100, 100]}, {'world': [250, 250]}]
+        reason = relocation_destination_conflict([100, 100], [400, 400], instances, 0, 1.0)
+        self.assertEqual(reason, '')
+
+
+if __name__ == '__main__':
+    unittest.main()
