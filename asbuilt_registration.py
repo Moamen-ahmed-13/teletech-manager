@@ -115,6 +115,14 @@ def register_page_to_cad(page_bgr, cad_gray, cad_px_to_world, mirror_ok=False):
     cov=_coverage(src[inl],pw,ph);diag['coverage']=round(cov,3)
     # coverage in each page third (vertical) so a cluster in one corner cannot pass
     ys=src[inl][:,1];thirds=[int(((ys>=ph*i/3)&(ys<ph*(i+1)/3)).sum()) for i in range(3)];diag['inliers_by_third']=thirds
+    # Local support grid: a global transform can be excellent while a markup sits
+    # in a poorly-supported corner. Keep a compact 5x5 map for per-markup gating.
+    pts=src[inl]
+    grid=np.zeros((5,5),dtype=int)
+    gx=np.clip((pts[:,0]/max(pw,1)*5).astype(int),0,4)
+    gy=np.clip((pts[:,1]/max(ph,1)*5).astype(int),0,4)
+    for ix,iy in zip(gx,gy): grid[iy,ix]+=1
+    diag['inlier_grid_5x5']=grid.tolist()
     reasons=[]
     if n_in<MIN_INLIERS: reasons.append(f'inliers {n_in}<{MIN_INLIERS}')
     if ratio<MIN_INLIER_RATIO: reasons.append(f'inlier ratio {ratio:.2f}<{MIN_INLIER_RATIO}')
