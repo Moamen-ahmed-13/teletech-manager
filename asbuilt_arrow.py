@@ -153,8 +153,15 @@ def detect_blue_arrow_tips(image, orange_regions):
                 j=int(np.argmax(proj));tipx=float(hx_[j]);tipy=float(hy_[j])
                 # triangular head spreads laterally: width across the axis near the tip
                 lat=np.abs((hx_-hx)*(-vy)+(hy_-hy)*vx);spread=float(np.percentile(lat,90)*2)
-                head=(ratio>=1.35 and spread>=1.8*shaft_w)
-                score=min(1.0,ratio/2.4)*0.45+min(1.0,spread/(3.2*shaft_w))*0.55
+                # Ballpoint arrows are often drawn as an open V: the two thin head strokes
+                # add lateral spread but almost no filled ink mass. The old mass-only
+                # threshold rejected exactly this common hand-drawn shape.
+                open_v_head = (ratio >= 0.55 and spread >= max(5.0, 4.5*shaft_w))
+                filled_head = (ratio >= 1.35 and spread >= 1.8*shaft_w)
+                head = bool(filled_head or open_v_head)
+                # Keep mass as supporting evidence, but let a clear wide V geometry
+                # contribute strongly even when the head is not filled in.
+                score=min(1.0,ratio/1.8)*0.25+min(1.0,spread/(4.5*shaft_w))*0.75
                 if best is None or score>best[0]: best=(score,tipx+x-6,tipy+y-6,head,ratio,spread/shaft_w,(vx,vy))
             if best is None: continue
             score,tx,ty,head,ratio,sp,vec=best
