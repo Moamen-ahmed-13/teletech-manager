@@ -9,7 +9,7 @@ import uuid
 import ezdxf
 from ezdxf.math import Matrix44, Vec3
 
-ENDPOINT_BLOCKS = {'D-V', 'D-W', 'DD', 'D-V BOX', 'ES-cctv'}
+ENDPOINT_BLOCKS = {'D-V', 'D-W', 'DD', 'D-V BOX', 'D·V BOX', 'D.V BOX', 'DV BOX', 'EC-TP', 'ES-CCTV'}
 
 def _handle(entity):
     return str(entity.dxf.handle or '')
