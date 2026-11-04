@@ -20,7 +20,7 @@ def _blue_mask(bgr):
 def _local_groups(bgr,ox,oy,ow,oh,pm,others):
     """Relaxed local blue mask around one orange marker; fragments (broken ballpoint strokes) are chained
     into groups when their pixel gap is small. Returns [(xs,ys,gap_to_orange)] in full-image coords."""
-    H,W=bgr.shape[:2];pad=int(pm*0.45)
+    H,W=bgr.shape[:2];pad=int(pm*0.55)
     x0=max(0,int(ox-pad));y0=max(0,int(oy-pad));x1=min(W,int(ox+ow+pad));y1=min(H,int(oy+oh+pad))
     c=bgr[y0:y1,x0:x1];hsv=cv2.cvtColor(c,cv2.COLOR_BGR2HSV)
     v=hsv[:,:,2];paper=cv2.medianBlur(v,31)
@@ -42,10 +42,10 @@ def _local_groups(bgr,ox,oy,ow,oh,pm,others):
         areas=np.bincount(flat_labels,minlength=wn).astype(np.float64)
         sat_sum=np.bincount(flat_labels,weights=hsv[:,:,1].ravel(),minlength=wn)
         blue_sum=np.bincount(flat_labels,weights=blueness.ravel(),minlength=wn)
-        valid=areas>=8
+        valid=areas>=5
         mean_sat=sat_sum/np.maximum(areas,1.0)
         mean_blue=blue_sum/np.maximum(areas,1.0)
-        keep=valid&(mean_sat>=18)&(mean_blue>=6)
+        keep=valid&(mean_sat>=15)&(mean_blue>=5)
         keep[np.unique(wlab[strong>0])]=True
         keep[0]=False
     m=keep[wlab].astype(np.uint8)
@@ -57,7 +57,7 @@ def _local_groups(bgr,ox,oy,ow,oh,pm,others):
         if st[k,4]<5: continue
         ys,xs=np.where(lab==k);comps.append((xs+x0,ys+y0))
     if not comps: return []
-    link=max(30.0,pm*0.04);par=list(range(len(comps)))
+    link=max(38.0,pm*0.05);par=list(range(len(comps)))
     def f(i):
         while par[i]!=i: par[i]=par[par[i]];i=par[i]
         return i
@@ -112,7 +112,7 @@ def detect_blue_arrow_tips(image, orange_regions):
     for oi,bb in enumerate(regs,1):
         if not bb: out[oi]={'status':'NOT_FOUND','confidence':0.0,'reason':'Orange region has no bbox.'};continue
         ox,oy,ow,oh=[float(v) for v in bb[:4]];ocx,ocy=ox+ow/2,oy+oh/2
-        max_gap=max(35.0,pm*0.018);max_len=pm*0.48;min_len=max(20.0,pm*0.007)
+        max_gap=max(42.0,pm*0.025);max_len=pm*0.48;min_len=max(16.0,pm*0.0055)
         cands=[]
         others=[bj for oj,bj in enumerate(regs,1) if oj!=oi and bj]
         for gi,(xs,ys,gap) in enumerate(_local_groups(bgr,ox,oy,ow,oh,pm,others)):
