@@ -7603,6 +7603,18 @@ def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=No
                     row['suggested_target_label']=opts[0].get('label') or ''
                     row['match_confidence']=float(opts[0].get('match_confidence') or 0)
                     row['match_status']='CANDIDATE_MATCH' if row['match_confidence']>=0.78 else 'REVIEW_MATCH'
+                # The source endpoint cannot also be offered as the relocation
+                # destination. Keep the mapped arrow-tip coordinate available;
+                # if it resolves back to the source, require a different review choice.
+                if color=='orange' and row.get('arrow_destination_options'):
+                    source_id=str(row.get('suggested_target_id') or '')
+                    row['arrow_destination_options']=[
+                        option for option in row['arrow_destination_options']
+                        if str(option.get('target_id') or '') != source_id
+                    ]
+                    if source_id and not row['arrow_destination_options']:
+                        row['relocation_state']='DESTINATION_CONFLICT'
+                        row['relocation_block_reason']='Arrow destination resolves to the same endpoint as its source; select a different destination or review the arrow.'
             inv.append(row)
     return inv
 
