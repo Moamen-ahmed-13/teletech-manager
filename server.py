@@ -8530,7 +8530,7 @@ def generate_asbuilt_project_package(changes,label_pattern=None):
       'Combined ASBUILT Excel files already apply every reviewed SITE_REMOVE across all floors.\n'
       'SHIFT repacks following ports. RESERVE keeps the original patch-port position reserved.\n'
       'Nested static block edits use a private clone path; dynamic/xref/anonymous or attributed paths are not modified.\n'
-      'Blue-arrow destination coordinates are estimated from the analyzed CAD endpoint envelope and must be reviewed before adding the move.\n',encoding='utf-8')
+      'Orange relocation destinations use the detected blue ballpoint arrow tip plus a verified page-to-CAD transform. If arrow detection, page registration, or local feature support is uncertain, the move remains blocked for human review; no endpoint-envelope coordinate guess is used.\n',encoding='utf-8')
     clean_changes=[]
     for c in changes:
         clean_changes.append({k:v for k,v in c.items() if k not in {'api_key'}})
