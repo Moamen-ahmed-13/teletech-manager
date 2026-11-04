@@ -1,6 +1,6 @@
 import unittest
 
-from asbuilt_apply import markup_policy, relocation_destination_conflict
+from asbuilt_apply import markup_policy, relocation_destination_conflict, relocation_destination_match
 
 
 class AsBuiltRuleTests(unittest.TestCase):
@@ -29,6 +29,21 @@ class AsBuiltRuleTests(unittest.TestCase):
         instances = [{'world': [100, 100]}, {'world': [250, 250]}]
         reason = relocation_destination_conflict([100, 100], [250.5, 250], instances, 0, 1.0)
         self.assertIn('overlaps another', reason)
+
+    def test_destination_match_accepts_close_distinct_endpoint(self):
+        instances = [{'world': [0, 0]}, {'world': [100, 0]}, {'world': [1000, 0]}]
+        result = relocation_destination_match([110, 0], instances, 0, 100)
+        self.assertTrue(result['ok'], result)
+
+    def test_destination_match_rejects_far_endpoint(self):
+        instances = [{'world': [0, 0]}, {'world': [100, 0]}, {'world': [1000, 0]}]
+        result = relocation_destination_match([250, 0], instances, 0, 100)
+        self.assertFalse(result['ok'], result)
+
+    def test_destination_match_rejects_ambiguous_neighbours(self):
+        instances = [{'world': [0, 0]}, {'world': [100, 0]}, {'world': [120, 0]}]
+        result = relocation_destination_match([110, 0], instances, 0, 100)
+        self.assertFalse(result['ok'], result)
 
     def test_move_allows_clear_destination(self):
         instances = [{'world': [100, 100]}, {'world': [250, 250]}]
