@@ -52,6 +52,37 @@ def relocation_destination_conflict(source, destination, instances, source_index
     return ''
 
 
+def relocation_destination_match(destination, instances, source_index, endpoint_spacing):
+    """Conservative CAD endpoint validation for a registered arrow tip.
+
+    A valid arrowhead does not prove that its mapped point is a valid destination.
+    Require a close endpoint candidate and separation from the runner-up.
+    """
+    spacing=max(float(endpoint_spacing or 0.0),1e-6)
+    candidates=[]
+    for idx,item in enumerate(instances):
+        if idx==source_index:
+            continue
+        point=item.get('world') or [0,0]
+        distance=math.hypot(float(point[0])-float(destination[0]),float(point[1])-float(destination[1]))
+        candidates.append((distance,idx))
+    candidates.sort()
+    if not candidates:
+        return {'ok':False,'reason':'No other CAD endpoint is available to validate the arrow destination.','confidence':0.0}
+    d1,idx=candidates[0]
+    d2=candidates[1][0] if len(candidates)>1 else float('inf')
+    units=d1/spacing
+    proximity=math.exp(-0.72*max(0.0,units))
+    separation=1.0 if not math.isfinite(d2) else max(0.0,min(1.0,(d2-d1)/max(d2/spacing,0.25)/1.0))
+    confidence=0.18+0.68*proximity+0.14*separation
+    margin=1.0 if not math.isfinite(d2) else max(0.0,(d2-d1)/max(spacing,1e-6))
+    ok=bool(units<=0.35 and confidence>=0.78 and margin>=0.04)
+    return {'ok':ok,'candidate_index':idx,'distance':round(d1,2),
+            'distance_in_endpoint_spacing':round(units,3),'next_distance':round(d2,2),
+            'confidence':round(confidence,2),'margin_in_endpoint_spacing':round(margin,3),
+            'reason':'' if ok else ('Registered arrow tip is not close enough to a distinct CAD endpoint, or the nearest destination is ambiguous; manual review required.')}
+
+
 def detect_markups(image):
     """Find colored highlighter regions. Red and magenta both normalize to pink."""
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
@@ -264,6 +295,11 @@ def run(dxf_path, pdfs, out_dir):
                             target['world'], destination, instances, best_idx, relocation_guard)
                         if conflict:
                             reject('DESTINATION_CONFLICT', conflict)
+                            continue
+                        destination_match=relocation_destination_match(destination,instances,best_idx,endpoint_spacing)
+                        rec['destination_match']=destination_match
+                        if not destination_match.get('ok'):
+                            reject('DESTINATION_REVIEW_REQUIRED',destination_match.get('reason') or 'CAD destination match is not sufficiently confident.')
                             continue
                         editor.move(target, destination)
                         used.add(best_idx)
