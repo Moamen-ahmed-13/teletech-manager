@@ -18,7 +18,7 @@ import dxfedit
 import dxfmini
 from render import render
 
-ENDPOINT_BLOCKS = {'D-V', 'D-W', 'DD', 'D-V BOX', 'ES-cctv'}
+ENDPOINT_BLOCKS = {'D-V', 'D-W', 'DD', 'D-V BOX', 'D·V BOX', 'D.V BOX', 'DV BOX', 'EC-TP', 'ES-CCTV'}
 MATCH_MAX = 900.0
 AMBIG_RATIO = 1.4
 
