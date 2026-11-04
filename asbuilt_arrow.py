@@ -30,8 +30,8 @@ def _local_groups(bgr,ox,oy,ow,oh,pm,others):
     # Weak mask keeps the thin/faint parts of a ballpoint stroke; strong mask is real blue ink.
     # Grey/purple-tinted scan noise (black wall lines, hatch) passes the weak mask but never the strong one,
     # so only weak components that contain strong ink are kept.
-    weak=((hsv[:,:,0]>=90)&(hsv[:,:,0]<=138)&(hsv[:,:,1]>=22)&(blueness>=8)&darker).astype(np.uint8)
-    strong=((hsv[:,:,0]>=100)&(hsv[:,:,0]<=135)&(hsv[:,:,1]>=40)&(blueness>=16)&darker).astype(np.uint8)
+    weak=((hsv[:,:,0]>=82)&(hsv[:,:,0]<=145)&(hsv[:,:,1]>=12)&(blueness>=4)&darker).astype(np.uint8)
+    strong=((hsv[:,:,0]>=92)&(hsv[:,:,0]<=142)&(hsv[:,:,1]>=25)&(blueness>=10)&darker).astype(np.uint8)
     wn,wlab=cv2.connectedComponents(weak,connectivity=8)
     keep=np.zeros(wn,bool)
     if wn>1:
@@ -46,7 +46,7 @@ def _local_groups(bgr,ox,oy,ow,oh,pm,others):
         if st[k,4]<5: continue
         ys,xs=np.where(lab==k);comps.append((xs+x0,ys+y0))
     if not comps: return []
-    link=max(16.0,pm*0.018);par=list(range(len(comps)))
+    link=max(24.0,pm*0.028);par=list(range(len(comps)))
     def f(i):
         while par[i]!=i: par[i]=par[par[i]];i=par[i]
         return i
@@ -101,7 +101,7 @@ def detect_blue_arrow_tips(image, orange_regions):
     for oi,bb in enumerate(regs,1):
         if not bb: out[oi]={'status':'NOT_FOUND','confidence':0.0,'reason':'Orange region has no bbox.'};continue
         ox,oy,ow,oh=[float(v) for v in bb[:4]];ocx,ocy=ox+ow/2,oy+oh/2
-        max_gap=max(40.0,pm*0.035);max_len=pm*0.42;min_len=max(24.0,pm*0.009)
+        max_gap=max(65.0,pm*0.055);max_len=pm*0.48;min_len=max(20.0,pm*0.007)
         cands=[]
         others=[bj for oj,bj in enumerate(regs,1) if oj!=oi and bj]
         for gi,(xs,ys,gap) in enumerate(_local_groups(bgr,ox,oy,ow,oh,pm,others)):
@@ -153,8 +153,8 @@ def detect_blue_arrow_tips(image, orange_regions):
                 j=int(np.argmax(proj));tipx=float(hx_[j]);tipy=float(hy_[j])
                 # triangular head spreads laterally: width across the axis near the tip
                 lat=np.abs((hx_-hx)*(-vy)+(hy_-hy)*vx);spread=float(np.percentile(lat,90)*2)
-                head=(ratio>=1.7 and spread>=2.4*shaft_w)
-                score=min(1.0,ratio/3.0)*0.5+min(1.0,spread/(4*shaft_w))*0.5
+                head=(ratio>=1.35 and spread>=1.8*shaft_w)
+                score=min(1.0,ratio/2.4)*0.45+min(1.0,spread/(3.2*shaft_w))*0.55
                 if best is None or score>best[0]: best=(score,tipx+x-6,tipy+y-6,head,ratio,spread/shaft_w,(vx,vy))
             if best is None: continue
             score,tx,ty,head,ratio,sp,vec=best
@@ -170,7 +170,7 @@ def detect_blue_arrow_tips(image, orange_regions):
             out[oi]={'status':'NOT_FOUND','confidence':0.0,'arrowhead_detected':False,'reason':'Blue strokes near orange have no usable stroke end.'};continue
         scored.sort(key=lambda z:-z['conf']);b=scored[0]
         amb=len(scored)>1 and scored[1]['head'] and (b['conf']-scored[1]['conf'])<0.12
-        ok=b['head'] and b['away'] and b['conf']>=0.55 and not amb
+        ok=b['head'] and b['away'] and b['conf']>=0.52 and not amb
         res={'status':'CONFIRMED' if ok else ('AMBIGUOUS' if amb else 'NOT_CONFIRMED'),'confidence':round(float(b['conf']),2),
              'arrowhead_detected':b['head'],'tip_px':[int(round(b['tip'][0])),int(round(b['tip'][1]))],
              'tip_norm':[int(round(b['tip'][0]/W*1000)),int(round(b['tip'][1]/H*1000))],
