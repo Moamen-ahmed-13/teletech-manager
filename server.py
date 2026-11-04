@@ -7380,13 +7380,16 @@ def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',
         try:
             gx=max(0,min(4,int(float(sx)/1000.0*5)))
             gy=max(0,min(4,int(float(sy)/1000.0*5)))
-            local_support=int(grid[gy][gx])
-            # Do not trust a page-wide transform equally everywhere. Sparse local
-            # feature support means this particular markup must stay in human review.
-            if local_support<3:
-                confidence=min(confidence,0.65)
-            elif local_support<7:
-                confidence=min(confidence,0.77)
+            # A point can sit on a cell boundary. Sum the immediate 3x3
+            # neighborhood, retaining the support around the markup itself.
+            local_support=int(sum(grid[yy][xx]
+                for yy in range(max(0,gy-1),min(5,gy+2))
+                for xx in range(max(0,gx-1),min(5,gx+2))))
+            center_support=int(grid[gy][gx])
+            if local_support<5:
+                confidence=min(confidence,0.60)
+            elif local_support<12:
+                confidence=min(confidence,0.74)
         except Exception:
             local_support=None
     if not registration_verified:
@@ -7401,7 +7404,7 @@ def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',
                     'cad_y_norm':int(t.get('ny') or 0),'distance_norm':round(dist,1),
                     'distance_in_endpoint_spacing':round(units,3),
                     'semantic_match':bool(semantic_hits),'match_confidence':round(float(local_conf),2),
-                    'registration_verified':registration_verified,'local_registration_support':local_support,
+                    'registration_verified':registration_verified,'local_registration_support':local_support,'registration_center_cell_support':center_support,
                     'editable_direct':bool(t.get('editable_direct'))})
     return out
 
