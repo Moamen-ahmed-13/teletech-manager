@@ -42,6 +42,33 @@ def detect_markups(image):
         'green': ((hue >= 40) & (hue <= 90) & (saturation >= 95) & (value >= 150)),
         'pink': (((hue >= 160) | (hue <= 5)) & (saturation >= 95) & (value >= 150)),
     }
+    # Detect a compact legend stack anywhere in the page margins. Requiring
+    # the canonical five-swatch order avoids suppressing isolated field marks.
+    legend_boxes = []
+    comps = {}
+    for color, mask in masks.items():
+        n, lab, st, cen = cv2.connectedComponentsWithStats(mask.astype(np.uint8), 8)
+        comps[color] = []
+        for k in range(1, n):
+            x, y, ww, hh, area = [int(v) for v in st[k]]
+            if area >= 80 and ww >= 8 and hh >= 5:
+                comps[color].append({'x':x,'y':y,'w':ww,'h':hh,'cx':float(cen[k][0]),'cy':float(cen[k][1])})
+    for p in comps['pink']:
+        if not (p['x'] < width*.22 or p['x']+p['w'] > width*.78 or p['y'] < height*.18 or p['y']+p['h'] > height*.82):
+            continue
+        greens=[g for g in comps['green'] if g['cy']>p['cy'] and abs(g['cx']-p['cx'])<max(180,width*.12)]
+        for g in greens:
+            yellows=[z for z in comps['yellow'] if z['cy']>g['cy'] and abs(z['cx']-p['cx'])<max(180,width*.12)]
+            for z in yellows:
+                oranges=sorted([o for o in comps['orange'] if o['cy']>z['cy'] and abs(o['cx']-p['cx'])<max(180,width*.12)],key=lambda q:q['cy'])
+                if len(oranges)<2: continue
+                seq=[p,g,z,oranges[0],oranges[1]]
+                gaps=[seq[i+1]['cy']-seq[i]['cy'] for i in range(4)]
+                if min(gaps)<=0 or max(gaps)/max(min(gaps),1)>3.2: continue
+                x0=min(q['x'] for q in seq); y0=min(q['y'] for q in seq)
+                x1=max(q['x']+q['w'] for q in seq); y1=max(q['y']+q['h'] for q in seq)
+                if (x1-x0)>max(260,width*.18) or (y1-y0)>height*.22: continue
+                legend_boxes.append((x0,y0,x1-x0,y1-y0))
     out = []
     kernel = np.ones((9, 9), np.uint8)
     for color, mask in masks.items():
@@ -51,10 +78,10 @@ def detect_markups(image):
             x, y, w, h, area = [int(v) for v in stats[k]]
             if not 120 <= area <= 9000:
                 continue
-            legend = x > width * 0.70 and y < height * 0.20 and w / max(h, 1) >= 2.0
+            cx, cy = float(centers[k][0]), float(centers[k][1])
+            legend = any(x0 <= cx <= x0+bw and y0 <= cy <= y0+bh for x0,y0,bw,bh in legend_boxes)
             out.append({'color': color, 'bbox': [x, y, w, h],
-                        'center': [float(centers[k][0]), float(centers[k][1])],
-                        'area': area, 'legend': bool(legend)})
+                        'center': [cx, cy], 'area': area, 'legend': bool(legend)})
     return out
 
 def cad_raster(polylines, bbox, width=3000):
