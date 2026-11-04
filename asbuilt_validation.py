@@ -44,24 +44,24 @@ def validate_export(original_path, output_path, applied, original_sha256=None, t
         result['errors'].append('Could not reopen DXF for verification: '+str(exc))
         return result
     # Position matching is tolerant of DXF float serialization and nested transforms.
-    def exists(items, name, xy):
-        return any(str(x.get('name') or '').upper()==str(name or '').upper() and
-                   math.hypot(float(x['world'][0])-float(xy[0]),float(x['world'][1])-float(xy[1]))<=tolerance
-                   for x in items)
+    def count_at(items, name, xy):
+        return sum(1 for x in items
+                   if str(x.get('name') or '').upper()==str(name or '').upper() and
+                   math.hypot(float(x['world'][0])-float(xy[0]),float(x['world'][1])-float(xy[1]))<=tolerance)
     for change in applied or []:
         op=str(change.get('op') or '').upper()
         name=change.get('block')
         if op=='DELETE':
             result['expected_deletes']+=1
             old=change.get('world') or [0,0]
-            removed=exists(before,name,old) and not exists(after,name,old)
+            removed=count_at(before,name,old)>count_at(after,name,old)
             if removed: result['verified_deletes']+=1
             else: result['errors'].append('DELETE not verified for %s at %s.'%(name,old))
             result['checks'].append({'op':'DELETE','block':name,'verified':bool(removed)})
         elif op=='MOVE':
             result['expected_moves']+=1
             old=change.get('from') or [0,0]; new=change.get('to') or [0,0]
-            moved=exists(before,name,old) and exists(after,name,new) and not exists(after,name,old)
+            moved=count_at(before,name,old)>count_at(after,name,old) and count_at(after,name,new)>count_at(before,name,new)
             if moved: result['verified_moves']+=1
             else: result['errors'].append('MOVE not verified for %s from %s to %s.'%(name,old,new))
             result['checks'].append({'op':'MOVE','block':name,'from':old,'to':new,'verified':bool(moved)})
