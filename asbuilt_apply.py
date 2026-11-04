@@ -73,7 +73,7 @@ def relocation_destination_match(destination, instances, source_index, endpoint_
     d2=candidates[1][0] if len(candidates)>1 else float('inf')
     units=d1/spacing
     proximity=math.exp(-0.72*max(0.0,units))
-    separation=1.0 if not math.isfinite(d2) else max(0.0,min(1.0,(d2-d1)/max(d2/spacing,0.25)/1.0))
+    separation=1.0 if not math.isfinite(d2) else max(0.0,min(1.0,((d2/spacing)-units)/max(d2/spacing,0.25)))
     confidence=0.18+0.68*proximity+0.14*separation
     margin=1.0 if not math.isfinite(d2) else max(0.0,(d2-d1)/max(spacing,1e-6))
     ok=bool(units<=0.35 and confidence>=0.78 and margin>=0.04)
