@@ -53,7 +53,7 @@ class ArrowDetectorTest(unittest.TestCase):
         img = np.full((1000, 1200, 3), 245, np.uint8)
         orange = {'bbox': [450, 480, 50, 50]}
         # Two separate blue-ink components with a small scan/pen gap.
-        cv2.line(img, (510, 530), (550, 530), (170, 90, 40), 5)
+        cv2.line(img, (510, 530), (540, 530), (170, 90, 40), 5)
         cv2.line(img, (590, 530), (660, 530), (170, 90, 40), 5)
         groups = AR._local_groups(img, 450, 480, 50, 50, 1000, [])
         self.assertTrue(groups, 'fragmented blue ink should be retained')
