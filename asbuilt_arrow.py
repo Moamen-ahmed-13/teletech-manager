@@ -20,7 +20,7 @@ def _blue_mask(bgr):
 def _local_groups(bgr,ox,oy,ow,oh,pm,others):
     """Relaxed local blue mask around one orange marker; fragments (broken ballpoint strokes) are chained
     into groups when their pixel gap is small. Returns [(xs,ys,gap_to_orange)] in full-image coords."""
-    H,W=bgr.shape[:2];pad=int(pm*0.35)
+    H,W=bgr.shape[:2];pad=int(pm*0.45)
     x0=max(0,int(ox-pad));y0=max(0,int(oy-pad));x1=min(W,int(ox+ow+pad));y1=min(H,int(oy+oh+pad))
     c=bgr[y0:y1,x0:x1];hsv=cv2.cvtColor(c,cv2.COLOR_BGR2HSV)
     v=hsv[:,:,2];paper=cv2.medianBlur(v,31)
@@ -46,7 +46,7 @@ def _local_groups(bgr,ox,oy,ow,oh,pm,others):
         if st[k,4]<5: continue
         ys,xs=np.where(lab==k);comps.append((xs+x0,ys+y0))
     if not comps: return []
-    link=max(24.0,pm*0.028);par=list(range(len(comps)))
+    link=max(30.0,pm*0.04);par=list(range(len(comps)))
     def f(i):
         while par[i]!=i: par[i]=par[par[i]];i=par[i]
         return i
