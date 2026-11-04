@@ -31,12 +31,15 @@ def file_sha256(path):
 
 def markup_policy(color):
     """Canonical site / patch-panel / label action for each As-Built color."""
+    color = str(color or '').strip().lower()
+    if color == 'red':
+        color = 'pink'
     return {
         'pink': {'site_action': 'DELETE', 'patch_panel_action': 'NO_SLOT', 'label_action': 'SHIFT'},
         'yellow': {'site_action': 'KEEP', 'patch_panel_action': 'RESERVE_SLOT', 'label_action': 'KEEP'},
         'orange': {'site_action': 'MOVE', 'patch_panel_action': 'KEEP_SLOT', 'label_action': 'KEEP'},
         'green': {'site_action': 'KEEP', 'patch_panel_action': 'KEEP_SLOT', 'label_action': 'KEEP'},
-    }.get(str(color or '').lower())
+    }.get(color)
 
 
 def relocation_destination_conflict(source, destination, instances, source_index, tolerance):
