@@ -30,6 +30,24 @@ class ArrowDetectorTest(unittest.TestCase):
         self.assertLess(tx, 1200)
         self.assertGreater(ty, 1700)
 
+    def test_arrow_with_excessive_orange_gap_is_not_confirmed(self):
+        img = np.full((3200, 2400, 3), 245, np.uint8)
+        orange = {'bbox': [1152, 1552, 96, 96]}
+        # A clear-looking blue arrow, but it is too far from this orange markup
+        # to be safely associated with it.
+        cv2.line(img, (1410, 1600), (1650, 1600), (170, 90, 40), 7)
+        head = np.array([[1650, 1600], [1580, 1550], [1580, 1650]], np.int32)
+        cv2.fillPoly(img, [head], (160, 80, 30))
+        res = AR.detect_blue_arrow_tips(img, [orange])[1]
+        self.assertNotEqual(res['status'], 'CONFIRMED', res)
+
+    def test_unheaded_blue_stroke_is_not_confirmed(self):
+        img = np.full((3200, 2400, 3), 245, np.uint8)
+        orange = {'bbox': [1152, 1552, 96, 96]}
+        cv2.line(img, (1200, 1640), (1450, 1780), (170, 90, 40), 6)
+        res = AR.detect_blue_arrow_tips(img, [orange])[1]
+        self.assertNotEqual(res['status'], 'CONFIRMED', res)
+
     def test_no_blue_ink_is_not_found(self):
         img, orange = _scene()
         img[:] = 245
