@@ -29,6 +29,29 @@ def file_sha256(path):
             h.update(chunk)
     return h.hexdigest()
 
+def markup_policy(color):
+    """Canonical site / patch-panel / label action for each As-Built color."""
+    return {
+        'pink': {'site_action': 'DELETE', 'patch_panel_action': 'NO_SLOT', 'label_action': 'SHIFT'},
+        'yellow': {'site_action': 'KEEP', 'patch_panel_action': 'RESERVE_SLOT', 'label_action': 'KEEP'},
+        'orange': {'site_action': 'MOVE', 'patch_panel_action': 'KEEP_SLOT', 'label_action': 'KEEP'},
+        'green': {'site_action': 'KEEP', 'patch_panel_action': 'KEEP_SLOT', 'label_action': 'KEEP'},
+    }.get(str(color or '').lower())
+
+
+def relocation_destination_conflict(source, destination, instances, source_index, tolerance):
+    """Return a reason when a move would be a no-op or collide with another endpoint."""
+    if math.hypot(float(destination[0])-float(source[0]), float(destination[1])-float(source[1])) <= tolerance:
+        return 'Arrow tip maps back to the source endpoint; relocation is a no-op.'
+    for idx, item in enumerate(instances):
+        if idx == source_index:
+            continue
+        point = item.get('world') or [0, 0]
+        if math.hypot(float(destination[0])-float(point[0]), float(destination[1])-float(point[1])) <= tolerance:
+            return 'Arrow tip overlaps another existing endpoint; destination requires review.'
+    return ''
+
+
 def detect_markups(image):
     """Find colored highlighter regions. Red and magenta both normalize to pink."""
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
@@ -108,6 +131,17 @@ def run(dxf_path, pdfs, out_dir):
     instances = [item for item in drawing.instances() if item['name'].upper() in ENDPOINT_BLOCKS]
     if not instances:
         raise RuntimeError('No supported endpoint block instances were found in the DXF.')
+    nearest_spacings = []
+    for i, item in enumerate(instances):
+        distances = [math.hypot(float(item['world'][0])-float(other['world'][0]),
+                                float(item['world'][1])-float(other['world'][1]))
+                     for j, other in enumerate(instances) if j != i]
+        positive = [d for d in distances if d > 1e-8]
+        if positive:
+            nearest_spacings.append(min(positive))
+    nearest_spacings.sort()
+    endpoint_spacing = nearest_spacings[len(nearest_spacings)//2] if nearest_spacings else 1.0
+    relocation_guard = max(1e-6, float(endpoint_spacing) * 0.05)
 
     entities, blocks = dxfmini.read_dxf(dxf_path)
     polylines = dxfmini.flatten(entities, blocks)
@@ -160,13 +194,22 @@ def run(dxf_path, pdfs, out_dir):
                 gh, gw = image.shape[:2]
                 gx = max(0, min(4, int(float(mark['center'][0]) / max(gw, 1) * 5)))
                 gy = max(0, min(4, int(float(mark['center'][1]) / max(gh, 1) * 5)))
-                local_support = int(grid[gy][gx]) if len(grid) == 5 and len(grid[gy]) == 5 else 0
+                local_support = (int(sum(grid[yy][xx]
+                    for yy in range(max(0, gy-1), min(5, gy+2))
+                    for xx in range(max(0, gx-1), min(5, gx+2))))
+                    if len(grid) == 5 and all(len(row) == 5 for row in grid) else 0)
                 rec = {'color': mark['color'], 'page_px': [round(v, 1) for v in mark['center']],
                        'cad_xy': [round(world[0], 2), round(world[1], 2)],
                        'local_registration_support': local_support, 'state': 'PENDING'}
                 page_report['markups'].append(rec)
-                if mark['color'] == 'green':
-                    rec.update(state='NO_CHANGE', action='Patch Panel unchanged')
+                policy = markup_policy(mark['color']) or {}
+                if policy.get('site_action') == 'KEEP':
+                    patch_action = policy.get('patch_panel_action')
+                    rec.update(state='NO_CHANGE', action='KEEP_SITE',
+                               patch_action=patch_action, label_action=policy.get('label_action'))
+                    report['changes'].append({'op': 'KEEP', 'page': page_number, 'color': mark['color'],
+                                              'patch_action': patch_action,
+                                              'label_action': policy.get('label_action')})
                     continue
 
                 candidates = sorted((math.hypot(item['world'][0] - world[0], item['world'][1] - world[1]), idx)
@@ -210,15 +253,6 @@ def run(dxf_path, pdfs, out_dir):
                                                   'world': target['world'], 'dxf_handle_path': [p['start'] for p in target['path']]})
                         report['applied'].append({'color': 'pink', 'op': 'DELETE', 'block': target['name'],
                                                   'depth': target['depth'], 'world': target['world']})
-                    elif mark['color'] == 'yellow':
-                        editor.delete(target)
-                        used.add(best_idx)
-                        rec.update(state='CONFIRMED', action='SITE_REMOVE', patch_action='RESERVE')
-                        report['changes'].append({'op': 'SITE_REMOVE', 'page': page_number, 'color': 'yellow',
-                                                  'patch_action': 'RESERVE', 'block': target['name'],
-                                                  'world': target['world'], 'dxf_handle_path': [p['start'] for p in target['path']]})
-                        report['applied'].append({'color': 'yellow', 'op': 'DELETE', 'block': target['name'],
-                                                  'depth': target['depth'], 'world': target['world']})
                     elif mark['color'] == 'orange':
                         arrow = arrows.get(orange_index[id(mark)], {})
                         rec['arrow'] = arrow
@@ -226,6 +260,11 @@ def run(dxf_path, pdfs, out_dir):
                             reject(arrow.get('status', 'ARROW_NOT_CONFIRMED'), arrow.get('reason', 'Blue relocation arrow not confirmed.'))
                             continue
                         destination = R.page_px_to_cad(registration, *arrow['tip_px'])
+                        conflict = relocation_destination_conflict(
+                            target['world'], destination, instances, best_idx, relocation_guard)
+                        if conflict:
+                            reject('DESTINATION_CONFLICT', conflict)
+                            continue
                         editor.move(target, destination)
                         used.add(best_idx)
                         rec.update(state='CONFIRMED', action='MOVE_ENDPOINT',
