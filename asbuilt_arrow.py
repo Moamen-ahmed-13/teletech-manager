@@ -101,7 +101,7 @@ def detect_blue_arrow_tips(image, orange_regions):
     for oi,bb in enumerate(regs,1):
         if not bb: out[oi]={'status':'NOT_FOUND','confidence':0.0,'reason':'Orange region has no bbox.'};continue
         ox,oy,ow,oh=[float(v) for v in bb[:4]];ocx,ocy=ox+ow/2,oy+oh/2
-        max_gap=max(65.0,pm*0.055);max_len=pm*0.48;min_len=max(20.0,pm*0.007)
+        max_gap=max(35.0,pm*0.018);max_len=pm*0.48;min_len=max(20.0,pm*0.007)
         cands=[]
         others=[bj for oj,bj in enumerate(regs,1) if oj!=oi and bj]
         for gi,(xs,ys,gap) in enumerate(_local_groups(bgr,ox,oy,ow,oh,pm,others)):
@@ -156,7 +156,7 @@ def detect_blue_arrow_tips(image, orange_regions):
                 # Ballpoint arrows are often drawn as an open V: the two thin head strokes
                 # add lateral spread but almost no filled ink mass. The old mass-only
                 # threshold rejected exactly this common hand-drawn shape.
-                open_v_head = (ratio >= 0.55 and spread >= max(5.0, 4.5*shaft_w))
+                open_v_head = (ratio >= 0.85 and spread >= max(7.0, 5.0*shaft_w))
                 filled_head = (ratio >= 1.35 and spread >= 1.8*shaft_w)
                 head = bool(filled_head or open_v_head)
                 # Keep mass as supporting evidence, but let a clear wide V geometry
@@ -177,15 +177,17 @@ def detect_blue_arrow_tips(image, orange_regions):
             out[oi]={'status':'NOT_FOUND','confidence':0.0,'arrowhead_detected':False,'reason':'Blue strokes near orange have no usable stroke end.'};continue
         scored.sort(key=lambda z:-z['conf']);b=scored[0]
         amb=len(scored)>1 and scored[1]['head'] and (b['conf']-scored[1]['conf'])<0.12
-        ok=b['head'] and b['away'] and b['conf']>=0.52 and not amb
+        ok=(b['head'] and b['away'] and b['conf']>=0.70 and b['gap']<=max_gap and not amb)
         res={'status':'CONFIRMED' if ok else ('AMBIGUOUS' if amb else 'NOT_CONFIRMED'),'confidence':round(float(b['conf']),2),
+             'detection_confidence':round(float(b['conf']),2),'arrowhead_confidence':round(float(b['head_ratio']/(b['head_ratio']+1.0)),2),
              'arrowhead_detected':b['head'],'tip_px':[int(round(b['tip'][0])),int(round(b['tip'][1]))],
              'tip_norm':[int(round(b['tip'][0]/W*1000)),int(round(b['tip'][1]/H*1000))],
              'tail_px':[int(b['tail'][0]),int(b['tail'][1])],'stroke_bbox':b['bbox'],'stroke_length_px':round(b['length'],1),
              'orange_to_stroke_gap_px':round(b['gap'],1),'head_ratio':b['head_ratio'],'head_spread':b['head_spread'],
-             'origin':'orange_markup','candidates':len(scored)}
+             'origin':'orange_markup','candidates':len(scored),'max_allowed_gap_px':round(float(max_gap),1),
+             'geometry_valid':bool(b['head'] and b['away'] and b['gap']<=max_gap)}
         res['reason']=('Arrowhead found at stroke end; destination is the head tip.' if ok else
                        ('Two similar arrow candidates near this orange markup.' if amb else
-                        'Stroke found but no clear arrowhead / direction away from the orange marker.'))
+                        'Stroke found but geometry, arrowhead, direction, or orange-to-stroke gap failed conservative confirmation.'))
         out[oi]=res
     return out
