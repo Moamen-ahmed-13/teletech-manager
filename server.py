@@ -7370,6 +7370,12 @@ def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',
         confidence*=0.78
     if second is not None and second[0]-best[0] < 0.18:
         confidence=min(confidence,0.72)
+    # Never auto-suggest a destructive CAD match from page-normalized proximity
+    # alone. Without a verified page-to-CAD transform the coordinate systems
+    # may differ because of cropping, rotation, skew or scan margins.
+    registration_verified = mapped_xy is not None
+    if not registration_verified:
+        confidence=min(confidence,0.65)
     out=[]
     for rank,(_,dist,units,semantic_hits,t) in enumerate(scored[:8]):
         local_conf=confidence if rank==0 else max(0.05,confidence*math.exp(-0.8*(scored[rank][0]-best[0])))
@@ -7380,6 +7386,7 @@ def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',
                     'cad_y_norm':int(t.get('ny') or 0),'distance_norm':round(dist,1),
                     'distance_in_endpoint_spacing':round(units,3),
                     'semantic_match':bool(semantic_hits),'match_confidence':round(float(local_conf),2),
+                    'registration_verified':registration_verified,
                     'editable_direct':bool(t.get('editable_direct'))})
     return out
 
