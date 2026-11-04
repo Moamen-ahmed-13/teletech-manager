@@ -4,6 +4,9 @@ from asbuilt_apply import markup_policy, relocation_destination_conflict, reloca
 
 
 class AsBuiltRuleTests(unittest.TestCase):
+    def test_red_uses_the_same_delete_and_label_shift_policy_as_pink(self):
+        self.assertEqual(markup_policy('red'), markup_policy('pink'))
+
     def test_yellow_keeps_site_and_reserves_patch_panel_slot(self):
         self.assertEqual(markup_policy('yellow'), {
             'site_action': 'KEEP',
