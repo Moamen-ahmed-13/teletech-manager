@@ -35,6 +35,17 @@ def _local_groups(bgr,ox,oy,ow,oh,pm,others):
     wn,wlab=cv2.connectedComponents(weak,connectivity=8)
     keep=np.zeros(wn,bool)
     if wn>1:
+        # Scanned ballpoint strokes can be too faint to meet the strong-ink
+        # threshold. Retain coherent moderately-blue components as well;
+        # geometric arrowhead validation later rejects isolated blue noise.
+        flat_labels=wlab.ravel()
+        areas=np.bincount(flat_labels,minlength=wn).astype(np.float64)
+        sat_sum=np.bincount(flat_labels,weights=hsv[:,:,1].ravel(),minlength=wn)
+        blue_sum=np.bincount(flat_labels,weights=blueness.ravel(),minlength=wn)
+        valid=areas>=8
+        mean_sat=sat_sum/np.maximum(areas,1.0)
+        mean_blue=blue_sum/np.maximum(areas,1.0)
+        keep=valid&(mean_sat>=18)&(mean_blue>=6)
         keep[np.unique(wlab[strong>0])]=True
         keep[0]=False
     m=keep[wlab].astype(np.uint8)
