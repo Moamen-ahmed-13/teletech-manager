@@ -7606,6 +7606,35 @@ def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=No
                         row['arrow_destination_xy']=xy
                         row['relocation_state']='CONFIRMED'
                         row['relocation_block_reason']=''
+            # Orange destination choices must remain available even when the blue
+            # ballpoint arrow is faint, broken, ambiguous, or not detected. In that
+            # case the markup position is only a search-order hint; every endpoint
+            # on the selected floor remains selectable and no coordinate is inferred.
+            if color=='orange' and catalog and not row.get('arrow_destination_options'):
+                floor_dest_count=sum(1 for t in catalog if isinstance(t,dict) and
+                                     (not floor_hint or str(t.get('floor') or '')==str(floor_hint)))
+                row['arrow_destination_options']=_asbuilt_match_markup_to_cad(
+                    row,catalog,per_floor,floor_hint=floor_hint,
+                    page_to_cad_affine=page_to_cad_affine,
+                    registration_diagnostics=registration_diagnostics,
+                    max_results=max(1,floor_dest_count))
+                row['destination_candidates_basis']='orange_markup_search_order_only'
+            if color=='orange' and catalog and row.get('arrow_destination_options'):
+                floor_dest_count=sum(1 for t in catalog if isinstance(t,dict) and
+                                     (not floor_hint or str(t.get('floor') or '')==str(floor_hint)))
+                # Keep the complete floor candidate set. The UI provides search
+                # instead of truncating the operator's choices to the first few rows.
+                if len(row['arrow_destination_options']) < floor_dest_count:
+                    probe=row.get('arrow_destination_norm')
+                    if probe and len(probe)>=2:
+                        dest_probe={'x_norm':int(probe[0]),'y_norm':int(probe[1])}
+                    else:
+                        dest_probe=row
+                    row['arrow_destination_options']=_asbuilt_match_markup_to_cad(
+                        dest_probe,catalog,per_floor,floor_hint=floor_hint,
+                        page_to_cad_affine=page_to_cad_affine,
+                        registration_diagnostics=registration_diagnostics,
+                        max_results=max(1,floor_dest_count))
             if catalog:
                 opts=_asbuilt_match_markup_to_cad(row,catalog,per_floor,floor_hint=floor_hint,page_to_cad_affine=page_to_cad_affine,registration_diagnostics=registration_diagnostics)
                 row['candidate_options']=opts
@@ -7617,7 +7646,7 @@ def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=No
                 # The source endpoint cannot also be offered as the relocation
                 # destination. Keep the mapped arrow-tip coordinate available;
                 # if it resolves back to the source, require a different review choice.
-                if color=='orange' and row.get('arrow_destination_xy') is not None and row.get('arrow_destination_options'):
+                if color=='orange' and row.get('arrow_destination_options'):
                     source_id=str(row.get('suggested_target_id') or '')
                     row['arrow_destination_options']=[
                         option for option in row['arrow_destination_options']
@@ -9620,11 +9649,29 @@ window.renderVisionReview=function(j){
  }
  h+='</div><div class="actions" style="display:flex;flex-direction:row;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:8px;margin-top:8px"><button id="bulkAdd" style="width:auto;min-width:0;flex:0 0 auto">Add selected to revision list</button><button id="bulkAll" class="alt" style="width:auto;min-width:0;flex:0 0 auto">Select all matched</button><button id="bulkNone" class="alt" style="width:auto;min-width:0;flex:0 0 auto">Clear</button><span id="bulkMsg" class="miniNote"></span></div></div>';
  h+='<div style="max-height:420px;overflow:auto"><table><thead><tr><th>Use</th><th>Page</th><th>Floor</th><th>Color</th><th>CAD endpoint</th><th>Match</th><th>Action</th></tr></thead><tbody>';
- inv.forEach((m,i)=>{const o=m.candidate_options||[],d=m.arrow_destination_options||[],pct=Math.round(Number((o[0]||{}).match_confidence||0)*100),dpct=Math.round(Number((d[0]||{}).match_confidence||0)*100),arrow=m.blue_arrow_detection||{},rule=RULES[m.color],moveReady=rule&&rule.kind==='move'&&arrow.status==='CONFIRMED'&&['CONFIRMED','DESTINATION_REVIEW_REQUIRED','REGISTRATION_FAILED'].includes(m.relocation_state)&&arrow.arrowhead_detected&&d.length>0,blocked=!rule||!o.length||(rule.kind==='move'&&!moveReady);
-  const tip=m.arrow_destination_xy||[],dconf=Number(m.destination_match_confidence||0),dstatus=m.destination_match_status||'NOT_EVALUATED',tipReady=dstatus==='CONFIRMED'&&dconf>=0.78,destLabel=tip.length?'Registered arrow tip (CAD) X='+Number(tip[0]).toFixed(2)+', Y='+Number(tip[1]).toFixed(2):(m.relocation_state==='REGISTRATION_FAILED'?'Registration failed / no CAD coordinate':(m.relocation_block_reason||'No confirmed arrow destination'));const destHtml=rule&&rule.kind==='move'?'<div class="miniNote" style="margin-top:5px">Blue pen arrow: '+esc(arrow.status||'NOT_FOUND')+' · detection '+Math.round(Number(arrow.detection_confidence||arrow.confidence||0)*100)+'% · arrowhead '+(arrow.arrowhead_detected?'detected':'not confirmed')+(Array.isArray(arrow.tail_px)&&Array.isArray(arrow.tip_px)?'<br>Stroke px: '+arrow.tail_px.join(', ')+' → '+arrow.tip_px.join(', '):'')+(arrow.head_ratio!==undefined?'<br>Head ratio: '+Number(arrow.head_ratio).toFixed(2)+' · spread/shaft: '+Number(arrow.head_spread||0).toFixed(2)+' · gap: '+Number(arrow.orange_to_stroke_gap_px||0).toFixed(1)+' px (limit '+Number(arrow.max_allowed_gap_px||0).toFixed(1)+')':'')+'<br>Destination match: '+Math.round(dconf*100)+'% · '+esc(dstatus)+'<br>'+esc(destLabel)+(dstatus==='REVIEW_REQUIRED'?'<div class="miniNote">Select a CAD endpoint manually; nearest-point auto-move is blocked.</div>':'')+'</div><select class="bdest" style="min-width:260px;margin-top:4px" '+(!d.length?'disabled':'')+'>'+(d.length?'<option value="">Choose destination confirmation...</option>'+(tipReady?'<option value="__ARROW_TIP__">Confirm registered arrow tip coordinates</option>':'')+d.map(x=>'<option value="'+esc(x.target_id||'')+'">Manual CAD destination: '+esc((x.label||x.block||x.target_id||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No mapped destination candidates</option>')+'</select>':'<span>'+esc(rule?rule.patch:'REVIEW')+'</span>';
+ inv.forEach((m,i)=>{const o=m.candidate_options||[],d=m.arrow_destination_options||[],pct=Math.round(Number((o[0]||{}).match_confidence||0)*100),dpct=Math.round(Number((d[0]||{}).match_confidence||0)*100),arrow=m.blue_arrow_detection||{},rule=RULES[m.color],moveReady=rule&&rule.kind==='move'&&o.length>0&&d.length>0,blocked=!rule||!o.length||(rule.kind==='move'&&!moveReady);
+  const tip=m.arrow_destination_xy||[],dconf=Number(m.destination_match_confidence||0),dstatus=m.destination_match_status||'NOT_EVALUATED',tipReady=dstatus==='CONFIRMED'&&dconf>=0.78,destLabel=tip.length?'Registered arrow tip (CAD) X='+Number(tip[0]).toFixed(2)+', Y='+Number(tip[1]).toFixed(2):(m.relocation_state==='REGISTRATION_FAILED'?'Registration failed / no CAD coordinate':(m.relocation_block_reason||'No confirmed arrow destination'));const destHtml=rule&&rule.kind==='move'?'<div class="miniNote" style="margin-top:5px">Blue pen arrow: '+esc(arrow.status||'NOT_FOUND')+' · detection '+Math.round(Number(arrow.detection_confidence||arrow.confidence||0)*100)+'% · arrowhead '+(arrow.arrowhead_detected?'detected':'not confirmed')+(Array.isArray(arrow.tail_px)&&Array.isArray(arrow.tip_px)?'<br>Stroke px: '+arrow.tail_px.join(', ')+' → '+arrow.tip_px.join(', '):'')+(arrow.head_ratio!==undefined?'<br>Head ratio: '+Number(arrow.head_ratio).toFixed(2)+' · spread/shaft: '+Number(arrow.head_spread||0).toFixed(2)+' · gap: '+Number(arrow.orange_to_stroke_gap_px||0).toFixed(1)+' px (limit '+Number(arrow.max_allowed_gap_px||0).toFixed(1)+')':'')+'<br>Destination match: '+Math.round(dconf*100)+'% · '+esc(dstatus)+'<br>'+esc(destLabel)+(dstatus==='REVIEW_REQUIRED'||!tip.length?'<div class="miniNote">Search and select any endpoint on this floor. Manual selection does not depend on arrow detection; automatic movement remains blocked.</div>':'')+'</div><input class="bdestSearch" type="search" placeholder="Search all floor endpoints by label, service, rack..." style="width:100%;min-width:260px;margin-top:4px"><select class="bdest" size="5" style="min-width:260px;width:100%;margin-top:4px" '+(!d.length?'disabled':'')+'>'+(d.length?'<option value="">Choose destination endpoint...</option>'+(tipReady?'<option value="__ARROW_TIP__">Confirm registered arrow tip coordinates</option>':'')+d.map(x=>'<option value="'+esc(x.target_id||'')+'">'+esc((x.label||x.block||x.target_id||'')+' | '+(x.service||'')+' | '+(x.rack||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No floor endpoints available</option>')+'</select>':'<span>'+esc(rule?rule.patch:'REVIEW')+'</span>';
   h+='<tr data-b="'+i+'"><td><input type="checkbox" class="bu" '+''+(blocked?' disabled':'')+'></td><td>'+Number(m.page_number||0)+'</td><td>'+esc(m.floor_hint||'')+'</td><td>'+colorDot(m.color)+'</td><td><select class="bt" style="min-width:260px" '+(!o.length?'disabled':'')+'>'+(o.length?'<option value="">Review source endpoint...</option>'+o.map((x,xi)=>'<option value="'+esc(x.target_id||'')+'"'+(xi===0&&pct>=78?' selected':'')+'>'+esc((x.label||x.block||x.target_id||'')+' | '+(x.service||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No CAD candidate</option>')+'</select></td><td class="'+(pct>=78?'confHigh':pct>=60?'confMid':'confLow')+'">Source '+pct+'%'+(pct<78&&o.length?'<div class="miniNote">choose the endpoint manually</div>':'')+(rule&&rule.kind==='move'?'<div class="miniNote">Destination '+dpct+'%</div>':'')+'</td><td>'+(rule&&rule.kind==='move'?'<span class="miniNote">MOVE_ENDPOINT · detected from blue pen</span>'+destHtml:destHtml)+'</td></tr>';
  });
  box.innerHTML=h+'</tbody></table></div>';
+ // Search is client-side over the complete endpoint list returned by the server.
+ box.querySelectorAll('tr[data-b]').forEach(r=>{
+   const search=r.querySelector('.bdestSearch'),sel=r.querySelector('.bdest');
+   if(!search||!sel)return;
+   const all=[...sel.options].map(o=>({value:o.value,text:o.textContent}));
+   search.addEventListener('input',()=>{
+     const q=search.value.trim().toLocaleLowerCase();
+     const chosen=sel.value;
+     sel.innerHTML='';
+     all.forEach(o=>{
+       if(!o.value||o.value==='__ARROW_TIP__'||!q||o.text.toLocaleLowerCase().includes(q)){
+         const opt=document.createElement('option');opt.value=o.value;opt.textContent=o.text;
+         if(o.value===chosen)opt.selected=true;
+         sel.appendChild(opt);
+       }
+     });
+   });
+ });
  const msg=t=>$('bulkMsg').textContent=t,rows=()=>[...box.querySelectorAll('tr[data-b]')];
  $('bulkAll').onclick=()=>rows().forEach(r=>{const c=r.querySelector('.bu');if(!c.disabled&&r.querySelector('.bt').value)c.checked=true});
  $('bulkNone').onclick=()=>rows().forEach(r=>r.querySelector('.bu').checked=false);
