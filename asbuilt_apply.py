@@ -244,8 +244,14 @@ def run(dxf_path, pdfs, out_dir):
     editor.write(output)
     report['output'] = output
     report['original_unchanged'] = file_sha256(dxf_path) == original_hash
+    try:
+        from asbuilt_validation import validate_export
+        report['validation'] = validate_export(dxf_path, output, report['applied'], original_sha256=original_hash)
+    except Exception as validation_error:
+        report['validation'] = {'ok': False, 'errors': [f'{type(validation_error).__name__}: {validation_error}']}
     report['summary'] = {'pages_processed': page_number, 'changes_applied': len(report['applied']),
-                         'review_items': len(report['review']), 'registration_failures': len(report['page_failures'])}
+                         'review_items': len(report['review']), 'registration_failures': len(report['page_failures']),
+                         'validation_ok': bool((report.get('validation') or {}).get('ok'))}
     with open(os.path.join(out_dir, 'asbuilt_report.json'), 'w', encoding='utf-8') as stream:
         json.dump(report, stream, ensure_ascii=False, indent=2)
     return report, editor
