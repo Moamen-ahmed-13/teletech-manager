@@ -7636,7 +7636,13 @@ def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=No
                         registration_diagnostics=registration_diagnostics,
                         max_results=max(1,floor_dest_count))
             if catalog:
-                opts=_asbuilt_match_markup_to_cad(row,catalog,per_floor,floor_hint=floor_hint,page_to_cad_affine=page_to_cad_affine,registration_diagnostics=registration_diagnostics)
+                floor_source_count=sum(1 for t in catalog if isinstance(t,dict) and
+                                       (not floor_hint or str(t.get('floor') or '')==str(floor_hint)))
+                opts=_asbuilt_match_markup_to_cad(
+                    row,catalog,per_floor,floor_hint=floor_hint,
+                    page_to_cad_affine=page_to_cad_affine,
+                    registration_diagnostics=registration_diagnostics,
+                    max_results=max(1,floor_source_count))
                 row['candidate_options']=opts
                 if opts:
                     row['suggested_target_id']=opts[0].get('target_id') or ''
@@ -9651,24 +9657,26 @@ window.renderVisionReview=function(j){
  h+='<div style="max-height:420px;overflow:auto"><table><thead><tr><th>Use</th><th>Page</th><th>Floor</th><th>Color</th><th>CAD endpoint</th><th>Match</th><th>Action</th></tr></thead><tbody>';
  inv.forEach((m,i)=>{const o=m.candidate_options||[],d=m.arrow_destination_options||[],pct=Math.round(Number((o[0]||{}).match_confidence||0)*100),dpct=Math.round(Number((d[0]||{}).match_confidence||0)*100),arrow=m.blue_arrow_detection||{},rule=RULES[m.color],moveReady=rule&&rule.kind==='move'&&o.length>0&&d.length>0,blocked=!rule||!o.length||(rule.kind==='move'&&!moveReady);
   const tip=m.arrow_destination_xy||[],dconf=Number(m.destination_match_confidence||0),dstatus=m.destination_match_status||'NOT_EVALUATED',tipReady=dstatus==='CONFIRMED'&&dconf>=0.78,destLabel=tip.length?'Registered arrow tip (CAD) X='+Number(tip[0]).toFixed(2)+', Y='+Number(tip[1]).toFixed(2):(m.relocation_state==='REGISTRATION_FAILED'?'Registration failed / no CAD coordinate':(m.relocation_block_reason||'No confirmed arrow destination'));const destHtml=rule&&rule.kind==='move'?'<div class="miniNote" style="margin-top:5px">Blue pen arrow: '+esc(arrow.status||'NOT_FOUND')+' · detection '+Math.round(Number(arrow.detection_confidence||arrow.confidence||0)*100)+'% · arrowhead '+(arrow.arrowhead_detected?'detected':'not confirmed')+(Array.isArray(arrow.tail_px)&&Array.isArray(arrow.tip_px)?'<br>Stroke px: '+arrow.tail_px.join(', ')+' → '+arrow.tip_px.join(', '):'')+(arrow.head_ratio!==undefined?'<br>Head ratio: '+Number(arrow.head_ratio).toFixed(2)+' · spread/shaft: '+Number(arrow.head_spread||0).toFixed(2)+' · gap: '+Number(arrow.orange_to_stroke_gap_px||0).toFixed(1)+' px (limit '+Number(arrow.max_allowed_gap_px||0).toFixed(1)+')':'')+'<br>Destination match: '+Math.round(dconf*100)+'% · '+esc(dstatus)+'<br>'+esc(destLabel)+(dstatus==='REVIEW_REQUIRED'||!tip.length?'<div class="miniNote">Search and select any endpoint on this floor. Manual selection does not depend on arrow detection; automatic movement remains blocked.</div>':'')+'</div><input class="bdestSearch" type="search" placeholder="Search all floor endpoints by label, service, rack..." style="width:100%;min-width:260px;margin-top:4px"><select class="bdest" size="5" style="min-width:260px;width:100%;margin-top:4px" '+(!d.length?'disabled':'')+'>'+(d.length?'<option value="">Choose destination endpoint...</option>'+(tipReady?'<option value="__ARROW_TIP__">Confirm registered arrow tip coordinates</option>':'')+d.map(x=>'<option value="'+esc(x.target_id||'')+'">'+esc((x.label||x.block||x.target_id||'')+' | '+(x.service||'')+' | '+(x.rack||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No floor endpoints available</option>')+'</select>':'<span>'+esc(rule?rule.patch:'REVIEW')+'</span>';
-  h+='<tr data-b="'+i+'"><td><input type="checkbox" class="bu" '+''+(blocked?' disabled':'')+'></td><td>'+Number(m.page_number||0)+'</td><td>'+esc(m.floor_hint||'')+'</td><td>'+colorDot(m.color)+'</td><td><select class="bt" style="min-width:260px" '+(!o.length?'disabled':'')+'>'+(o.length?'<option value="">Review source endpoint...</option>'+o.map((x,xi)=>'<option value="'+esc(x.target_id||'')+'"'+(xi===0&&pct>=78?' selected':'')+'>'+esc((x.label||x.block||x.target_id||'')+' | '+(x.service||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No CAD candidate</option>')+'</select></td><td class="'+(pct>=78?'confHigh':pct>=60?'confMid':'confLow')+'">Source '+pct+'%'+(pct<78&&o.length?'<div class="miniNote">choose the endpoint manually</div>':'')+(rule&&rule.kind==='move'?'<div class="miniNote">Destination '+dpct+'%</div>':'')+'</td><td>'+(rule&&rule.kind==='move'?'<span class="miniNote">MOVE_ENDPOINT · detected from blue pen</span>'+destHtml:destHtml)+'</td></tr>';
+  h+='<tr data-b="'+i+'"><td><input type="checkbox" class="bu" '+''+(blocked?' disabled':'')+'></td><td>'+Number(m.page_number||0)+'</td><td>'+esc(m.floor_hint||'')+'</td><td>'+colorDot(m.color)+'</td><td><input class="bsourceSearch" type="search" placeholder="Search source endpoint..." style="width:100%;min-width:240px"><select class="bt" size="5" style="min-width:260px;width:100%" '+(!o.length?'disabled':'')+'>'+(o.length?'<option value="">Review source endpoint...</option>'+o.map((x,xi)=>'<option value="'+esc(x.target_id||'')+'"'+(xi===0&&pct>=78?' selected':'')+'>'+esc((x.label||x.block||x.target_id||'')+' | '+(x.service||'')+' | '+(x.rack||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No CAD candidate</option>')+'</select></td><td class="'+(pct>=78?'confHigh':pct>=60?'confMid':'confLow')+'">Source '+pct+'%'+(pct<78&&o.length?'<div class="miniNote">choose the endpoint manually</div>':'')+(rule&&rule.kind==='move'?'<div class="miniNote">Destination '+dpct+'%</div>':'')+'</td><td>'+(rule&&rule.kind==='move'?'<span class="miniNote">MOVE_ENDPOINT · blue pen arrow</span>'+destHtml:destHtml)+'</td></tr>';
  });
  box.innerHTML=h+'</tbody></table></div>';
  // Search is client-side over the complete endpoint list returned by the server.
  box.querySelectorAll('tr[data-b]').forEach(r=>{
-   const search=r.querySelector('.bdestSearch'),sel=r.querySelector('.bdest');
-   if(!search||!sel)return;
-   const all=[...sel.options].map(o=>({value:o.value,text:o.textContent}));
-   search.addEventListener('input',()=>{
-     const q=search.value.trim().toLocaleLowerCase();
-     const chosen=sel.value;
-     sel.innerHTML='';
-     all.forEach(o=>{
-       if(!o.value||o.value==='__ARROW_TIP__'||!q||o.text.toLocaleLowerCase().includes(q)){
-         const opt=document.createElement('option');opt.value=o.value;opt.textContent=o.text;
-         if(o.value===chosen)opt.selected=true;
-         sel.appendChild(opt);
-       }
+   [['.bsourceSearch','.bt'],['.bdestSearch','.bdest']].forEach(([searchSel,selectSel])=>{
+     const search=r.querySelector(searchSel),sel=r.querySelector(selectSel);
+     if(!search||!sel)return;
+     const all=[...sel.options].map(o=>({value:o.value,text:o.textContent}));
+     search.addEventListener('input',()=>{
+       const q=search.value.trim().toLocaleLowerCase();
+       const chosen=sel.value;
+       sel.innerHTML='';
+       all.forEach(o=>{
+         if(!o.value||o.value==='__ARROW_TIP__'||!q||o.text.toLocaleLowerCase().includes(q)){
+           const opt=document.createElement('option');opt.value=o.value;opt.textContent=o.text;
+           if(o.value===chosen)opt.selected=true;
+           sel.appendChild(opt);
+         }
+       });
      });
    });
  });
