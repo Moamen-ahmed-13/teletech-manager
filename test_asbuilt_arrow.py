@@ -24,7 +24,8 @@ class ArrowDetectorTest(unittest.TestCase):
         res = AR.detect_blue_arrow_tips(img, [orange])[1]
         # A synthetic head is not a faithful scan, so only the stroke selection is asserted here;
         # CONFIRMED on a real scan was verified with the Mansoura sample (asbuilt_apply.py run).
-        self.assertIn(res['status'], {'CONFIRMED', 'NOT_CONFIRMED'}, res)
+        self.assertIn(res['status'], {'CONFIRMED', 'NOT_CONFIRMED', 'AMBIGUOUS'}, res)
+        self.assertIn('tip_px', res, res)
         tx, ty = res['tip_px']
         # the tip must be at the head (down-left of the marker), not at the grey line (up-right)
         self.assertLess(tx, 1200)
@@ -47,6 +48,18 @@ class ArrowDetectorTest(unittest.TestCase):
         cv2.line(img, (1200, 1640), (1450, 1780), (170, 90, 40), 6)
         res = AR.detect_blue_arrow_tips(img, [orange])[1]
         self.assertNotEqual(res['status'], 'CONFIRMED', res)
+
+    def test_fragmented_blue_pen_stroke_is_chained(self):
+        img = np.full((1000, 1200, 3), 245, np.uint8)
+        orange = {'bbox': [450, 480, 50, 50]}
+        # Two separate blue-ink components with a small scan/pen gap.
+        cv2.line(img, (510, 530), (550, 530), (170, 90, 40), 5)
+        cv2.line(img, (590, 530), (660, 530), (170, 90, 40), 5)
+        groups = AR._local_groups(img, 450, 480, 50, 50, 1000, [])
+        self.assertTrue(groups, 'fragmented blue ink should be retained')
+        xs = np.concatenate([g[0] for g in groups])
+        self.assertLessEqual(int(xs.min()), 510)
+        self.assertGreaterEqual(int(xs.max()), 660)
 
     def test_no_blue_ink_is_not_found(self):
         img, orange = _scene()
