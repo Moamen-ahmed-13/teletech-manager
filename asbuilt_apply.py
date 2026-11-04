@@ -128,8 +128,15 @@ def run(dxf_path, pdfs, out_dir):
 
             for mark in marks:
                 world = R.page_px_to_cad(registration, *mark['center'])
+                diag = registration.get('diagnostics') or {}
+                grid = diag.get('inlier_grid_5x5') or []
+                gh, gw = image.shape[:2]
+                gx = max(0, min(4, int(float(mark['center'][0]) / max(gw, 1) * 5)))
+                gy = max(0, min(4, int(float(mark['center'][1]) / max(gh, 1) * 5)))
+                local_support = int(grid[gy][gx]) if len(grid) == 5 and len(grid[gy]) == 5 else 0
                 rec = {'color': mark['color'], 'page_px': [round(v, 1) for v in mark['center']],
-                       'cad_xy': [round(world[0], 2), round(world[1], 2)], 'state': 'PENDING'}
+                       'cad_xy': [round(world[0], 2), round(world[1], 2)],
+                       'local_registration_support': local_support, 'state': 'PENDING'}
                 page_report['markups'].append(rec)
                 if mark['color'] == 'green':
                     rec.update(state='NO_CHANGE', action='Patch Panel unchanged')
@@ -153,6 +160,9 @@ def run(dxf_path, pdfs, out_dir):
                     report['review'].append({'page': page_number, 'color': mark['color'],
                                              'cad_xy': rec['cad_xy'], 'state': state, 'reason': reason})
 
+                if local_support < 3:
+                    reject('LOCAL_REGISTRATION_WEAK', f'Only {local_support} local registration inliers support this markup; destructive CAD edit blocked.')
+                    continue
                 if d1 > MATCH_MAX:
                     reject('NOT_MATCHED', f'Nearest endpoint is {d1:.1f} CAD units away (limit {MATCH_MAX:.0f}).')
                     continue
