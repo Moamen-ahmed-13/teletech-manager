@@ -7645,6 +7645,10 @@ def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=No
                         row['destination_match_status']='NO_CANDIDATE'
                         row['relocation_state']='DESTINATION_UNMATCHED'
                         row['relocation_block_reason']='Arrow tip is registered, but no CAD endpoint candidate could be matched. Manual destination review is required.'
+            if color=='orange' and row.get('relocation_state')=='CONFIRMED' and not row.get('arrow_destination_options'):
+                row['destination_match_status']='NO_CANDIDATE'
+                row['relocation_state']='DESTINATION_UNMATCHED'
+                row['relocation_block_reason']='Arrow tip is registered, but no CAD endpoint candidate could be matched. Manual destination review is required.'
             inv.append(row)
     return inv
 
