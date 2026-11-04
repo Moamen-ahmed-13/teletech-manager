@@ -7375,6 +7375,7 @@ def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',
     # may differ because of cropping, rotation, skew or scan margins.
     registration_verified = mapped_xy is not None
     local_support = None
+    center_support = None
     grid=(registration_diagnostics or {}).get('inlier_grid_5x5')
     if registration_verified and isinstance(grid,list) and len(grid)==5:
         try:
