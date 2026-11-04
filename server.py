@@ -7307,7 +7307,7 @@ def _asbuilt_sheet_floor(page_number, total_pages):
     return pair_floor.get(idx,'')
 
 
-def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',page_to_cad_affine=None):
+def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',page_to_cad_affine=None,registration_diagnostics=None):
     """Rank endpoint candidates using registered CAD distance, endpoint density,
     semantic hints (when present), and nearest-vs-runner-up separation.
 
@@ -7374,6 +7374,21 @@ def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',
     # alone. Without a verified page-to-CAD transform the coordinate systems
     # may differ because of cropping, rotation, skew or scan margins.
     registration_verified = mapped_xy is not None
+    local_support = None
+    grid=(registration_diagnostics or {}).get('inlier_grid_5x5')
+    if registration_verified and isinstance(grid,list) and len(grid)==5:
+        try:
+            gx=max(0,min(4,int(float(sx)/1000.0*5)))
+            gy=max(0,min(4,int(float(sy)/1000.0*5)))
+            local_support=int(grid[gy][gx])
+            # Do not trust a page-wide transform equally everywhere. Sparse local
+            # feature support means this particular markup must stay in human review.
+            if local_support<3:
+                confidence=min(confidence,0.65)
+            elif local_support<7:
+                confidence=min(confidence,0.77)
+        except Exception:
+            local_support=None
     if not registration_verified:
         confidence=min(confidence,0.65)
     out=[]
@@ -7386,7 +7401,7 @@ def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',
                     'cad_y_norm':int(t.get('ny') or 0),'distance_norm':round(dist,1),
                     'distance_in_endpoint_spacing':round(units,3),
                     'semantic_match':bool(semantic_hits),'match_confidence':round(float(local_conf),2),
-                    'registration_verified':registration_verified,
+                    'registration_verified':registration_verified,'local_registration_support':local_support,
                     'editable_direct':bool(t.get('editable_direct'))})
     return out
 
@@ -7502,7 +7517,7 @@ def _asbuilt_detect_blue_arrow_tips(image_path, orange_regions):
     except Exception as e:
         return {'_error':{'status':'ERROR','reason':'Arrow detector failed: '+str(e)}}
 
-def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=None, per_floor=None, floor_hint='',page_to_cad_affine=None):
+def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=None, per_floor=None, floor_hint='',page_to_cad_affine=None,registration_diagnostics=None):
     """Deterministic code-only markup inventory from OpenCV regions.
 
     This is intentionally NOT an entity matcher. Every detected colored region is
@@ -7576,9 +7591,9 @@ def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=No
                         row['relocation_state']='CONFIRMED'
                         row['relocation_block_reason']=''
                         dest_probe={'x_norm':int(tip[0]),'y_norm':int(tip[1])}
-                        row['arrow_destination_options']=_asbuilt_match_markup_to_cad(dest_probe,catalog,per_floor,floor_hint=floor_hint,page_to_cad_affine=page_to_cad_affine) if catalog else []
+                        row['arrow_destination_options']=_asbuilt_match_markup_to_cad(dest_probe,catalog,per_floor,floor_hint=floor_hint,page_to_cad_affine=page_to_cad_affine,registration_diagnostics=registration_diagnostics) if catalog else []
             if catalog:
-                opts=_asbuilt_match_markup_to_cad(row,catalog,per_floor,floor_hint=floor_hint,page_to_cad_affine=page_to_cad_affine)
+                opts=_asbuilt_match_markup_to_cad(row,catalog,per_floor,floor_hint=floor_hint,page_to_cad_affine=page_to_cad_affine,registration_diagnostics=registration_diagnostics)
                 row['candidate_options']=opts
                 if opts:
                     row['suggested_target_id']=opts[0].get('target_id') or ''
@@ -7715,7 +7730,8 @@ def asbuilt_chat_start(path,filename,api_key='',model='',label_pattern=None,firs
         rows.append(row)
         inventory.extend(_asbuilt_code_markup_inventory(
             cv,pno,'',catalog=match_catalog,per_floor=match_per_floor,
-            floor_hint=floor_hint,page_to_cad_affine=page_affine
+            floor_hint=floor_hint,page_to_cad_affine=page_affine,
+            registration_diagnostics=registration_info.get('diagnostics') or {}
         ))
 
     chat_id=uuid.uuid4().hex
