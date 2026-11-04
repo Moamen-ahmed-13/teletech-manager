@@ -61,6 +61,13 @@ class ArrowDetectorTest(unittest.TestCase):
         self.assertLessEqual(int(xs.min()), 510)
         self.assertGreaterEqual(int(xs.max()), 660)
 
+    def test_faint_blue_ballpoint_is_not_discarded(self):
+        img = np.full((1000, 1200, 3), 245, np.uint8)
+        # Low-saturation blue ink: weak mask accepts it, strong mask does not.
+        cv2.line(img, (510, 530), (660, 530), (220, 210, 200), 4)
+        groups = AR._local_groups(img, 450, 480, 50, 50, 1000, [])
+        self.assertTrue(groups, 'faint but coherent blue pen should be retained')
+
     def test_no_blue_ink_is_not_found(self):
         img, orange = _scene()
         img[:] = 245
