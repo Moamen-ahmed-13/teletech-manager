@@ -7410,56 +7410,45 @@ def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',
     return out
 
 def _asbuilt_register_page_to_floor(page_image_path, floor):
-    """Register one uploaded As-Built page to the original DXF for its assigned floor.
+    """Register one uploaded As-Built page to the original DXF of its floor.
 
-    Returns an affine over normalized page coordinates (0..1000), or None.
-    This mirrors asbuilt_apply.py and never writes to the source DXF.
+    Uses asbuilt_registration.register_page_to_dxf (SIFT + MAGSAC + validation).
+    Returns an affine over normalized page coordinates (0..1000), or None with a
+    reason (-> manual review).  Never writes to the source DXF.
     """
-    if cv2 is None or np is None or _ASBUILT_DXFMINI is None or _asbuilt_render_cad is None or _ASBUILT_REGISTRATION is None:
+    if cv2 is None or np is None or _ASBUILT_REGISTRATION is None:
         return None, {'ok': False, 'reason': 'Registration dependencies are unavailable.'}
     try:
         floor_result = PROJECT_RESULTS.get(str(floor)) or {}
         drawing_path = str(floor_result.get('drawing') or '').strip()
         if not drawing_path or not Path(drawing_path).is_file():
             return None, {'ok': False, 'reason': f'Original CAD drawing for {floor} was not found.'}
-        stat = Path(drawing_path).stat()
-        cache_key = (str(Path(drawing_path).resolve()), stat.st_mtime_ns, stat.st_size)
-        cached = _ASBUILT_REGISTRATION_CACHE.get(cache_key)
-        if cached is None:
-            entities, blocks = _ASBUILT_DXFMINI.read_dxf(drawing_path)
-            polylines = _ASBUILT_DXFMINI.flatten(entities, blocks)
-            renderable = [np.asarray(line, dtype=float) for line in polylines if len(line) >= 2]
-            if not renderable:
-                return None, {'ok': False, 'reason': f'No renderable CAD linework for {floor}.'}
-            all_points = np.concatenate(renderable, axis=0)
-            bbox = (float(np.percentile(all_points[:, 0], 1)), float(np.percentile(all_points[:, 1], 1)),
-                    float(np.percentile(all_points[:, 0], 99)), float(np.percentile(all_points[:, 1], 99)))
-            cad_image, pixels_per_unit = _asbuilt_render_cad(polylines, bbox, 3000, 24)
-            # SIFT registration requires a single-channel image.
-            cad_gray = cv2.cvtColor(cad_image, cv2.COLOR_BGR2GRAY)
-            x0, y0, _, y1 = [float(v) for v in bbox]
-            px_to_world = np.array([[1.0 / pixels_per_unit, 0.0, x0 - 24.0 / pixels_per_unit],
-                                    [0.0, -1.0 / pixels_per_unit, y1 + 24.0 / pixels_per_unit]], dtype=float)
-            cached = (cad_gray, px_to_world)
-            _ASBUILT_REGISTRATION_CACHE.clear()
-            _ASBUILT_REGISTRATION_CACHE[cache_key] = cached
-        cad_image, px_to_world = cached
         page_image = cv2.imread(str(page_image_path), cv2.IMREAD_COLOR)
         if page_image is None:
             return None, {'ok': False, 'reason': 'Could not read the rendered As-Built page image.'}
-        registration = _ASBUILT_REGISTRATION.register_page_to_cad(page_image, cad_image, px_to_world)
-        if not registration.get('ok'):
-            return None, {'ok': False, 'reason': registration.get('reason') or 'Page-to-CAD registration rejected.',
-                          'diagnostics': registration.get('diagnostics') or {}}
-        M = np.asarray(registration['page_px_to_cad'], dtype=float)
+        geom = _ASBUILT_REGISTRATION.load_cad_geometry(drawing_path)
+        reg = _ASBUILT_REGISTRATION.register_page_to_dxf(page_image, geom)
+        summary = reg.summary()
+        if not reg.ok:
+            return None, {'ok': False, 'reason': '; '.join(reg.reasons) or 'Page-to-CAD registration rejected.',
+                          'status': reg.status, 'diagnostics': summary}
         page_h, page_w = page_image.shape[:2]
-        sx, sy = page_w / 1000.0, page_h / 1000.0
-        affine = [float(M[0,0]*sx), float(M[0,1]*sy),
-                  float(M[1,0]*sx), float(M[1,1]*sy),
-                  float(M[0,2]), float(M[1,2])]
+        gu, gv = np.meshgrid(np.linspace(0, 1000, 7), np.linspace(0, 1000, 7))
+        uv = np.stack([gu.ravel(), gv.ravel()], axis=1)
+        px = np.stack([uv[:, 0] * page_w / 1000.0, uv[:, 1] * page_h / 1000.0], axis=1)
+        world = np.asarray(reg.to_world(px), dtype=float)
+        A = np.hstack([uv, np.ones((len(uv), 1))])
+        cx, *_ = np.linalg.lstsq(A, world[:, 0], rcond=None)
+        cy, *_ = np.linalg.lstsq(A, world[:, 1], rcond=None)
+        resid = np.hypot(A @ cx - world[:, 0], A @ cy - world[:, 1])
+        span = float(np.ptp(world, axis=0).max()) or 1.0
+        if float(resid.max()) > 0.01 * span:
+            return None, {'ok': False, 'reason': 'Registration is not affine-like across the page; manual review required.',
+                          'diagnostics': summary}
+        affine = [float(cx[0]), float(cx[1]), float(cy[0]), float(cy[1]), float(cx[2]), float(cy[2])]
         if not all(math.isfinite(v) for v in affine) or abs(affine[0]*affine[3]-affine[1]*affine[2]) < 1e-12:
             return None, {'ok': False, 'reason': 'Computed page-to-CAD transform is invalid.'}
-        return affine, {'ok': True, 'diagnostics': registration.get('diagnostics') or {}}
+        return affine, {'ok': True, 'status': reg.status, 'confidence': reg.confidence, 'diagnostics': summary}
     except Exception as exc:
         return None, {'ok': False, 'reason': f'{type(exc).__name__}: {exc}'}
 
