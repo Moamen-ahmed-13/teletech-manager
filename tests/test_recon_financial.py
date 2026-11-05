@@ -66,6 +66,7 @@ class FinancialCalculationTests(unittest.TestCase):
         self.assertEqual(len(parsed['rows']), 1)
         self.assertIn('كابل', parsed['rows'][0]['description'])
         self.assertEqual(parsed['rows'][0]['qty'], 10.0)
+        self.assertEqual(parsed['rows'][0]['unit'], 'ROLL')
         self.assertEqual(parsed['rows'][0]['total'], 5000.0)
 
     def test_mir_unit_conflict_is_not_counted(self):
