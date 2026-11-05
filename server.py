@@ -9882,7 +9882,6 @@ def _recon_dispatch(pdir, st, a, q, user):
         return {'ok':True,'imported':done,'skipped':skipped}
     if a=='import_repo_docs':
         root=RECON.Path(__file__).resolve().parent
-        excluded={'.git','venv','webui-venv','.venv','node_modules','workspace','__pycache__','dist','build'}
         candidates=[]
         for f in root.iterdir():
             if not f.is_file(): continue
