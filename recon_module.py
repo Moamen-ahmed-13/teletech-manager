@@ -1532,7 +1532,7 @@ def compute(st):
                      'unit': ub, 'unit_source': usrc, 'ring_unit': ring_unit, 'boq_qty': qty, 'unit_price': effective_unit_price, 'boq_value': _r(boq_value, 2), 'sheet_total': it['total_price'],
                      'recorded_qty': _r(recorded), 'confirmed_qty': _r(confirmed), 'pending_qty': _r(pending), 'not_approved_qty': _r(notappr),
                      'unit_conflict_qty': _r(uconf), 'remaining_qty': _r(remaining), 'qty_pct': _r(qty_pct, 2), 'mir_value': _r(mir_value, 2),
-                     'remaining_value': _r(rem_value, 2), 'fin_pct': _r(fin_pct, 2), 'invoice_value': invoice_value, 'financial_value': _r(financial_value, 2), 'financial_source': financial_source, 'unavailable': unavailable, 'status': status,
+                     'remaining_value': _r(rem_value, 2), 'fin_pct': _r(fin_pct, 2), 'invoice_value': invoice_value, 'financial_value': _r(financial_value, 2), 'financial_source': financial_source, 'invoice_over_boq': invoice_over, 'unavailable': unavailable, 'status': status,
                      'flags': sorted(set(flags)), 'sources': sources, 'invoice_sources': invoice_sources, 'by_status': {k: _r(v) for k, v in by_status.items()},
                      'awaiting_review': awaiting, 'n_records': len(by_item[it['id']]), 'note': st['boq_overrides'].get(it['id'], {}).get('note')})
 
@@ -1561,7 +1561,7 @@ def compute(st):
     for row in rows:
         b = brands.setdefault(row['brand_key'], {'brand': row['brand'], 'key': row['brand_key'], 'items': 0, 'items_valued': 0, 'items_unvalued': 0,
                                                  'qty_by_unit': {}, 'boq_qty_total': 0.0, 'confirmed_qty_total': 0.0, 'unspecified_unit_items': 0, 'unspecified_qty_items': 0, 'boq_value': 0.0, 'mir_value': 0.0, 'remaining_value': 0.0,
-                                                 'items_with_confirmed': 0, 'missing_mir': [], 'over_boq': [], 'awaiting_review': [], 'unmatched_mir_records': 0})
+                                                 'items_with_confirmed': 0, 'missing_mir': [], 'over_boq': [], 'financial_over_boq': [], 'awaiting_review': [], 'unmatched_mir_records': 0})
         b['items'] += 1
         if row['boq_value'] is not None and row['financial_value'] is not None:
             b['items_valued'] += 1; b['boq_value'] += row['boq_value']; b['mir_value'] += row['financial_value']; b['remaining_value'] += row['remaining_value']
@@ -1582,6 +1582,7 @@ def compute(st):
         if (row['confirmed_qty'] or 0) > 0: b['items_with_confirmed'] += 1
         if row['status'] == 'no_mir': b['missing_mir'].append(row['row_ref'])
         if row['status'] == 'over_boq': b['over_boq'].append(row['row_ref'])
+        if row.get('invoice_over_boq'): b['financial_over_boq'].append(row['row_ref'])
         if row['awaiting_review']: b['awaiting_review'].append(row['row_ref'])
     for rv in recs:
         if rv['approved_boq_id'] is None:
