@@ -539,7 +539,7 @@ def ocr_status():
 def render_pages(project_dir, doc, dpi=200):
     """Render every page to PNG (cached). Returns [{'page': n, 'path': Path}]."""
     rd = recon_dir(project_dir)
-    pdf = stored_path(project_dir, 'mir', doc)
+    pdf = stored_path(project_dir, doc.get('kind', 'mir'), doc)
     outs = [(n, rd / 'pages' / ('%s_p%d.png' % (doc['id'], n))) for n in range(1, int(doc['pages']) + 1)]
     if all(p.is_file() for _, p in outs):
         return [{'page': n, 'path': p} for n, p in outs]
@@ -566,9 +566,9 @@ def render_pages(project_dir, doc, dpi=200):
 
 
 def page_image_path(project_dir, st, doc_id, page):
-    doc = next((d for d in st['mir_docs'] if d['id'] == doc_id), None)
+    doc = next((d for d in _all_docs(st) if d['id'] == doc_id), None)
     if not doc:
-        raise ReconError('MIR document not found in this project.')
+        raise ReconError('PDF document not found in this project.')
     page = int(page)
     if page < 1 or page > int(doc['pages']):
         raise ReconError('Page out of range.')
@@ -1612,9 +1612,9 @@ def export_xlsx(st, comp, out_path, project_name=''):
     # ---- Detailed (built first so other sheets can reference it)
     wd = wb.active; wd.title = 'Detailed Reconciliation'
     cols = ['Item Code (S.N)', 'BOQ Row Ref', 'Description', 'Part #', 'Brand', 'Unit', 'Original BOQ Qty', 'Recorded MIR Qty (all matched)',
-            'Confirmed MIR Qty', 'Remaining Qty', 'Unit Price', 'Original BOQ Value', 'MIR Value', 'Remaining Value', 'Qty %', 'Financial %',
-            'Status', 'Flags', 'Source MIR documents / pages']
-    head(wd, 1, cols, [10, 16, 44, 18, 14, 8, 12, 14, 12, 12, 12, 16, 16, 16, 9, 10, 16, 34, 52])
+            'Confirmed MIR Qty', 'Remaining Qty', 'Effective Unit Price', 'Original BOQ Value', 'MIR Estimate', 'Invoice Value', 'Recognized Financial Value', 'Remaining Value', 'Qty %', 'Financial %',
+            'Status', 'Flags', 'Source documents / pages']
+    head(wd, 1, cols, [10, 16, 44, 18, 14, 8, 12, 14, 12, 12, 12, 16, 16, 16, 16, 16, 9, 10, 16, 34, 52])
     for n, x in enumerate(comp['items'], 2):
         src = '; '.join('%s p%s (%s, qty %g %s, status %s%s)' % (s['file'], s['page'], s['ref_no'] or 'no ref', s['qty'], s['unit'] or '', s['status'] or '?', '' if s['reviewed'] else ', UNREVIEWED') for s in x['sources'])
         vals = [x['code'], x['row_ref'], x['description'], x['part'], x['brand'], x['unit'] or 'unspecified', x['boq_qty'], x['recorded_qty'], x['confirmed_qty']]
@@ -1624,23 +1624,25 @@ def export_xlsx(st, comp, out_path, project_name=''):
         wd.cell(row=n, column=10, value='=G%d-I%d' % (n, n) if qok else 'N/A')
         pok = x['unit_price'] is not None
         wd.cell(row=n, column=11, value=x['unit_price'] if pok else 'N/A')
-        wd.cell(row=n, column=12, value='=G%d*K%d' % (n, n) if (qok and pok) else 'N/A')
-        wd.cell(row=n, column=13, value='=I%d*K%d' % (n, n) if pok else 'N/A')
-        wd.cell(row=n, column=14, value='=L%d-M%d' % (n, n) if (qok and pok) else 'N/A')
-        wd.cell(row=n, column=15, value='=I%d/G%d' % (n, n) if (qok and x['boq_qty'] > 0) else 'N/A')
-        wd.cell(row=n, column=16, value='=M%d/L%d' % (n, n) if (qok and pok and x['boq_value'] and x['boq_value'] > 0) else 'N/A')
-        wd.cell(row=n, column=17, value=x['status'].replace('_', ' '))
-        wd.cell(row=n, column=18, value=', '.join(x['flags']))
-        wd.cell(row=n, column=19, value=src)
+        wd.cell(row=n, column=12, value=x['boq_value'] if x['boq_value'] is not None else 'N/A')
+        wd.cell(row=n, column=13, value=x['mir_value'] if x['mir_value'] is not None else 'N/A')
+        wd.cell(row=n, column=14, value=x.get('invoice_value') if x.get('invoice_value') is not None else 'N/A')
+        wd.cell(row=n, column=15, value=x.get('financial_value') if x.get('financial_value') is not None else 'N/A')
+        wd.cell(row=n, column=16, value=x['remaining_value'] if x['remaining_value'] is not None else 'N/A')
+        wd.cell(row=n, column=17, value=x['qty_pct'] if x['qty_pct'] is not None else 'N/A')
+        wd.cell(row=n, column=18, value=x['fin_pct'] if x['fin_pct'] is not None else 'N/A')
+        wd.cell(row=n, column=19, value=x['status'].replace('_', ' '))
+        wd.cell(row=n, column=20, value=', '.join(x['flags']))
+        wd.cell(row=n, column=21, value=src)
         for c in (7, 8, 9, 10): wd.cell(row=n, column=c).number_format = NUM
-        for c in (11, 12, 13, 14): wd.cell(row=n, column=c).number_format = MONEY
-        for c in (15, 16): wd.cell(row=n, column=c).number_format = PCT
+        for c in (11, 12, 13, 14, 15, 16): wd.cell(row=n, column=c).number_format = MONEY
+        for c in (17, 18): wd.cell(row=n, column=c).number_format = PCT
         fill = {'over_boq': 'F8D7DA', 'complete': 'D4EDDA', 'partial': 'FFF3CD', 'pending_review': 'FFE5B4', 'no_mir': 'EEEEEE'}.get(x['status'])
         if fill: wd.cell(row=n, column=17).fill = PatternFill('solid', fgColor=fill)
-        for c in range(1, 20):
-            wd.cell(row=n, column=c).border = BOX; wd.cell(row=n, column=c).alignment = Alignment(wrap_text=c in (3, 18, 19), vertical='top')
+        for c in range(1, 22):
+            wd.cell(row=n, column=c).border = BOX; wd.cell(row=n, column=c).alignment = Alignment(wrap_text=c in (3, 20, 21), vertical='top')
     last = max(2, len(comp['items']) + 1)
-    wd.auto_filter.ref = 'A1:S%d' % last
+    wd.auto_filter.ref = 'A1:U%d' % last
     DR = "'Detailed Reconciliation'!"
 
     # ---- Executive summary
