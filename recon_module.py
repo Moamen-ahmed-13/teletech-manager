@@ -1744,21 +1744,22 @@ def export_xlsx(st, comp, out_path, project_name=''):
         wbs.cell(row=tn, column=c, value='=SUM(%s2:%s%d)' % (colL, colL, tn - 2)).number_format = MONEY
     wbs.cell(row=tn + 1, column=1, value='Quantities of different units are never added together; brands are never merged.')
 
-    # ---- MIR records
-    wr = wb.create_sheet('MIR Extraction Records')
-    head(wr, 1, ['Record ID', 'Source PDF', 'Page', 'Origin', 'OCR: MIR ref', 'OCR: date', 'OCR: description', 'OCR: unit', 'OCR: Q.T', 'OCR: TOTAL', 'OCR conf %',
-                 'Reviewed: MIR ref', 'Reviewed: date', 'Reviewed: description', 'Reviewed: unit', 'Reviewed: qty', 'MIR status', 'Brand', 'Review status',
+    # ---- MIR and invoice extraction records
+    wr = wb.create_sheet('Source Extraction Records')
+    head(wr, 1, ['Record ID', 'Source type', 'Source PDF', 'Page', 'Origin', 'OCR: document ref', 'OCR: date', 'OCR: description', 'OCR: unit', 'OCR: Q.T', 'OCR: line amount / total', 'OCR conf %',
+                 'Reviewed: document ref', 'Reviewed: date', 'Reviewed: description', 'Reviewed: unit', 'Reviewed: qty', 'Reviewed: confirmation/status', 'Brand', 'Review status',
                  'Match state', 'Matched BOQ row', 'Match method', 'Matched/reviewed by', 'Flags'],
-         [12, 26, 6, 8, 11, 11, 36, 8, 8, 8, 8, 11, 11, 36, 8, 9, 12, 12, 12, 12, 16, 12, 14, 40])
+         [12, 10, 26, 6, 8, 15, 11, 36, 8, 8, 16, 8, 15, 11, 36, 8, 9, 18, 12, 12, 12, 16, 12, 14, 40])
     for n, r in enumerate(comp['records'], 2):
         o, u, m = r['ocr'], r['user'], r['match']
-        vals = [r['id'], r['filename'], r['page'], r['origin'], o.get('ref_no'), o.get('date'), o.get('description'), o.get('unit'), o.get('qty'), o.get('total'), o.get('conf'),
-                u.get('ref_no'), u.get('date'), u.get('description'), u.get('unit'), u.get('qty'),
-                (u.get('mir_status') or '') and '%s - %s' % (u['mir_status'], MIR_STATUS_LABELS[u['mir_status']]), u.get('brand'), r['review_status'],
+        is_invoice = r.get('doc_kind') == 'invoice'
+        status_text = ('Reviewed / confirmed' if is_invoice and u.get('mir_status') == 'A' else (('%s - %s' % (u['mir_status'], MIR_STATUS_LABELS[u['mir_status']])) if u.get('mir_status') else ''))
+        vals = [r['id'], 'Invoice' if is_invoice else 'MIR', r['filename'], r['page'], r['origin'], o.get('ref_no'), o.get('date'), o.get('description'), o.get('unit'), o.get('qty'), o.get('total'), o.get('conf'),
+                u.get('ref_no'), u.get('date'), u.get('description'), u.get('unit'), u.get('qty'), status_text, u.get('brand'), r['review_status'],
                 m.get('state') or 'not matched', r['approved_boq_id'] or m.get('boq_id') or '', m.get('method') or '', (m.get('decided_by') or r.get('edited_by') or ''), ', '.join(r['flags'])]
         for i, v in enumerate(vals, 1):
-            c = wr.cell(row=n, column=i, value=v); c.border = BOX; c.alignment = Alignment(wrap_text=i in (7, 14, 24), vertical='top')
-    wr.auto_filter.ref = 'A1:X%d' % max(2, len(comp['records']) + 1)
+            c = wr.cell(row=n, column=i, value=v); c.border = BOX; c.alignment = Alignment(wrap_text=i in (8, 15, 25), vertical='top')
+    wr.auto_filter.ref = 'A1:Y%d' % max(2, len(comp['records']) + 1)
 
     # ---- Unmatched & review-required
     wu = wb.create_sheet('Unmatched & Review-Required')
@@ -1768,7 +1769,7 @@ def export_xlsx(st, comp, out_path, project_name=''):
         why = [f for f in r['flags'] if f not in ('manual_entry',)]
         if r['approved_boq_id'] is None or r['review_status'] != 'reviewed' or any(f.startswith('status_') or f in ('duplicate', 'unit_conflict') for f in why):
             st_ = r['match'].get('state') or 'not matched'
-            wu.append(['MIR record', r['id'], '%s p%s' % (r['filename'], r['page']), r['eff']['description'], r['eff']['qty'], r['eff']['unit'],
+            wu.append(['Invoice record' if r.get('doc_kind') == 'invoice' else 'MIR record', r['id'], '%s p%s' % (r['filename'], r['page']), r['eff']['description'], r['eff']['qty'], r['eff']['unit'],
                        'match: %s; review: %s; %s' % (st_, r['review_status'], ', '.join(why) or '-')]); n += 1
     for x in comp['items']:
         if x['status'] in ('no_mir', 'pending_review', 'over_boq', 'no_confirmed'):
