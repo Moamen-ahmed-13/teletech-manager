@@ -317,7 +317,9 @@ def _ref_from_filename(name):
 
 
 def _invoice_ref_from_filename(name):
-    return Path(str(name or '')).stem[:80]
+    stem = Path(str(name or '')).stem
+    m = re.search(r'(?:invoice|inv|فاتورة)\\s*(?:رقم|no\\.?|number|#)?\\s*([A-Z0-9][A-Z0-9/\\-]{0,24})', stem, re.I)
+    return m.group(1) if m else stem[:80]
 
 
 def stored_path(project_dir, kind, meta):
@@ -576,9 +578,10 @@ def page_image_path(project_dir, st, doc_id, page):
 
 
 def _tesseract_lines(img_path, langs=None, psm=6):
-    """OCR one image (English only: table text is English; adding Arabic only injects garbage into descriptions)."""
+    """OCR one image using the requested installed Tesseract languages."""
     cmd = tesseract_cmd()
-    out = subprocess.run([cmd, str(img_path), 'stdout', '--psm', str(psm), '-l', 'eng', 'tsv'],
+    lang_arg = str(langs or 'eng')
+    out = subprocess.run([cmd, str(img_path), 'stdout', '--psm', str(psm), '-l', lang_arg, 'tsv'],
                          capture_output=True, text=True, timeout=240, encoding='utf-8', errors='replace')
     if out.returncode != 0:
         raise ReconError('Tesseract failed: %s' % out.stderr.strip()[:200])
@@ -823,6 +826,14 @@ def _ocr_page_legacy(pg, doc):
             'status': {'value': None, 'confidence': 'none', 'ink': [], 'note': 'plain OCR: status not read'}, 'raw_text': raw[:4000]}
 
 
+def _clean_invoice_desc(value):
+    s = str(value or '')
+    s = re.sub(r'[^\\w\\s()\\-/#&+.,]', ' ', s, flags=re.UNICODE)
+    words = re.findall(r'[A-Za-z0-9\\u0600-\\u06ff]+(?:[-/#&+.,][A-Za-z0-9\\u0600-\\u06ff]+)*', s)
+    while words and len(words[0]) <= 1: words.pop(0)
+    return ' '.join(words).strip()
+
+
 def parse_invoice_lines(lines, filename_hint=None):
     """Generic invoice OCR: extracts likely item rows as drafts, never auto-approves them."""
     texts = [str(x.get('text') or '') for x in lines]
@@ -848,7 +859,7 @@ def parse_invoice_lines(lines, filename_hint=None):
                 unit = u
                 desc = re.sub(re.escape(word), ' ', desc, flags=re.I)
                 break
-        desc = _clean_desc(desc)
+        desc = _clean_invoice_desc(desc)
         if len(norm_alnum(desc)) < 4: continue
         qty = rate = amount = None
         if len(vals) >= 3: qty, rate, amount = vals[-3], vals[-2], vals[-1]
@@ -873,7 +884,8 @@ def _ocr_pages(project_dir, doc, status, progress=None):
             for pg in pages:
                 if progress: progress(pg['page'], len(pages))
                 variants = _image_variants(pg['path'], tmp)
-                lines = _tesseract_lines(variants[0][1]) if variants else []
+                invoice_lang = 'eng+ara' if 'ara' in (status.get('langs') or []) else 'eng'
+                lines = _tesseract_lines(variants[0][1], langs=invoice_lang) if variants else []
                 parsed = parse_invoice_lines(lines, doc.get('filename'))
                 parsed.update({'engine': 'invoice-tesseract', 'template': 'invoice', 'supplier': None,
                                'status': {'value': None, 'confidence': 'review-required', 'note': 'Reviewer confirmation required'}})
@@ -1349,7 +1361,7 @@ def compute(st):
         is_invoice = docs.get(r['doc_id'], {}).get('kind') == 'invoice'
         if r['review_status'] != 'reviewed': flags.append('not_reviewed')
         if e['qty'] is None and not is_invoice: flags.append('qty_missing')
-        if e['qty'] is not None and e['total'] is not None and abs(e['qty'] - e['total']) > 1e-9: flags.append('qty_total_differ')
+        if not is_invoice and e['qty'] is not None and e['total'] is not None and abs(e['qty'] - e['total']) > 1e-9: flags.append('qty_total_differ')
         if not is_invoice:
             if not e['mir_status']: flags.append('status_missing')
             elif e['mir_status'] not in count_status: flags.append('status_not_counted_' + e['mir_status'])
