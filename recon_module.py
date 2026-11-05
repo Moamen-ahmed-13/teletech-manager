@@ -1347,7 +1347,7 @@ def compute(st):
             ref_docs.setdefault(ref_digits.lstrip('0') or '0', {}).setdefault(r['doc_id'], set()).add(norm_alnum(e['description']))
         flags = list(r.get('ocr_flags', []))
         if r['review_status'] != 'reviewed': flags.append('not_reviewed')
-        if e['qty'] is None: flags.append('qty_missing')
+        if e['qty'] is None and not is_invoice: flags.append('qty_missing')
         if e['qty'] is not None and e['total'] is not None and abs(e['qty'] - e['total']) > 1e-9: flags.append('qty_total_differ')
         is_invoice = docs.get(r['doc_id'], {}).get('kind') == 'invoice'
         if not is_invoice:
@@ -1424,11 +1424,12 @@ def compute(st):
         ub, usrc = boq_unit(st, it)
         qty, up = it['qty'], it['unit_price']
         sheet_total = it.get('total_price')
-        effective_unit_price = up if up is not None and up >= 0 else (sheet_total / qty if qty and qty > 0 and sheet_total is not None and sheet_total >= 0 else None)
+        effective_unit_price = (sheet_total / qty if qty and qty > 0 and sheet_total is not None and sheet_total >= 0 else (up if up is not None and up >= 0 else None))
         flags = list(it['flags'])
         recorded = confirmed = pending = notappr = uconf = 0.0
         by_status = {'A': 0.0, 'B': 0.0, 'C': 0.0, 'D': 0.0, 'unknown': 0.0}
         sources, awaiting = [], pending_ptr[it['id']]
+        invoice_sources = []
         unit_unverified = False
         counted_units = set()
         for rv in by_item[it['id']]:
@@ -1468,7 +1469,9 @@ def compute(st):
         for ir in invoice_by_item[it['id']]:
             if ir['review_status'] != 'reviewed' or 'duplicate' in ir['flags']: continue
             amount = ir['eff'].get('total')
-            if amount is not None and amount >= 0: invoice_amount += amount; invoice_lines += 1
+            if amount is not None and amount >= 0:
+                invoice_amount += amount; invoice_lines += 1
+                invoice_sources.append({'file': ir['filename'], 'page': ir['page'], 'ref_no': ir['eff']['ref_no'], 'date': ir['eff']['date'], 'amount': amount, 'record_id': ir['id']})
         invoice_value = _r(invoice_amount, 2) if invoice_lines else None
         financial_value = invoice_value if invoice_value is not None else mir_value
         financial_source = 'invoice' if invoice_value is not None else ('mir_estimate' if mir_value is not None else None)
@@ -1499,7 +1502,7 @@ def compute(st):
                      'recorded_qty': _r(recorded), 'confirmed_qty': _r(confirmed), 'pending_qty': _r(pending), 'not_approved_qty': _r(notappr),
                      'unit_conflict_qty': _r(uconf), 'remaining_qty': _r(remaining), 'qty_pct': _r(qty_pct, 2), 'mir_value': _r(mir_value, 2),
                      'remaining_value': _r(rem_value, 2), 'fin_pct': _r(fin_pct, 2), 'invoice_value': invoice_value, 'financial_value': _r(financial_value, 2), 'financial_source': financial_source, 'unavailable': unavailable, 'status': status,
-                     'flags': sorted(set(flags)), 'sources': sources, 'by_status': {k: _r(v) for k, v in by_status.items()},
+                     'flags': sorted(set(flags)), 'sources': sources, 'invoice_sources': invoice_sources, 'by_status': {k: _r(v) for k, v in by_status.items()},
                      'awaiting_review': awaiting, 'n_records': len(by_item[it['id']]), 'note': st['boq_overrides'].get(it['id'], {}).get('note')})
 
     # ---- unmatched MIR records
@@ -1579,6 +1582,8 @@ def compute(st):
                'items_over_boq': sum(1 for x in rows if x['status'] == 'over_boq'),
                'mir_docs': len(st['mir_docs']), 'mir_docs_ocr_done': sum(1 for d in st['mir_docs'] if d.get('ocr_status') == 'done'),
                'invoice_docs': len(st.get('invoice_docs', [])), 'invoice_docs_ocr_done': sum(1 for d in st.get('invoice_docs', []) if d.get('ocr_status') == 'done'),
+               'invoice_records': sum(1 for r in recs if r.get('doc_kind') == 'invoice'),
+               'invoice_records_reviewed': sum(1 for r in recs if r.get('doc_kind') == 'invoice' and r['review_status'] == 'reviewed'),
                'mir_records': len(recs), 'records_reviewed': sum(1 for r in recs if r['review_status'] == 'reviewed'),
                'records_by_match_state': states, 'unmatched_mir_records': sum(1 for r in recs if r['approved_boq_id'] is None),
                'warnings': sum(1 for e in exceptions if e['severity'] in ('warning', 'error')),
