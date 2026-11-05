@@ -163,7 +163,7 @@ const flags=a=>(a||[]).map(f=>{const x=FL[f]||[f.replace(/_/g,' '),'c-mute'];ret
 const ST={complete:['Complete','c-ok'],partial:['Partial','c-info'],pending_review:['Pending review','c-warn'],no_mir:['No MIR','c-mute'],over_boq:['OVER BOQ','c-bad'],no_confirmed:['No confirmed qty','c-warn']};
 const MS={exact:['exact','c-ok'],suggested:['suggested','c-info'],ambiguous:['ambiguous','c-warn'],unmatched:['unmatched','c-bad'],approved:['approved','c-ok'],rejected:['rejected','c-mute'],needs_rematch:['needs rematch','c-warn'],not_matched:['not matched','c-mute']};
 function render(){
- const s=D.comp.summary;q('rcBadge').textContent=D.boq?`${s.boq_items} BOQ items · ${s.mir_docs} MIR PDFs`:'No BOQ';q('rcBadge').className='badge'+(D.boq?'':' neutral');
+ const s=D.comp.summary;q('rcBadge').textContent=D.boq?`${s.boq_items} BOQ items · ${s.mir_docs} MIR PDFs · ${s.invoice_docs||0} invoice PDFs`:'No BOQ';q('rcBadge').className='badge'+(D.boq?'':' neutral');
  q('rcOcr').innerHTML=D.ocr.available?chip('OCR: '+D.ocr.backend+' ('+(D.ocr.langs||[]).join(', ')+')','c-ok')+' <span class="small">OCR output is a draft only; handwriting and check-boxes are often misread.</span>':chip('OCR unavailable','c-bad')+' '+esc(D.ocr.message);
  const b=D.boq;
  q('rcBoqInfo').innerHTML=b
