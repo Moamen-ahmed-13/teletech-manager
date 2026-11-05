@@ -77,7 +77,7 @@ def load_state(project_dir):
         data.setdefault(k, v)
     for k, v in base['settings'].items():
         data['settings'].setdefault(k, v)
-    for d in data.get('mir_docs', []):
+    for d in list(data.get('mir_docs', [])) + list(data.get('invoice_docs', [])):
         # an OCR job that belonged to a previous server process can never finish: say so instead of showing "running" forever
         if d.get('ocr_status') == 'running' and d.get('ocr_proc') != _PROC_ID:
             d['ocr_status'] = 'interrupted'
