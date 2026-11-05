@@ -118,7 +118,7 @@ RECON_HTML = r'''
   </div>
   <details class="advanced"><summary>Import files already saved in project Documents</summary><div class="advInner"><div id="rcDocPick" class="sub">Loading...</div><div class="rc-bar"><button id="rcImport" class="alt">Import selected files</button></div></div></details>
   <div class="rc-doc-heading"><h4>المقايسة الحالية</h4><span class="small sub">Excel reference</span></div><div id="rcBoqInfo" class="sub">No BOQ yet.</div>
-  <div class="rc-doc-heading"><h4>ملفات MIR</h4><span id="rcMirCount" class="small sub">0 documents</span></div><div id="rcDocs"></div>
+  <div class="rc-doc-heading"><h4>ملفات MIR والفواتير</h4><span id="rcMirCount" class="small sub">0 documents</span></div><div id="rcDocs"></div>
  </div>
  <div class="rc-pane" id="rcP-rev">
   <div class="rc-bar"><button id="rcMatch">تشغيل المطابقة</button><button id="rcApproveExact" class="good">اعتماد المطابقات المؤكدة</button>
