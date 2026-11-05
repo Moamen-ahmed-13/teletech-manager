@@ -49,7 +49,7 @@ def _now():
 
 def recon_dir(project_dir):
     d = Path(project_dir) / 'reconciliation'
-    for sub in ('', 'boq', 'mir', 'pages', 'exports'):
+    for sub in ('', 'boq', 'mir', 'invoice', 'pages', 'exports'):
         (d / sub).mkdir(parents=True, exist_ok=True)
     return d
 
@@ -57,7 +57,7 @@ def recon_dir(project_dir):
 def _new_state():
     return {'version': 1, 'created_at': _now(), 'updated_at': None,
             'settings': {'currency_label': '', 'count_statuses': list(COUNT_STATUSES_DEFAULT)},
-            'boq': None, 'boq_history': [], 'boq_overrides': {}, 'mir_docs': [], 'records': [], 'audit': []}
+            'boq': None, 'boq_history': [], 'boq_overrides': {}, 'mir_docs': [], 'invoice_docs': [], 'records': [], 'audit': []}
 
 
 def load_state(project_dir):
@@ -254,7 +254,7 @@ def pdf_page_count(path):
 
 def save_upload(project_dir, st, kind, filename, payload, user, safe_name_fn, extra=None):
     """Validate + store an original file unchanged. kind: 'boq' | 'mir'."""
-    if kind not in ('boq', 'mir'):
+    if kind not in ('boq', 'mir', 'invoice'):
         raise ReconError('Unknown upload kind.')
     if not payload:
         raise ReconError('The file is empty.')
@@ -273,27 +273,28 @@ def save_upload(project_dir, st, kind, filename, payload, user, safe_name_fn, ex
         if not payload[:1024].lstrip().startswith(b'%PDF-'):
             raise ReconError('The file content is not a valid PDF.')
     sha = _sha256(payload)
-    known = [d for d in st['mir_docs']] + ([st['boq']['file']] if st.get('boq') else []) + list(st.get('boq_history', []))
+    known = list(st['mir_docs']) + list(st.get('invoice_docs', [])) + ([st['boq']['file']] if st.get('boq') else []) + list(st.get('boq_history', []))
     for d in known:
         if d.get('sha256') == sha:
             raise ReconError('This exact file was already uploaded to this project as "%s". Duplicate not added.' % d.get('filename'))
     rd = recon_dir(project_dir)
     fid = uuid.uuid4().hex
     stored = fid + ext
-    target = rd / ('boq' if kind == 'boq' else 'mir') / stored
+    target = rd / ('boq' if kind == 'boq' else ('invoice' if kind == 'invoice' else 'mir')) / stored
     with target.open('xb') as f:
         f.write(payload)
     meta = {'id': fid, 'filename': safe, 'stored_name': stored, 'sha256': sha, 'size_bytes': len(payload),
             'uploaded_by': (user or {}).get('username', ''), 'uploaded_at': _now()}
     try:
-        if kind == 'mir':
+        if kind in ('mir', 'invoice'):
             n = pdf_page_count(target)
             if n < 1 or n > MAX_PDF_PAGES:
                 raise ReconError('PDF must have between 1 and %d pages (this one has %d).' % (MAX_PDF_PAGES, n))
             meta.update({'pages': n, 'ocr_status': 'not_run', 'ocr_backend': None, 'ocr_at': None,
                          'doc_ref_no_hint': _ref_from_filename(safe)})
-            st['mir_docs'].append(meta)
-            _audit(st, user, 'MIR_UPLOAD', '%s pages=%d sha=%s' % (safe, n, sha[:12]))
+            meta['kind'] = kind
+            st['invoice_docs' if kind == 'invoice' else 'mir_docs'].append(meta)
+            _audit(st, user, 'INVOICE_UPLOAD' if kind == 'invoice' else 'MIR_UPLOAD', '%s pages=%d sha=%s' % (safe, n, sha[:12]))
         else:
             parsed = parse_boq(target, display_name=safe)
             if st.get('boq'):
@@ -315,8 +316,12 @@ def _ref_from_filename(name):
     return 'MIR-%03d' % int(m.group(1)) if m else ''
 
 
+def _invoice_ref_from_filename(name):
+    return Path(str(name or '')).stem[:80]
+
+
 def stored_path(project_dir, kind, meta):
-    base = (recon_dir(project_dir) / ('boq' if kind == 'boq' else 'mir')).resolve()
+    base = (recon_dir(project_dir) / ('boq' if kind == 'boq' else ('invoice' if kind == 'invoice' else 'mir'))).resolve()
     p = (base / str(meta['stored_name'])).resolve()
     if p.parent != base or not p.is_file():
         raise ReconError('Stored file is missing.')
@@ -782,7 +787,7 @@ def merge_variant_parses(parses, n_variants, hint_ref=None):
 
 
 def _new_record(doc, page, origin, ocr, flags=None):
-    return {'id': uuid.uuid4().hex[:12], 'doc_id': doc['id'], 'page': page, 'origin': origin,
+    return {'id': uuid.uuid4().hex[:12], 'doc_id': doc['id'], 'doc_kind': doc.get('kind', 'mir'), 'page': page, 'origin': origin,
             'ocr': ocr, 'user': {}, 'review_status': 'pending', 'match': {'state': None, 'boq_id': None, 'candidates': []},
             'dup_override': None, 'ocr_flags': flags or [], 'created_at': _now(), 'edited_by': None, 'edited_at': None}
 
@@ -818,9 +823,63 @@ def _ocr_page_legacy(pg, doc):
             'status': {'value': None, 'confidence': 'none', 'ink': [], 'note': 'plain OCR: status not read'}, 'raw_text': raw[:4000]}
 
 
+def parse_invoice_lines(lines, filename_hint=None):
+    """Generic invoice OCR: extracts likely item rows as drafts, never auto-approves them."""
+    texts = [str(x.get('text') or '') for x in lines]
+    blob = '\\n'.join(texts)
+    m = re.search(r'(?:invoice|inv\\.?|فاتورة|رقم\\s*الفاتورة)\\s*(?:no\\.?|number|#|:)?\\s*([A-Z0-9][A-Z0-9/\\-_]{1,30})', blob, re.I)
+    ref = m.group(1).strip() if m else _invoice_ref_from_filename(filename_hint)
+    dates = _date_candidates(blob)
+    rows, seen = [], set()
+    for line in lines:
+        raw = str(line.get('text') or '').strip()
+        if not raw or re.search(r'^(?:subtotal|grand\\s+total|tax|vat|total\\b|الإجمالي|الاجمالي|ضريبة)\\b', raw, re.I):
+            continue
+        nums = re.findall(r'(?<![A-Za-z])[-+]?\\d[\\d,]*(?:\\.\\d+)?', raw)
+        vals = [to_number(x) for x in nums]
+        vals = [x for x in vals if x is not None]
+        if not vals: continue
+        desc = raw
+        for token in reversed(nums): desc = re.sub(re.escape(token), ' ', desc, count=1)
+        unit = None
+        for word in reversed(re.findall(r'[A-Za-z\\u0600-\\u06ff]+', desc)):
+            u, _ = fuzzy_unit(word)
+            if u:
+                unit = u
+                desc = re.sub(re.escape(word), ' ', desc, flags=re.I)
+                break
+        desc = _clean_desc(desc)
+        if len(norm_alnum(desc)) < 4: continue
+        qty = rate = amount = None
+        if len(vals) >= 3: qty, rate, amount = vals[-3], vals[-2], vals[-1]
+        elif len(vals) == 2: qty, amount = vals[-2], vals[-1]
+        else: amount = vals[-1]
+        if amount is None or amount < 0 or (qty is not None and qty < 0): continue
+        key = (norm_alnum(desc), qty, amount)
+        if key in seen: continue
+        seen.add(key)
+        rows.append({'description': desc, 'unit': unit, 'qty': qty, 'total': amount, 'unit_price': rate,
+                     'conf': line.get('conf'), 'row_flags': ['invoice_ocr_draft']})
+    return {'ref_no': ref, 'date': dates[0] if dates else None, 'rows': rows,
+            'flags': ['invoice_ocr_draft'], 'raw_text': blob[:6000]}
+
+
 def _ocr_pages(project_dir, doc, status, progress=None):
     """Heavy part (touches no project state): render + read every page. Returns [(page_no, parsed_dict)]."""
     pages = render_pages(project_dir, doc)
+    if doc.get('kind') == 'invoice':
+        out = []; tmp = tempfile.mkdtemp(prefix='recon_invoice_')
+        try:
+            for pg in pages:
+                if progress: progress(pg['page'], len(pages))
+                variants = _image_variants(pg['path'], tmp)
+                lines = _tesseract_lines(variants[0][1]) if variants else []
+                parsed = parse_invoice_lines(lines, doc.get('filename'))
+                parsed.update({'engine': 'invoice-tesseract', 'template': 'invoice', 'supplier': None,
+                               'status': {'value': None, 'confidence': 'review-required', 'note': 'Reviewer confirmation required'}})
+                out.append((pg['page'], parsed))
+        finally: shutil.rmtree(tmp, ignore_errors=True)
+        return out
     try:
         import recon_vision as V
         use_vision = V.available()
@@ -890,7 +949,7 @@ def _apply_ocr(st, doc, results, user):
             if row.get('qty') is None and row.get('total') is None and 'qty_not_read' not in fl: fl.append('qty_not_read')
             # text below the item line (often handwriting) is kept for the reviewer but never mixed into the description used for matching
             rec = _new_record(doc, page_no, 'ocr', dict(base, description=row.get('description') or None, unit=row.get('unit'), qty=row.get('qty'),
-                                                         total=row.get('total'), conf=row.get('conf'), invoice_no=row.get('invoice_no'),
+                                                         total=row.get('total'), unit_price=row.get('unit_price'), conf=row.get('conf'), invoice_no=row.get('invoice_no'),
                                                          alts=row.get('alts'), extra_text=row.get('extra') or None, raw_text=''), list(dict.fromkeys(fl)))
             st['records'].append(rec); n_new += 1
     doc.update({'ocr_status': 'done', 'ocr_backend': 'tesseract (layout reader + 3-variant vote)', 'ocr_at': _now(), 'ocr_error': None, 'ocr_progress': None})
@@ -898,10 +957,14 @@ def _apply_ocr(st, doc, results, user):
     return n_new
 
 
+def _all_docs(st):
+    return list(st.get('mir_docs', [])) + list(st.get('invoice_docs', []))
+
+
 def _check_ocr_allowed(st, doc_id):
-    doc = next((d for d in st['mir_docs'] if d['id'] == doc_id), None)
+    doc = next((d for d in _all_docs(st) if d['id'] == doc_id), None)
     if not doc:
-        raise ReconError('MIR document not found in this project.')
+        raise ReconError('PDF document not found in this project.')
     status = ocr_status()
     if not status['available']:
         raise ReconError(status['message'])
@@ -934,7 +997,7 @@ def start_ocr(project_dir, st, doc_id, user):
 def _ocr_worker(project_dir, doc, status, user):
     def set_doc(fn):
         with locked_state(project_dir) as st:
-            d = next((x for x in st['mir_docs'] if x['id'] == doc['id']), None)
+            d = next((x for x in _all_docs(st) if x['id'] == doc['id']), None)
             if d is not None:
                 fn(st, d)
             return d is not None
@@ -969,9 +1032,9 @@ EDITABLE = ('description', 'unit', 'qty', 'total', 'ref_no', 'date', 'mir_status
 
 
 def add_manual_record(st, doc_id, page, user):
-    doc = next((d for d in st['mir_docs'] if d['id'] == doc_id), None)
+    doc = next((d for d in _all_docs(st) if d['id'] == doc_id), None)
     if not doc:
-        raise ReconError('MIR document not found in this project.')
+        raise ReconError('PDF document not found in this project.')
     page = int(page or 1)
     if page < 1 or page > int(doc['pages']):
         raise ReconError('Page out of range.')
@@ -1031,8 +1094,12 @@ def update_record(st, rec_id, fields, mark_reviewed, user):
         if not r['user'].get('description'): missing.append('description')
         # Unit is optional metadata; it never blocks review or numeric quantity subtraction.
         if r['user'].get('qty') is None: missing.append('qty (Q.T)')
-        if not r['user'].get('mir_status'): missing.append('MIR status (A/B/C/D)')
-        if not r['user'].get('ref_no'): missing.append('MIR ref no.')
+        is_invoice = r.get('doc_kind') == 'invoice'
+        if is_invoice:
+            if r['user'].get('total') is None: missing.append('invoice line amount')
+            if not r['user'].get('mir_status'): r['user']['mir_status'] = 'A'  # reviewer confirmation, never OCR auto-approval
+        elif not r['user'].get('mir_status'): missing.append('MIR status (A/B/C/D)')
+        if not r['user'].get('ref_no'): missing.append('invoice number' if is_invoice else 'MIR ref no.')
         if missing:
             raise ReconError('Cannot mark as reviewed - missing: %s. (Values are never guessed.)' % ', '.join(missing))
         r['review_status'] = 'reviewed'
@@ -1052,11 +1119,11 @@ def delete_record(st, rec_id, user):
 
 
 def delete_doc(project_dir, st, doc_id, user):
-    doc = next((d for d in st['mir_docs'] if d['id'] == doc_id), None)
+    doc = next((d for d in _all_docs(st) if d['id'] == doc_id), None)
     if not doc:
-        raise ReconError('MIR document not found.')
+        raise ReconError('PDF document not found.')
     st['records'] = [r for r in st['records'] if r['doc_id'] != doc_id]
-    st['mir_docs'].remove(doc)
+    (st['invoice_docs'] if doc.get('kind') == 'invoice' else st['mir_docs']).remove(doc)
     # the original file is kept on disk (evidence); it is only removed from the reconciliation set
     st.setdefault('removed_docs', []).append({**doc, 'removed_at': _now(), 'removed_by': (user or {}).get('username', '')})
     _audit(st, user, 'MIR_DOC_REMOVE', doc['filename'])
@@ -1233,7 +1300,7 @@ def compute(st):
     items = boq.get('items', [])
     idx = {it['id']: it for it in items}
     count_status = set(st['settings'].get('count_statuses') or COUNT_STATUSES_DEFAULT)
-    docs = {d['id']: d for d in st['mir_docs']}
+    docs = {d['id']: d for d in _all_docs(st)}
     exceptions = []
 
     def exc(sev, typ, ref, msg):
@@ -1245,22 +1312,23 @@ def compute(st):
     for record in st.get('records', []):
         records_by_doc_page.setdefault((record.get('doc_id'), int(record.get('page') or 1)), 0)
         records_by_doc_page[(record.get('doc_id'), int(record.get('page') or 1))] += 1
-    for doc in st.get('mir_docs', []):
+    for doc in _all_docs(st):
         doc_id = doc.get('id')
-        filename = doc.get('filename') or doc_id or '(unknown MIR file)'
+        filename = doc.get('filename') or doc_id or '(unknown PDF file)'
+        doc_kind = doc.get('kind', 'mir')
         ocr_status = doc.get('ocr_status') or 'not_run'
         if ocr_status != 'done':
             severity = 'error' if ocr_status == 'error' else 'warning'
             detail = ('OCR failed: %s' % (doc.get('ocr_error') or 'no error details')) if ocr_status == 'error' else ('OCR status is %s' % ocr_status)
-            exc(severity, 'mir_document_not_fully_read', str(filename), '%s: %s. Verify every page manually; unread documents are not assumed empty.' % (filename, detail))
+            exc(severity, ('invoice' if doc_kind == 'invoice' else 'mir') + '_document_not_fully_read', str(filename), '%s: %s. Verify every page manually; unread documents are not assumed empty.' % (filename, detail))
         try:
             page_count = max(0, int(doc.get('pages') or 0))
         except (TypeError, ValueError):
             page_count = 0
         for page_no in range(1, page_count + 1):
             if not records_by_doc_page.get((doc_id, page_no), 0):
-                exc('warning', 'mir_page_without_records', '%s p%d' % (filename, page_no),
-                    '%s page %d has no extracted or manually added MIR lines. Check the scan; if a line was missed, add it manually.' % (filename, page_no))
+                exc('warning', ('invoice' if doc_kind == 'invoice' else 'mir') + '_page_without_records', '%s p%d' % (filename, page_no),
+                    '%s page %d has no extracted or manually added lines. Check the scan; unread pages are never assumed empty.' % (filename, page_no))
 
     for w in boq.get('warnings', []):
         exc(w.get('severity', 'info'), 'boq_' + w.get('type', ''), w.get('ref', ''), w.get('message', ''))
@@ -1281,8 +1349,11 @@ def compute(st):
         if r['review_status'] != 'reviewed': flags.append('not_reviewed')
         if e['qty'] is None: flags.append('qty_missing')
         if e['qty'] is not None and e['total'] is not None and abs(e['qty'] - e['total']) > 1e-9: flags.append('qty_total_differ')
-        if not e['mir_status']: flags.append('status_missing')
-        elif e['mir_status'] not in count_status: flags.append('status_not_counted_' + e['mir_status'])
+        is_invoice = docs.get(r['doc_id'], {}).get('kind') == 'invoice'
+        if not is_invoice:
+            if not e['mir_status']: flags.append('status_missing')
+            elif e['mir_status'] not in count_status: flags.append('status_not_counted_' + e['mir_status'])
+        elif r['review_status'] != 'reviewed': flags.append('invoice_not_confirmed')
         if not e['unit']: flags.append('unit_missing')
         if not e['ref_no']: flags.append('ref_no_missing')
         c = (r.get('ocr') or {}).get('conf')
@@ -1300,7 +1371,7 @@ def compute(st):
                 keyseen[key] = r['id']
         m = r.get('match') or {}
         bid = m.get('boq_id') if m.get('state') == 'approved' else None
-        recs.append({'id': r['id'], 'doc_id': r['doc_id'], 'filename': d['filename'], 'page': r['page'], 'origin': r['origin'],
+        recs.append({'id': r['id'], 'doc_id': r['doc_id'], 'doc_kind': d.get('kind', 'mir'), 'filename': d['filename'], 'page': r['page'], 'origin': r['origin'],
                      'ocr': r['ocr'], 'user': r['user'], 'eff': e, 'review_status': r['review_status'], 'flags': flags,
                      'dup_of': dup_of, 'match': m, 'approved_boq_id': bid, 'edited_by': r.get('edited_by'), 'edited_at': r.get('edited_at')})
     groups = []  # same item + quantity on different MIR numbers: warn, flag, never auto-exclude
@@ -1339,9 +1410,10 @@ def compute(st):
 
     # ---- per BOQ item
     by_item = {it['id']: [] for it in items}
+    invoice_by_item = {it['id']: [] for it in items}
     for rv in recs:
         if rv['approved_boq_id'] in by_item:
-            by_item[rv['approved_boq_id']].append(rv)
+            (invoice_by_item if rv.get('doc_kind') == 'invoice' else by_item)[rv['approved_boq_id']].append(rv)
     pending_ptr = {it['id']: 0 for it in items}
     for rv in recs:
         m = rv['match']
@@ -1351,6 +1423,8 @@ def compute(st):
     for it in items:
         ub, usrc = boq_unit(st, it)
         qty, up = it['qty'], it['unit_price']
+        sheet_total = it.get('total_price')
+        effective_unit_price = up if up is not None and up >= 0 else (sheet_total / qty if qty and qty > 0 and sheet_total is not None and sheet_total >= 0 else None)
         flags = list(it['flags'])
         recorded = confirmed = pending = notappr = uconf = 0.0
         by_status = {'A': 0.0, 'B': 0.0, 'C': 0.0, 'D': 0.0, 'unknown': 0.0}
@@ -1368,7 +1442,7 @@ def compute(st):
             st_ = e['mir_status'] if e['mir_status'] in by_status else 'unknown'
             mu = canon_unit(e['unit'])
             # Quantity reconciliation is numeric per BOQ item; unit text is metadata and does not block subtraction.
-            conflict = False
+            conflict = bool(ub and mu and ub != mu)
             if rv['review_status'] != 'reviewed' or st_ == 'unknown':
                 pending += q; awaiting += 1; by_status['unknown'] += q if st_ == 'unknown' else 0
             elif conflict:
@@ -1383,16 +1457,24 @@ def compute(st):
                             'unit': e['unit'], 'status': e['mir_status'], 'reviewed': rv['review_status'] == 'reviewed', 'record_id': rv['id']})
         unavailable = {}
         qty_ok = qty is not None and qty >= 0
-        boq_value = qty * up if (qty_ok and up is not None and up >= 0) else None
+        boq_value = sheet_total if (sheet_total is not None and sheet_total >= 0) else (qty * effective_unit_price if (qty_ok and effective_unit_price is not None) else None)
         if not qty_ok: unavailable['boq_qty'] = 'BOQ quantity missing/invalid'
         if up is None or up < 0: unavailable['price'] = 'unit price missing/invalid - no financial values'
         remaining = (qty - confirmed) if qty_ok else None
         qty_pct = (confirmed / qty * 100) if (qty_ok and qty > 0) else None
         if qty_pct is None: unavailable['qty_pct'] = 'BOQ quantity is zero or unavailable'
-        mir_value = confirmed * up if (up is not None and up >= 0) else None
-        fin_pct = (mir_value / boq_value * 100) if (boq_value is not None and boq_value > 0 and mir_value is not None) else None
+        mir_value = confirmed * effective_unit_price if (effective_unit_price is not None and effective_unit_price >= 0) else None
+        invoice_amount = 0.0; invoice_lines = 0
+        for ir in invoice_by_item[it['id']]:
+            if ir['review_status'] != 'reviewed' or 'duplicate' in ir['flags']: continue
+            amount = ir['eff'].get('total')
+            if amount is not None and amount >= 0: invoice_amount += amount; invoice_lines += 1
+        invoice_value = _r(invoice_amount, 2) if invoice_lines else None
+        financial_value = invoice_value if invoice_value is not None else mir_value
+        financial_source = 'invoice' if invoice_value is not None else ('mir_estimate' if mir_value is not None else None)
+        fin_pct = (financial_value / boq_value * 100) if (boq_value is not None and boq_value > 0 and financial_value is not None) else None
         if fin_pct is None and 'price' not in unavailable: unavailable['fin_pct'] = 'BOQ value is zero or unavailable'
-        rem_value = (boq_value - mir_value) if (boq_value is not None and mir_value is not None) else None
+        rem_value = (boq_value - financial_value) if (boq_value is not None and financial_value is not None) else None
         over = qty_ok and confirmed > qty + 1e-9
         if over:
             flags.append('over_boq')
@@ -1413,10 +1495,10 @@ def compute(st):
         else: status = 'no_mir'
         rows.append({'item_id': it['id'], 'code': it['sn'] or '(no S.N)', 'row_ref': it['id'], 'description': it['item'] or it['reference'],
                      'reference': it['reference'], 'part': it['part'], 'brand': it['brand'] or '(no brand)', 'brand_key': brand_key(it['brand']) or '?',
-                     'unit': ub, 'unit_source': usrc, 'ring_unit': ring_unit, 'boq_qty': qty, 'unit_price': up, 'boq_value': _r(boq_value, 2), 'sheet_total': it['total_price'],
+                     'unit': ub, 'unit_source': usrc, 'ring_unit': ring_unit, 'boq_qty': qty, 'unit_price': effective_unit_price, 'boq_value': _r(boq_value, 2), 'sheet_total': it['total_price'],
                      'recorded_qty': _r(recorded), 'confirmed_qty': _r(confirmed), 'pending_qty': _r(pending), 'not_approved_qty': _r(notappr),
                      'unit_conflict_qty': _r(uconf), 'remaining_qty': _r(remaining), 'qty_pct': _r(qty_pct, 2), 'mir_value': _r(mir_value, 2),
-                     'remaining_value': _r(rem_value, 2), 'fin_pct': _r(fin_pct, 2), 'unavailable': unavailable, 'status': status,
+                     'remaining_value': _r(rem_value, 2), 'fin_pct': _r(fin_pct, 2), 'invoice_value': invoice_value, 'financial_value': _r(financial_value, 2), 'financial_source': financial_source, 'unavailable': unavailable, 'status': status,
                      'flags': sorted(set(flags)), 'sources': sources, 'by_status': {k: _r(v) for k, v in by_status.items()},
                      'awaiting_review': awaiting, 'n_records': len(by_item[it['id']]), 'note': st['boq_overrides'].get(it['id'], {}).get('note')})
 
@@ -1446,8 +1528,8 @@ def compute(st):
                                                  'qty_by_unit': {}, 'boq_qty_total': 0.0, 'confirmed_qty_total': 0.0, 'unspecified_unit_items': 0, 'unspecified_qty_items': 0, 'boq_value': 0.0, 'mir_value': 0.0, 'remaining_value': 0.0,
                                                  'items_with_confirmed': 0, 'missing_mir': [], 'over_boq': [], 'awaiting_review': [], 'unmatched_mir_records': 0})
         b['items'] += 1
-        if row['boq_value'] is not None and row['mir_value'] is not None:
-            b['items_valued'] += 1; b['boq_value'] += row['boq_value']; b['mir_value'] += row['mir_value']; b['remaining_value'] += row['remaining_value']
+        if row['boq_value'] is not None and row['financial_value'] is not None:
+            b['items_valued'] += 1; b['boq_value'] += row['boq_value']; b['mir_value'] += row['financial_value']; b['remaining_value'] += row['remaining_value']
         else:
             b['items_unvalued'] += 1
         # Brand progress: one bucket PER UNIT (never one total across rolls + pieces + ...). boq_qty_total /
@@ -1483,8 +1565,8 @@ def compute(st):
         brand_list.append(b)
     brand_list.sort(key=lambda b: -(b['boq_value'] or 0))
 
-    valued = [x for x in rows if x['boq_value'] is not None and x['mir_value'] is not None]
-    tot_boq = sum(x['boq_value'] for x in valued); tot_mir = sum(x['mir_value'] for x in valued)
+    valued = [x for x in rows if x['boq_value'] is not None and x['financial_value'] is not None]
+    tot_boq = sum(x['boq_value'] for x in valued); tot_mir = sum(x['financial_value'] for x in valued)
     states = {}
     for rv in recs:
         states[rv['match'].get('state') or 'not_matched'] = states.get(rv['match'].get('state') or 'not_matched', 0) + 1
@@ -1495,6 +1577,7 @@ def compute(st):
                'items_without_mir': sum(1 for x in rows if x['status'] == 'no_mir'),
                'items_over_boq': sum(1 for x in rows if x['status'] == 'over_boq'),
                'mir_docs': len(st['mir_docs']), 'mir_docs_ocr_done': sum(1 for d in st['mir_docs'] if d.get('ocr_status') == 'done'),
+               'invoice_docs': len(st.get('invoice_docs', [])), 'invoice_docs_ocr_done': sum(1 for d in st.get('invoice_docs', []) if d.get('ocr_status') == 'done'),
                'mir_records': len(recs), 'records_reviewed': sum(1 for r in recs if r['review_status'] == 'reviewed'),
                'records_by_match_state': states, 'unmatched_mir_records': sum(1 for r in recs if r['approved_boq_id'] is None),
                'warnings': sum(1 for e in exceptions if e['severity'] in ('warning', 'error')),
@@ -1708,7 +1791,7 @@ def api_payload(project_dir, st):
     if boq:
         meta = {k: boq[k] for k in ('filename', 'sheet', 'header_row', 'columns', 'warnings', 'sheets_considered', 'parsed_at', 'file')}
         meta['items'] = len(boq['items'])
-    return {'ok': True, 'ocr': ocr_status(), 'boq': meta, 'docs': st['mir_docs'], 'settings': st['settings'], 'comp': comp,
+    return {'ok': True, 'ocr': ocr_status(), 'boq': meta, 'docs': _all_docs(st), 'settings': st['settings'], 'comp': comp,
             'boq_items': [{'id': it['id'], 'label': '%s | %s | qty %s | %s' % (it['id'].split('!')[-1], (it['item'] or it['reference'])[:48], it['qty'] if it['qty'] is not None else '?', it['brand'])}
                           for it in (boq or {}).get('items', [])],
             'audit': st['audit'][-60:][::-1], 'updated_at': st.get('updated_at')}
