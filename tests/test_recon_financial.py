@@ -42,6 +42,8 @@ class FinancialCalculationTests(unittest.TestCase):
         parsed = R.parse_boq(fixture, display_name=fixture.name)
         self.assertGreater(len(parsed['items']), 0)
         self.assertTrue(any(item.get('qty') is not None for item in parsed['items']))
+        self.assertTrue(any(item.get('total_price') is not None or item.get('unit_price') is not None for item in parsed['items']),
+                        'The BOQ fixture should expose a financial amount or unit rate for reconciliation')
 
     def test_repository_invoice_pdf_produces_reviewable_draft_rows(self):
         fixture = Path(__file__).resolve().parents[1] / 'فاتورة رقم 1 بنى سويف لامر التوريد القديم.pdf'
