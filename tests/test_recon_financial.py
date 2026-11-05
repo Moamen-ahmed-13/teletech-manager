@@ -43,6 +43,31 @@ class FinancialCalculationTests(unittest.TestCase):
         self.assertGreater(len(parsed['items']), 0)
         self.assertTrue(any(item.get('qty') is not None for item in parsed['items']))
 
+    def test_repository_invoice_pdf_produces_reviewable_draft_rows(self):
+        fixture = Path(__file__).resolve().parents[1] / 'فاتورة رقم 1 بنى سويف لامر التوريد القديم.pdf'
+        if not fixture.is_file():
+            self.skipTest('Repository invoice fixture is not present in this checkout')
+        import shutil
+        import tempfile
+        import fitz
+        if not shutil.which('tesseract'):
+            self.skipTest('Tesseract is not installed')
+        rows = []
+        with tempfile.TemporaryDirectory(prefix='invoice_fixture_') as tmp:
+            with fitz.open(str(fixture)) as pdf:
+                for page_no, page in enumerate(pdf, 1):
+                    image = Path(tmp) / ('page_%d.png' % page_no)
+                    page.get_pixmap(matrix=fitz.Matrix(2.5, 2.5)).save(str(image))
+                    try:
+                        lines = R._tesseract_lines(image, langs='eng+ara')
+                    except R.ReconError as exc:
+                        if 'ara' in str(exc).lower():
+                            self.skipTest('Arabic Tesseract language pack is unavailable')
+                        raise
+                    parsed = R.parse_invoice_lines(lines, fixture.name)
+                    rows.extend(parsed['rows'])
+        self.assertGreater(len(rows), 0, 'The repository invoice scan should yield draft lines for manual review')
+
     def test_invoice_amount_is_used_instead_of_adding_to_mir_estimate(self):
         st = state([
             record('mir-1', 'mir', 'MIR-001', 2.0, None),
