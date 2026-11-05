@@ -1346,10 +1346,10 @@ def compute(st):
         if ref_digits:
             ref_docs.setdefault(ref_digits.lstrip('0') or '0', {}).setdefault(r['doc_id'], set()).add(norm_alnum(e['description']))
         flags = list(r.get('ocr_flags', []))
+        is_invoice = docs.get(r['doc_id'], {}).get('kind') == 'invoice'
         if r['review_status'] != 'reviewed': flags.append('not_reviewed')
         if e['qty'] is None and not is_invoice: flags.append('qty_missing')
         if e['qty'] is not None and e['total'] is not None and abs(e['qty'] - e['total']) > 1e-9: flags.append('qty_total_differ')
-        is_invoice = docs.get(r['doc_id'], {}).get('kind') == 'invoice'
         if not is_invoice:
             if not e['mir_status']: flags.append('status_missing')
             elif e['mir_status'] not in count_status: flags.append('status_not_counted_' + e['mir_status'])
