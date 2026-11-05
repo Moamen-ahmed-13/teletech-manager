@@ -9890,7 +9890,7 @@ def _recon_dispatch(pdir, st, a, q, user):
                 candidates.append((f,'boq'))
             elif ext=='.pdf' and re.search(r'invoice|فاتورة',f.name,re.I):
                 candidates.append((f,'invoice'))
-            elif ext=='.pdf' and re.search(r'\\bMIR\\b',f.stem,re.I):
+            elif ext=='.pdf' and re.search(r'MIR',f.stem,re.I):
                 candidates.append((f,'mir'))
         done=[]; skipped=[]
         for f,kind in candidates[:100]:
