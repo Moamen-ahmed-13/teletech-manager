@@ -143,6 +143,10 @@ class InvoiceTableGeometryTests(unittest.TestCase):
 
     def test_tsv_words_map_fleximax_values_by_unique_math_relation(self):
         words = [
+            # Explicit column headers are required before financial values can be assigned.
+            self.word('Qty', 720, 55, 28),
+            self.word('Price', 810, 55, 38),
+            self.word('Total', 900, 55, 38),
             self.word('37', 20, 100, 18),
             self.word('P/N', 90, 99),
             self.word('7601840-7', 135, 101, 85),
