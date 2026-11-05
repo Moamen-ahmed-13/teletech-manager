@@ -23,7 +23,7 @@ MIR_STATUS_LABELS = {'A': 'Approved', 'B': 'Approved with note', 'C': 'Not appro
 DEFINITION_NOTE = ('A MIR (Material Inspection Request) records material submitted for inspection/approval. '
                    'Confirmed MIR quantity is NOT proof of delivery, installation, consumption, or invoicing. '
                    'Quantities are counted only for reviewed records with an approved BOQ match and MIR status A or B; '
-                   'statuses C/D and unknown are reported separately.')
+                   'statuses C/D and unknown are reported separately. Approved invoice line amounts are used as financial evidence per BOQ row; when no approved invoice exists, the MIR-derived estimate is used instead, never added to it.')
 
 
 class ReconError(ValueError):
@@ -1614,8 +1614,11 @@ def compute(st):
                'invoice_docs': len(st.get('invoice_docs', [])), 'invoice_docs_ocr_done': sum(1 for d in st.get('invoice_docs', []) if d.get('ocr_status') == 'done'),
                'invoice_records': sum(1 for r in recs if r.get('doc_kind') == 'invoice'),
                'invoice_records_reviewed': sum(1 for r in recs if r.get('doc_kind') == 'invoice' and r['review_status'] == 'reviewed'),
-               'mir_records': len(recs), 'records_reviewed': sum(1 for r in recs if r['review_status'] == 'reviewed'),
-               'records_by_match_state': states, 'unmatched_mir_records': sum(1 for r in recs if r['approved_boq_id'] is None),
+               'mir_records': sum(1 for r in recs if r.get('doc_kind') != 'invoice'),
+               'records_reviewed': sum(1 for r in recs if r.get('doc_kind') != 'invoice' and r['review_status'] == 'reviewed'),
+               'records_by_match_state': states,
+               'unmatched_mir_records': sum(1 for r in recs if r.get('doc_kind') != 'invoice' and r['approved_boq_id'] is None),
+               'unmatched_invoice_records': sum(1 for r in recs if r.get('doc_kind') == 'invoice' and r['approved_boq_id'] is None),
                'warnings': sum(1 for e in exceptions if e['severity'] in ('warning', 'error')),
                'currency_label': st['settings'].get('currency_label') or '(not specified in workbook)'}
     sev = {'error': 0, 'warning': 1, 'info': 2}
