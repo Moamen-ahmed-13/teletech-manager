@@ -9874,7 +9874,7 @@ def _recon_dispatch(pdir, st, a, q, user):
             if not rec: skipped.append(f'{did}: not found'); continue
             f=(base/str(rec.get('stored_name',''))).resolve(); ext=f.suffix.lower()
             if f.parent!=base or not f.is_file(): skipped.append(f"{rec.get('filename')}: file missing"); continue
-            kind='mir' if ext=='.pdf' else ('boq' if ext in ('.xlsx','.xlsm') else None)
+            kind=('invoice' if ext=='.pdf' and re.search(r'invoice|فاتورة',str(rec.get('filename','')),re.I) else ('mir' if ext=='.pdf' else ('boq' if ext in ('.xlsx','.xlsm') else None)))
             if not kind: skipped.append(f"{rec.get('filename')}: unsupported type"); continue
             try:
                 RECON.save_upload(pdir,st,kind,RECON.safe_display_name(rec.get('filename','file')),f.read_bytes(),user,lambda n:n,{'source_note':'imported from project Documents'}); done+=1
