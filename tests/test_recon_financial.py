@@ -135,5 +135,57 @@ class FinancialCalculationTests(unittest.TestCase):
         self.assertEqual(row['remaining_value'], 900.0)
 
 
+class InvoiceTableGeometryTests(unittest.TestCase):
+    @staticmethod
+    def word(text, left, top, width=35, height=18, conf=92):
+        return {'text': text, 'left': left, 'top': top, 'width': width,
+                'height': height, 'conf': conf}
+
+    def test_tsv_words_map_fleximax_values_by_unique_math_relation(self):
+        words = [
+            self.word('37', 20, 100, 18),
+            self.word('P/N', 90, 99),
+            self.word('7601840-7', 135, 101, 85),
+            self.word('FlexiMAX', 230, 100, 72),
+            self.word('U/UTP', 310, 102, 48),
+            self.word('High', 370, 99, 35),
+            self.word('Density', 410, 101, 55),
+            self.word('Patch', 470, 100, 42),
+            self.word('Panel', 520, 99, 42),
+            self.word('عدد', 650, 102, 28),
+            self.word('180', 720, 100, 30),
+            self.word('75', 810, 101, 20),
+            self.word('13500', 900, 99, 45),
+        ]
+        parsed = R.parse_invoice_lines(words, 'invoice.pdf')
+        self.assertEqual(len(parsed['rows']), 1)
+        row = parsed['rows'][0]
+        self.assertIn('FlexiMAX', row['description'])
+        self.assertEqual(row['unit'], 'PC')
+        self.assertEqual(row['qty'], 180.0)
+        self.assertEqual(row['unit_price'], 75.0)
+        self.assertEqual(row['total'], 13500.0)
+        self.assertTrue(row['math_valid'])
+        self.assertIn('line_math_consistent', row['row_flags'])
+        self.assertTrue(row['source_cells'])
+
+    def test_tsv_words_do_not_guess_unverified_numeric_columns(self):
+        words = [
+            self.word('Cable', 100, 200, 48),
+            self.word('item', 155, 201, 32),
+            self.word('10', 700, 200, 20),
+            self.word('7', 800, 201, 12),
+            self.word('100', 900, 199, 30),
+        ]
+        parsed = R.parse_invoice_lines(words, 'invoice.pdf')
+        self.assertEqual(len(parsed['rows']), 1)
+        row = parsed['rows'][0]
+        self.assertIsNone(row['qty'])
+        self.assertIsNone(row['unit_price'])
+        self.assertIsNone(row['total'])
+        self.assertFalse(row['math_valid'])
+        self.assertIn('numeric_columns_require_review', row['row_flags'])
+
+
 if __name__ == '__main__':
     unittest.main()
