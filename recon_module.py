@@ -451,9 +451,10 @@ def parse_boq(path, display_name=None, sheet=None):
             flags.append('brand_missing')
         if qty is None:
             flags.append('qty_invalid')
-        if 'unit_price' in cmap and up is None:
+        derivable_rate = qty is not None and qty > 0 and tp is not None and tp >= 0
+        if 'unit_price' in cmap and up is None and not derivable_rate:
             flags.append('price_missing')
-        elif 'unit_price' not in cmap:
+        elif 'unit_price' not in cmap and not derivable_rate:
             flags.append('price_missing')
         elif up is not None and up < 0:
             flags.append('price_negative')
@@ -967,8 +968,8 @@ def _apply_ocr(st, doc, results, user):
             fl = list(pflags) + list(row.get('row_flags') or [])
             if row.get('unit_fuzzy') and 'old_form_partial' not in fl and 'unit_fuzzy' not in fl:
                 fl.append('unit_fuzzy')
-            if row.get('qty') is None and row.get('total') is not None and 'qty_blank_total_only' not in fl: fl.append('qty_blank_total_only')
-            if row.get('qty') is None and row.get('total') is None and 'qty_not_read' not in fl: fl.append('qty_not_read')
+            if doc.get('kind') != 'invoice' and row.get('qty') is None and row.get('total') is not None and 'qty_blank_total_only' not in fl: fl.append('qty_blank_total_only')
+            if doc.get('kind') != 'invoice' and row.get('qty') is None and row.get('total') is None and 'qty_not_read' not in fl: fl.append('qty_not_read')
             # text below the item line (often handwriting) is kept for the reviewer but never mixed into the description used for matching
             rec = _new_record(doc, page_no, 'ocr', dict(base, description=row.get('description') or None, unit=row.get('unit'), qty=row.get('qty'),
                                                          total=row.get('total'), unit_price=row.get('unit_price'), conf=row.get('conf'), invoice_no=row.get('invoice_no'),
