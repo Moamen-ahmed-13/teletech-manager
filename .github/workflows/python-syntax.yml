@@ -23,4 +23,4 @@ jobs:
       - name: Compile changed Python modules
         run: python -m py_compile server.py recon_module.py recon_ui.py recon_vision.py asbuilt_apply.py asbuilt_arrow.py asbuilt_registration.py asbuilt_markups.py asbuilt_pipeline.py dxfmini.py dxfedit.py render.py
       - name: Run reconciliation and As-Built unit tests
-        run: python -m unittest discover -s tests -v && python -m unittest test_asbuilt_arrow -v
+        run: python -m unittest discover -s tests -v
