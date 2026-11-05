@@ -856,7 +856,9 @@ def parse_invoice_lines(lines, filename_hint=None):
             desc = re.sub(re.escape(token), ' ', desc, count=1)
         unit = None
         for word in reversed(re.findall(r'[A-Za-z\u0600-\u06ff]+', desc)):
-            u, _ = fuzzy_unit(word)
+            u = canon_unit(word)
+            if u not in set(UNIT_ALIASES.values()):
+                u, _ = fuzzy_unit(word)
             if u:
                 unit = u
                 desc = re.sub(re.escape(word), ' ', desc, flags=re.I)
