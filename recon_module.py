@@ -1481,6 +1481,10 @@ def compute(st):
         for ir in invoice_by_item[it['id']]:
             if ir['review_status'] != 'reviewed' or 'duplicate' in ir['flags']: continue
             amount = ir['eff'].get('total')
+            invoice_unit = canon_unit(ir['eff'].get('unit'))
+            if ub and invoice_unit and invoice_unit != ub and ir['eff'].get('qty') is not None:
+                exc('warning', 'invoice_unit_conflict', ir['id'], '%s: invoice unit %s differs from BOQ unit %s; invoice value excluded until corrected.' % (ir['filename'], invoice_unit, ub))
+                continue
             if amount is not None and amount >= 0:
                 invoice_amount += amount; invoice_lines += 1
                 invoice_sources.append({'file': ir['filename'], 'page': ir['page'], 'ref_no': ir['eff']['ref_no'], 'date': ir['eff']['date'], 'amount': amount, 'record_id': ir['id']})
