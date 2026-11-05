@@ -9880,6 +9880,29 @@ def _recon_dispatch(pdir, st, a, q, user):
                 RECON.save_upload(pdir,st,kind,RECON.safe_display_name(rec.get('filename','file')),f.read_bytes(),user,lambda n:n,{'source_note':'imported from project Documents'}); done+=1
             except RECON.ReconError as e: skipped.append(f"{rec.get('filename')}: {e}")
         return {'ok':True,'imported':done,'skipped':skipped}
+    if a=='import_repo_docs':
+        root=RECON.Path(__file__).resolve().parent
+        excluded={'.git','venv','webui-venv','.venv','node_modules','workspace','__pycache__','dist','build'}
+        candidates=[]
+        for f in root.iterdir():
+            if not f.is_file(): continue
+            ext=f.suffix.lower()
+            if ext in ('.xlsx','.xlsm') and re.search(r'boq|مقايسة|مقايسه',f.name,re.I):
+                candidates.append((f,'boq'))
+            elif ext=='.pdf' and re.search(r'invoice|فاتورة',f.name,re.I):
+                candidates.append((f,'invoice'))
+            elif ext=='.pdf' and re.search(r'\\bMIR\\b',f.stem,re.I):
+                candidates.append((f,'mir'))
+        done=[]; skipped=[]
+        for f,kind in candidates[:100]:
+            if kind=='boq' and st.get('boq'):
+                skipped.append(f'{f.name}: a BOQ is already loaded; existing BOQ was preserved')
+                continue
+            try:
+                meta=RECON.save_upload(pdir,st,kind,RECON.safe_display_name(f.name),f.read_bytes(),user,lambda n:n,{'source_note':'imported from repository source file'})
+                done.append({'filename':meta['filename'],'kind':kind})
+            except (RECON.ReconError,OSError) as e: skipped.append(f'{f.name}: {e}')
+        return {'ok':True,'imported':len(done),'files':done,'skipped':skipped}
     if a=='import_repo_invoices':
         root=RECON.Path(__file__).resolve().parent
         excluded={'.git','venv','webui-venv','.venv','node_modules','workspace','__pycache__','dist','build'}
@@ -10251,7 +10274,7 @@ class Handler(BaseHTTPRequestHandler):
                     if not isinstance(q,dict): return self._json({'error':'Invalid request.'},400)
                     a=str(q.get('action',''))
                     with RECON.locked_state(pdir) as st: res=_recon_dispatch(pdir,st,a,q,current_user)
-                    if a in ('ocr','update_record','match_decide','approve_exact','match_run','remove_doc','delete_record','import_docs','export','boq_unit','dup','add_line','import_repo_invoices'):
+                    if a in ('ocr','update_record','match_decide','approve_exact','match_run','remove_doc','delete_record','import_docs','export','boq_unit','dup','add_line','import_repo_invoices','import_repo_docs'):
                         _auth_audit(self,'RECON_'+a.upper(),p.path,f"project={CURRENT_PROJECT_ID} id={str(q.get('id') or q.get('doc_id') or q.get('item_id') or '')[:60]} decision={q.get('decision','')} reviewed={bool(q.get('mark_reviewed'))}",role=current_user['role'],username=current_user['username'])
                     return self._json(res)
                 except (RECON.ReconError,ValueError) as e: return self._json({'error':str(e)},400)
