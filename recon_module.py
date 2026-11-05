@@ -577,30 +577,39 @@ def page_image_path(project_dir, st, doc_id, page):
     return next(x['path'] for x in render_pages(project_dir, doc) if x['page'] == page)
 
 
-def _tesseract_lines(img_path, langs=None, psm=6):
-    """OCR one image using the requested installed Tesseract languages."""
+def _tesseract_lines(img_path, langs=None, psm=6, output='lines'):
+    """OCR an image; output='words' preserves TSV geometry for invoice tables."""
     cmd = tesseract_cmd()
     lang_arg = str(langs or 'eng')
     out = subprocess.run([cmd, str(img_path), 'stdout', '--psm', str(psm), '-l', lang_arg, 'tsv'],
                          capture_output=True, text=True, timeout=240, encoding='utf-8', errors='replace')
     if out.returncode != 0:
         raise ReconError('Tesseract failed: %s' % out.stderr.strip()[:200])
-    lines = {}
+    words, lines = [], {}
     for row in out.stdout.splitlines()[1:]:
-        p = row.split('\t')
+        p = row.split('\t', 11)
         if len(p) < 12 or not p[11].strip():
             continue
+        try:
+            conf = float(p[10])
+            left, top, width, height = map(int, p[6:10])
+        except (TypeError, ValueError):
+            continue
+        w = {'text': p[11].strip(), 'conf': conf, 'left': left, 'top': top,
+             'width': width, 'height': height, 'block_num': p[2], 'par_num': p[3],
+             'line_num': p[4], 'word_num': p[5]}
+        words.append(w)
         key = (p[2], p[3], p[4])
-        try: conf = float(p[10])
-        except ValueError: conf = -1
-        e = lines.setdefault(key, {'words': [], 'confs': [], 'top': int(p[7])})
-        e['words'].append(p[11].strip())
-        if conf >= 0: e['confs'].append(conf)
-    res = []
-    for k in sorted(lines, key=lambda k: lines[k]['top']):
-        e = lines[k]
-        res.append({'text': ' '.join(e['words']), 'conf': round(sum(e['confs']) / len(e['confs']), 1) if e['confs'] else None})
-    return res
+        e = lines.setdefault(key, {'words': [], 'confs': [], 'top': top, 'left': left})
+        e['words'].append(w['text'])
+        e['top'], e['left'] = min(e['top'], top), min(e['left'], left)
+        if conf >= 0:
+            e['confs'].append(conf)
+    if output == 'words':
+        return words
+    return [{'text': ' '.join(e['words']),
+             'conf': round(sum(e['confs']) / len(e['confs']), 1) if e['confs'] else None}
+            for e in sorted(lines.values(), key=lambda e: (e['top'], e['left']))]
 
 
 def _image_variants(img_path, tmpdir):
@@ -835,53 +844,142 @@ def _clean_invoice_desc(value):
     return ' '.join(words).strip()
 
 
+def _invoice_word_rows(words):
+    """Group TSV word boxes into visual rows using vertical overlap."""
+    valid = []
+    for w in words:
+        if not str(w.get('text') or '').strip():
+            continue
+        try:
+            left, top, width, height = (float(w[k]) for k in ('left', 'top', 'width', 'height'))
+        except (KeyError, TypeError, ValueError):
+            continue
+        valid.append(dict(w, left=left, top=top, width=width, height=height,
+                          _cy=top + height / 2.0))
+    valid.sort(key=lambda w: (w['_cy'], w['left']))
+    rows = []
+    for word in valid:
+        target, delta_best = None, None
+        for row in rows[-8:]:
+            center = sum(x['_cy'] for x in row) / len(row)
+            heights = sorted(x['height'] for x in row)
+            tolerance = max(8.0, min(24.0, 0.55 * max(heights[len(heights)//2], word['height'])))
+            delta = abs(word['_cy'] - center)
+            if delta <= tolerance and (delta_best is None or delta < delta_best):
+                target, delta_best = row, delta
+        if target is None:
+            rows.append([word])
+        else:
+            target.append(word)
+    for row in rows:
+        row.sort(key=lambda w: w['left'])
+    return rows
+
+
+def _invoice_numeric_word(value):
+    value = str(value or '').strip().translate(_AR_DIGITS).replace('٫', '.').replace('٬', ',')
+    value = value.strip('()[]{}')
+    if not re.fullmatch(r'[-+]?(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?', value):
+        return None
+    return to_number(value)
+
+
+def _invoice_math_assignment(values):
+    """Resolve qty/rate/amount only when exactly one permutation satisfies arithmetic."""
+    import itertools
+    matches = []
+    for qty, rate, amount in itertools.permutations(values, 3):
+        if qty > 0 and rate >= 0 and amount >= 0 and abs(qty * rate - amount) <= max(1.0, abs(amount) * 0.01):
+            matches.append((qty, rate, amount))
+    matches = list(dict.fromkeys(matches))
+    return matches[0] if len(matches) == 1 else (None, None, None)
+
+
 def parse_invoice_lines(lines, filename_hint=None):
-    """Generic invoice OCR: extracts likely item rows as drafts, never auto-approves them."""
-    texts = [str(x.get('text') or '') for x in lines]
-    blob = '\n'.join(texts)
-    m = re.search(r'(?:invoice|inv\.?|فاتورة|رقم\s*الفاتورة)\s*(?:رقم|no\.?|number|#|:)?\s*([A-Z0-9٠-٩۰-۹][A-Z0-9٠-٩۰-۹/\-_]{0,30})', blob, re.I)
+    """Conservative invoice parser: TSV boxes where available; no guessed units or unverified column mapping."""
+    blob = '\\n'.join(str(x.get('text') or '') for x in lines)
+    m = re.search(r'(?:invoice|inv\\.?|فاتورة|رقم\\s*الفاتورة)\\s*(?:رقم|no\\.?|number|#|:)?\\s*([A-Z0-9٠-٩۰-۹][A-Z0-9٠-٩۰-۹/\\-_]{0,30})', blob, re.I)
     ref = m.group(1).strip() if m else _invoice_ref_from_filename(filename_hint)
     dates = _date_candidates(blob)
     rows, seen = [], set()
-    for line in lines:
-        raw = str(line.get('text') or '').strip()
-        if not raw or re.search(r'^(?:subtotal|grand\s+total|tax|vat|total\b|الإجمالي|الاجمالي|ضريبة)\b', raw, re.I):
-            continue
-        nums = re.findall(r'(?<![A-Za-z])[-+]?[0-9٠-٩۰-۹][0-9٠-٩۰-۹,]*(?:[.\u066b][0-9٠-٩۰-۹]+)?', raw)
-        vals = [to_number(x) for x in nums]
-        vals = [x for x in vals if x is not None]
-        if not vals:
-            continue
-        desc = raw
-        for token in reversed(nums):
-            desc = re.sub(re.escape(token), ' ', desc, count=1)
-        unit = None
-        for word in reversed(re.findall(r'[A-Za-z\u0600-\u06ff]+', desc)):
-            u = canon_unit(word)
-            if u not in set(UNIT_ALIASES.values()):
-                u, _ = fuzzy_unit(word)
-            if u:
-                unit = u
-                desc = re.sub(re.escape(word), ' ', desc, flags=re.I)
-                break
-        desc = _clean_invoice_desc(desc)
-        if len(norm_alnum(desc)) < 4:
-            continue
-        qty = rate = amount = None
-        if len(vals) >= 3:
-            qty, rate, amount = vals[-3], vals[-2], vals[-1]
-        elif len(vals) == 2:
-            qty, amount = vals[-2], vals[-1]
-        else:
+    boxed = bool(lines) and all(all(k in x for k in ('left', 'top', 'width', 'height'))
+                                for x in lines if x.get('text'))
+    if boxed:
+        for visual in _invoice_word_rows(lines):
+            row_text = ' '.join(w['text'] for w in visual)
+            if re.search(r'\\b(?:subtotal|grand\\s+total|tax|vat|total)\\b|الإجمالي|الاجمالي|ضريبة', row_text, re.I):
+                continue
+            numeric = [(w, _invoice_numeric_word(w['text'])) for w in visual]
+            numeric = [(w, v) for w, v in numeric if v is not None]
+            unit_word = next((w for w in visual if canon_unit(w['text']) in set(UNIT_ALIASES.values())), None)
+            desc = _clean_invoice_desc(' '.join(w['text'] for w in visual
+                                                 if _invoice_numeric_word(w['text']) is None and w is not unit_word))
+            if len(norm_alnum(desc)) < 4 or len(numeric) < 2:
+                continue
+            if len(numeric) >= 4 and numeric[0][1].is_integer() and 0 < numeric[0][1] <= 999:
+                numeric = numeric[1:]  # likely item serial number, not a financial cell
+            qty = rate = amount = None
+            flags = ['invoice_ocr_draft', 'column_order_unverified']
+            if len(numeric) == 3:
+                qty, rate, amount = _invoice_math_assignment([v for _, v in numeric])
+                flags.append('line_math_consistent' if qty is not None else 'numeric_columns_require_review')
+            else:
+                flags.append('numeric_columns_require_review')
+            unit = canon_unit(unit_word['text']) if unit_word else None
+            confs = [float(w['conf']) for w in visual if w.get('conf') is not None and float(w['conf']) >= 0]
+            conf = round(sum(confs) / len(confs), 1) if confs else None
+            source_cells = [{'text': w['text'], 'left': int(w['left']), 'top': int(w['top']),
+                             'width': int(w['width']), 'height': int(w['height']), 'conf': w.get('conf')}
+                            for w in visual]
+            key = (norm_alnum(desc), qty, rate, amount, tuple(v for _, v in numeric))
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append({'description': desc, 'unit': unit, 'qty': qty, 'unit_price': rate, 'total': amount,
+                         'conf': conf, 'math_valid': qty is not None, 'source_cells': source_cells,
+                         'row_flags': flags})
+    else:
+        # Backward-compatible path for line-level OCR callers; ambiguous financial columns remain review-only.
+        for line in lines:
+            raw = str(line.get('text') or '').strip()
+            if not raw or re.search(r'^(?:subtotal|grand\\s+total|tax|vat|total\\b|الإجمالي|الاجمالي|ضريبة)\\b', raw, re.I):
+                continue
+            nums = re.findall(r'(?<![A-Za-z])[-+]?[0-9٠-٩۰-۹][0-9٠-٩۰-۹,]*(?:[.\\u066b][0-9٠-٩۰-۹]+)?', raw)
+            vals = [to_number(x) for x in nums]
+            vals = [v for v in vals if v is not None]
+            if not vals:
+                continue
+            desc = raw
+            for token in reversed(nums):
+                desc = re.sub(re.escape(token), ' ', desc, count=1)
+            unit = None
+            for word in reversed(re.findall(r'[A-Za-z\\u0600-\\u06ff]+', desc)):
+                u = canon_unit(word)
+                if u:
+                    unit = u
+                    desc = re.sub(re.escape(word), ' ', desc, flags=re.I)
+                    break
+            desc = _clean_invoice_desc(desc)
+            if len(norm_alnum(desc)) < 4:
+                continue
+            qty = rate = None
             amount = vals[-1]
-        if amount is None or amount < 0 or (qty is not None and qty < 0):
-            continue
-        key = (norm_alnum(desc), qty, amount)
-        if key in seen:
-            continue
-        seen.add(key)
-        rows.append({'description': desc, 'unit': unit, 'qty': qty, 'total': amount, 'unit_price': rate,
-                     'conf': line.get('conf'), 'row_flags': ['invoice_ocr_draft']})
+            flags = ['invoice_ocr_draft', 'legacy_line_parse_requires_review']
+            if len(vals) >= 3:
+                qty, rate, amount = vals[-3], vals[-2], vals[-1]
+                if abs(qty * rate - amount) <= max(1.0, abs(amount) * 0.01):
+                    flags.append('line_math_consistent')
+                else:
+                    qty = rate = None
+                    flags.append('numeric_columns_require_review')
+            else:
+                flags.append('insufficient_numeric_cells_require_review')
+            key = (norm_alnum(desc), qty, amount)
+            if key not in seen:
+                seen.add(key)
+                rows.append({'description': desc, 'unit': unit, 'qty': qty, 'unit_price': rate, 'total': amount,
+                             'conf': line.get('conf'), 'math_valid': 'line_math_consistent' in flags,
+                             'row_flags': flags})
     return {'ref_no': ref, 'date': dates[0] if dates else None, 'rows': rows,
             'flags': ['invoice_ocr_draft'], 'raw_text': blob[:6000]}
 
@@ -896,8 +994,19 @@ def _ocr_pages(project_dir, doc, status, progress=None):
                 if progress: progress(pg['page'], len(pages))
                 variants = _image_variants(pg['path'], tmp)
                 invoice_lang = 'eng+ara' if 'ara' in (status.get('langs') or []) else 'eng'
-                lines = _tesseract_lines(variants[0][1], langs=invoice_lang) if variants else []
-                parsed = parse_invoice_lines(lines, doc.get('filename'))
+                candidates = []
+                for variant_name, variant_path in (variants or [('original', pg['path'])]):
+                    words = _tesseract_lines(variant_path, langs=invoice_lang, psm=6, output='words')
+                    candidate = parse_invoice_lines(words, doc.get('filename'))
+                    score = (len(candidate.get('rows') or []),
+                             sum(1 for r in candidate.get('rows', []) if r.get('math_valid')),
+                             sum((r.get('conf') or 0) for r in candidate.get('rows', [])))
+                    candidates.append((score, variant_name, candidate))
+                candidates.sort(key=lambda x: x[0], reverse=True)
+                parsed = candidates[0][2] if candidates else parse_invoice_lines([], doc.get('filename'))
+                if len(candidates) > 1:
+                    parsed['flags'] = list(parsed.get('flags') or []) + ['preprocessing_variant_selected:%s' % candidates[0][1]]
+                    parsed['variant_row_counts'] = {name: len(item.get('rows') or []) for _, name, item in candidates}
                 parsed.update({'engine': 'invoice-tesseract', 'template': 'invoice', 'supplier': None,
                                'status': {'value': None, 'confidence': 'review-required', 'note': 'Reviewer confirmation required'}})
                 out.append((pg['page'], parsed))
