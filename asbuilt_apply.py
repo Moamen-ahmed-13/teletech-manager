@@ -16,7 +16,9 @@ Anything uncertain (registration, match, arrow) goes to the review list.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import math
 import os
 import tempfile
 
@@ -24,6 +26,71 @@ import asbuilt_pipeline as PL
 import asbuilt_registration as R
 import dxfedit
 from asbuilt_markups import detect_markups  # noqa: F401  (re-exported for the unit tests)
+
+
+def file_sha256(path):
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+def markup_policy(color):
+    """Canonical site / patch-panel / label action for each As-Built color."""
+    color = str(color or '').strip().lower()
+    if color == 'red':
+        color = 'pink'
+    return {
+        'pink': {'site_action': 'DELETE', 'patch_panel_action': 'NO_SLOT', 'label_action': 'SHIFT'},
+        'yellow': {'site_action': 'DELETE', 'patch_panel_action': 'RESERVE_SLOT', 'label_action': 'KEEP'},
+        'orange': {'site_action': 'MOVE', 'patch_panel_action': 'KEEP_SLOT', 'label_action': 'KEEP'},
+        'green': {'site_action': 'KEEP', 'patch_panel_action': 'KEEP_SLOT', 'label_action': 'KEEP'},
+    }.get(color)
+
+
+def relocation_destination_conflict(source, destination, instances, source_index, tolerance):
+    """Return a reason when a move would be a no-op or collide with another endpoint."""
+    if math.hypot(float(destination[0])-float(source[0]), float(destination[1])-float(source[1])) <= tolerance:
+        return 'Arrow tip maps back to the source endpoint; relocation is a no-op.'
+    for idx, item in enumerate(instances):
+        if idx == source_index:
+            continue
+        point = item.get('world') or [0, 0]
+        if math.hypot(float(destination[0])-float(point[0]), float(destination[1])-float(point[1])) <= tolerance:
+            return 'Arrow tip overlaps another existing endpoint; destination requires review.'
+    return ''
+
+
+def relocation_destination_match(destination, instances, source_index, endpoint_spacing):
+    """Conservative CAD endpoint validation for a registered arrow tip.
+
+    A valid arrowhead does not prove that its mapped point is a valid destination.
+    Require a close endpoint candidate and separation from the runner-up.
+    """
+    spacing=max(float(endpoint_spacing or 0.0),1e-6)
+    candidates=[]
+    for idx,item in enumerate(instances):
+        if idx==source_index:
+            continue
+        point=item.get('world') or [0,0]
+        distance=math.hypot(float(point[0])-float(destination[0]),float(point[1])-float(destination[1]))
+        candidates.append((distance,idx))
+    candidates.sort()
+    if not candidates:
+        return {'ok':False,'reason':'No other CAD endpoint is available to validate the arrow destination.','confidence':0.0}
+    d1,idx=candidates[0]
+    d2=candidates[1][0] if len(candidates)>1 else float('inf')
+    units=d1/spacing
+    proximity=math.exp(-0.72*max(0.0,units))
+    separation=1.0 if not math.isfinite(d2) else max(0.0,min(1.0,((d2/spacing)-units)/max(d2/spacing,0.25)))
+    confidence=0.18+0.68*proximity+0.14*separation
+    margin=1.0 if not math.isfinite(d2) else max(0.0,(d2-d1)/max(spacing,1e-6))
+    ok=bool(units<=0.35 and confidence>=0.78 and margin>=0.04)
+    return {'ok':ok,'candidate_index':idx,'distance':round(d1,2),
+            'distance_in_endpoint_spacing':round(units,3),'next_distance':round(d2,2),
+            'confidence':round(confidence,2),'margin_in_endpoint_spacing':round(margin,3),
+            'reason':'' if ok else ('Registered arrow tip is not close enough to a distinct CAD endpoint, or the nearest destination is ambiguous; manual review required.')}
+
 
 FALLBACK_BLOCKS = {'D-V', 'D-W', 'DD', 'D-V BOX', 'CAM1', 'CAM 2', 'PROJECTOR', 'AV SYSTEM DOOM CAMERA',
                    'AV SYSTEM RACK', 'EC-TP', 'ES-CCTV'}

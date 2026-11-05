@@ -21,7 +21,7 @@ from collections import Counter
 import ezdxf
 from ezdxf.math import Matrix44, Vec3
 
-ENDPOINT_BLOCKS = {'D-V', 'D-W', 'DD', 'D-V BOX', 'ES-cctv'}   # legacy default for CLI listing only
+ENDPOINT_BLOCKS = {'D-V', 'D-W', 'DD', 'D-V BOX', 'D·V BOX', 'D.V BOX', 'DV BOX', 'EC-TP', 'ES-CCTV', 'ES-cctv'}   # legacy default for CLI listing only
 
 
 def _handle(entity):
