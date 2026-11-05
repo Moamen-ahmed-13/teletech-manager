@@ -69,6 +69,27 @@ class FinancialCalculationTests(unittest.TestCase):
         self.assertEqual(parsed['rows'][0]['unit'], 'ROLL')
         self.assertEqual(parsed['rows'][0]['total'], 5000.0)
 
+    def test_pending_invoice_does_not_inflate_mir_quantity_review_count(self):
+        mir = record('mir-1', 'mir', 'MIR-001', 2.0, None)
+        invoice = record('invoice-1', 'invoice', 'INV-001', 1.0, 250.0)
+        mir['match'] = {'state': 'suggested', 'boq_id': 'BOQ!R2', 'candidates': []}
+        invoice['match'] = {'state': 'suggested', 'boq_id': 'BOQ!R2', 'candidates': []}
+        st = state([mir, invoice], [{'id': 'invoice-1', 'kind': 'invoice', 'filename': 'INV-001.pdf',
+                                     'pages': 1, 'uploaded_at': '2026-01-02'}])
+        result = R.compute(st)
+        self.assertEqual(result['items'][0]['awaiting_review'], 1)
+        self.assertEqual(result['summary']['mir_records'], 1)
+        self.assertEqual(result['summary']['invoice_records'], 1)
+
+    def test_line_total_derives_rate_when_unit_price_is_blank(self):
+        st = state([record('mir-1', 'mir', 'MIR-001', 2.0, None)])
+        st['boq']['items'][0]['unit_price'] = None
+        row = R.compute(st)['items'][0]
+        self.assertEqual(row['unit_price'], 90.0)
+        self.assertEqual(row['boq_value'], 900.0)
+        self.assertEqual(row['mir_value'], 180.0)
+        self.assertNotIn('price', row['unavailable'])
+
     def test_mir_unit_conflict_is_not_counted(self):
         st = state([record('mir-1', 'mir', 'MIR-001', 2.0, None, unit='ROLL')])
         row = R.compute(st)['items'][0]
