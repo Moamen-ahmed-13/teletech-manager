@@ -884,15 +884,43 @@ def _invoice_numeric_word(value):
     return to_number(value)
 
 
-def _invoice_math_assignment(values):
-    """Resolve qty/rate/amount only when exactly one permutation satisfies arithmetic."""
-    import itertools
-    matches = []
-    for qty, rate, amount in itertools.permutations(values, 3):
-        if qty > 0 and rate >= 0 and amount >= 0 and abs(qty * rate - amount) <= max(1.0, abs(amount) * 0.01):
-            matches.append((qty, rate, amount))
-    matches = list(dict.fromkeys(matches))
-    return matches[0] if len(matches) == 1 else (None, None, None)
+def _invoice_header_centers(visual_rows):
+    """Infer numeric column centers from explicit table headers when OCR can read them."""
+    found = {}
+    patterns = {
+        'qty': re.compile(r'^(?:qty|quantity|الكميه|الكمية)$', re.I),
+        'unit_price': re.compile(r'^(?:unit|price|rate|سعر|الوحدة|الوحده)$', re.I),
+        'total': re.compile(r'^(?:amount|total|line|الإجمالي|الاجمالي|الاجمالى)$', re.I),
+    }
+    for row in visual_rows:
+        words = [w for w in row if str(w.get('text') or '').strip()]
+        for field, pattern in patterns.items():
+            hits = [w for w in words if pattern.match(str(w['text']).strip())]
+            if field == 'unit_price':
+                # Require a price/rate word; a standalone "unit" or Arabic "الوحدة" is not enough.
+                hits = [w for w in hits if re.search(r'price|rate|سعر', str(w['text']), re.I)]
+            if hits:
+                found.setdefault(field, []).extend(w['left'] + w['width'] / 2.0 for w in hits)
+    return {k: sum(v) / len(v) for k, v in found.items() if v}
+
+
+def _invoice_assign_from_headers(numeric, centers):
+    """Assign numeric cells only when explicit Qty, Unit Price and Total headers are detected."""
+    if not all(k in centers for k in ('qty', 'unit_price', 'total')):
+        return None
+    assigned = {}
+    for word, value in numeric:
+        center = word['left'] + word['width'] / 2.0
+        field = min(centers, key=lambda k: abs(center - centers[k]))
+        if field in assigned:
+            return None
+        assigned[field] = value
+    if set(assigned) != {'qty', 'unit_price', 'total'}:
+        return None
+    qty, rate, amount = assigned['qty'], assigned['unit_price'], assigned['total']
+    if qty <= 0 or abs(qty * rate - amount) > max(1.0, abs(amount) * 0.01):
+        return None
+    return qty, rate, amount
 
 
 def parse_invoice_lines(lines, filename_hint=None):
@@ -905,7 +933,9 @@ def parse_invoice_lines(lines, filename_hint=None):
     boxed = bool(lines) and all(all(k in x for k in ('left', 'top', 'width', 'height'))
                                 for x in lines if x.get('text'))
     if boxed:
-        for visual in _invoice_word_rows(lines):
+        visual_rows = _invoice_word_rows(lines)
+        header_centers = _invoice_header_centers(visual_rows)
+        for visual in visual_rows:
             row_text = ' '.join(w['text'] for w in visual)
             if re.search(r'\b(?:subtotal|grand\s+total|tax|vat|total)\b|الإجمالي|الاجمالي|ضريبة', row_text, re.I):
                 continue
@@ -921,8 +951,12 @@ def parse_invoice_lines(lines, filename_hint=None):
             qty = rate = amount = None
             flags = ['invoice_ocr_draft', 'column_order_unverified']
             if len(numeric) == 3:
-                qty, rate, amount = _invoice_math_assignment([v for _, v in numeric])
-                flags.append('line_math_consistent' if qty is not None else 'numeric_columns_require_review')
+                assigned = _invoice_assign_from_headers(numeric, header_centers)
+                if assigned is not None:
+                    qty, rate, amount = assigned
+                    flags.append('line_math_consistent')
+                else:
+                    flags.append('numeric_columns_require_review')
             else:
                 flags.append('numeric_columns_require_review')
             unit = canon_unit(unit_word['text']) if unit_word else None
