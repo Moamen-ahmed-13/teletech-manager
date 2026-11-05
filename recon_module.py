@@ -879,7 +879,7 @@ def _invoice_word_rows(words):
 def _invoice_numeric_word(value):
     value = str(value or '').strip().translate(_AR_DIGITS).replace('٫', '.').replace('٬', ',')
     value = value.strip('()[]{}')
-    if not re.fullmatch(r'[-+]?(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?', value):
+    if not re.fullmatch(r'[-+]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?', value):
         return None
     return to_number(value)
 
@@ -897,8 +897,8 @@ def _invoice_math_assignment(values):
 
 def parse_invoice_lines(lines, filename_hint=None):
     """Conservative invoice parser: TSV boxes where available; no guessed units or unverified column mapping."""
-    blob = '\\n'.join(str(x.get('text') or '') for x in lines)
-    m = re.search(r'(?:invoice|inv\\.?|فاتورة|رقم\\s*الفاتورة)\\s*(?:رقم|no\\.?|number|#|:)?\\s*([A-Z0-9٠-٩۰-۹][A-Z0-9٠-٩۰-۹/\\-_]{0,30})', blob, re.I)
+    blob = '\n'.join(str(x.get('text') or '') for x in lines)
+    m = re.search(r'(?:invoice|inv\.?|فاتورة|رقم\s*الفاتورة)\s*(?:رقم|no\.?|number|#|:)?\s*([A-Z0-9٠-٩۰-۹][A-Z0-9٠-٩۰-۹/\-_]{0,30})', blob, re.I)
     ref = m.group(1).strip() if m else _invoice_ref_from_filename(filename_hint)
     dates = _date_candidates(blob)
     rows, seen = [], set()
@@ -907,7 +907,7 @@ def parse_invoice_lines(lines, filename_hint=None):
     if boxed:
         for visual in _invoice_word_rows(lines):
             row_text = ' '.join(w['text'] for w in visual)
-            if re.search(r'\\b(?:subtotal|grand\\s+total|tax|vat|total)\\b|الإجمالي|الاجمالي|ضريبة', row_text, re.I):
+            if re.search(r'\b(?:subtotal|grand\s+total|tax|vat|total)\b|الإجمالي|الاجمالي|ضريبة', row_text, re.I):
                 continue
             numeric = [(w, _invoice_numeric_word(w['text'])) for w in visual]
             numeric = [(w, v) for w, v in numeric if v is not None]
@@ -942,9 +942,9 @@ def parse_invoice_lines(lines, filename_hint=None):
         # Backward-compatible path for line-level OCR callers; ambiguous financial columns remain review-only.
         for line in lines:
             raw = str(line.get('text') or '').strip()
-            if not raw or re.search(r'^(?:subtotal|grand\\s+total|tax|vat|total\\b|الإجمالي|الاجمالي|ضريبة)\\b', raw, re.I):
+            if not raw or re.search(r'^(?:subtotal|grand\s+total|tax|vat|total\b|الإجمالي|الاجمالي|ضريبة)\b', raw, re.I):
                 continue
-            nums = re.findall(r'(?<![A-Za-z])[-+]?[0-9٠-٩۰-۹][0-9٠-٩۰-۹,]*(?:[.\\u066b][0-9٠-٩۰-۹]+)?', raw)
+            nums = re.findall(r'(?<![A-Za-z])[-+]?[0-9٠-٩۰-۹][0-9٠-٩۰-۹,]*(?:[.\u066b][0-9٠-٩۰-۹]+)?', raw)
             vals = [to_number(x) for x in nums]
             vals = [v for v in vals if v is not None]
             if not vals:
@@ -953,7 +953,7 @@ def parse_invoice_lines(lines, filename_hint=None):
             for token in reversed(nums):
                 desc = re.sub(re.escape(token), ' ', desc, count=1)
             unit = None
-            for word in reversed(re.findall(r'[A-Za-z\\u0600-\\u06ff]+', desc)):
+            for word in reversed(re.findall(r'[A-Za-z\u0600-\u06ff]+', desc)):
                 u = canon_unit(word)
                 if u:
                     unit = u
@@ -998,8 +998,8 @@ def _ocr_pages(project_dir, doc, status, progress=None):
                 for variant_name, variant_path in (variants or [('original', pg['path'])]):
                     words = _tesseract_lines(variant_path, langs=invoice_lang, psm=6, output='words')
                     candidate = parse_invoice_lines(words, doc.get('filename'))
-                    score = (len(candidate.get('rows') or []),
-                             sum(1 for r in candidate.get('rows', []) if r.get('math_valid')),
+                    score = (sum(1 for r in candidate.get('rows', []) if r.get('math_valid')),
+                             len(candidate.get('rows') or []),
                              sum((r.get('conf') or 0) for r in candidate.get('rows', [])))
                     candidates.append((score, variant_name, candidate))
                 candidates.sort(key=lambda x: x[0], reverse=True)
