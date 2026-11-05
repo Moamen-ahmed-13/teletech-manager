@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 import recon_module as R
 
@@ -34,6 +35,14 @@ def state(records, invoice_docs=None):
 
 
 class FinancialCalculationTests(unittest.TestCase):
+    def test_repository_boq_fixture_is_readable(self):
+        fixture = Path(__file__).resolve().parents[1] / 'مقايسة بني سويف.xlsx'
+        if not fixture.is_file():
+            self.skipTest('Repository BOQ fixture is not present in this checkout')
+        parsed = R.parse_boq(fixture, display_name=fixture.name)
+        self.assertGreater(len(parsed['items']), 0)
+        self.assertTrue(any(item.get('qty') is not None for item in parsed['items']))
+
     def test_invoice_amount_is_used_instead_of_adding_to_mir_estimate(self):
         st = state([
             record('mir-1', 'mir', 'MIR-001', 2.0, None),
