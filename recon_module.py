@@ -318,7 +318,7 @@ def _ref_from_filename(name):
 
 def _invoice_ref_from_filename(name):
     stem = Path(str(name or '')).stem
-    m = re.search(r'(?:invoice|inv|فاتورة)\s*(?:رقم|no\.?|number|#)?\s*([A-Z0-9][A-Z0-9/\-]{0,24})', stem, re.I)
+    m = re.search(r'(?:invoice|inv|فاتورة)\s*(?:رقم|no\.?|number|#)?\s*([A-Z0-9٠-٩۰-۹][A-Z0-9٠-٩۰-۹/\-]{0,24})', stem, re.I)
     return m.group(1) if m else stem[:80]
 
 def stored_path(project_dir, kind, meta):
@@ -838,7 +838,7 @@ def parse_invoice_lines(lines, filename_hint=None):
     """Generic invoice OCR: extracts likely item rows as drafts, never auto-approves them."""
     texts = [str(x.get('text') or '') for x in lines]
     blob = '\n'.join(texts)
-    m = re.search(r'(?:invoice|inv\.?|فاتورة|رقم\s*الفاتورة)\s*(?:رقم|no\.?|number|#|:)?\s*([A-Z0-9][A-Z0-9/\-_]{1,30})', blob, re.I)
+    m = re.search(r'(?:invoice|inv\.?|فاتورة|رقم\s*الفاتورة)\s*(?:رقم|no\.?|number|#|:)?\s*([A-Z0-9٠-٩۰-۹][A-Z0-9٠-٩۰-۹/\-_]{1,30})', blob, re.I)
     ref = m.group(1).strip() if m else _invoice_ref_from_filename(filename_hint)
     dates = _date_candidates(blob)
     rows, seen = [], set()
