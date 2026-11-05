@@ -1490,6 +1490,10 @@ def compute(st):
         fin_pct = (financial_value / boq_value * 100) if (boq_value is not None and boq_value > 0 and financial_value is not None) else None
         if fin_pct is None and 'price' not in unavailable: unavailable['fin_pct'] = 'BOQ value is zero or unavailable'
         rem_value = (boq_value - financial_value) if (boq_value is not None and financial_value is not None) else None
+        invoice_over = invoice_value is not None and boq_value is not None and invoice_value > boq_value + max(0.01, abs(boq_value) * 1e-9)
+        if invoice_over:
+            flags.append('invoice_over_boq')
+            exc('error', 'invoice_over_boq', it['id'], '%s: approved invoice value %g exceeds BOQ value %g (financial balance %g).' % (it['id'], invoice_value, boq_value, rem_value))
         over = qty_ok and confirmed > qty + 1e-9
         if over:
             flags.append('over_boq')
@@ -1670,13 +1674,14 @@ def export_xlsx(st, comp, out_path, project_name=''):
     ws['A2'] = 'Project: %s' % (project_name or '-'); ws['A3'] = 'Generated (UTC): %s' % _now()
     ws['A4'] = 'BOQ file: %s (sheet "%s")' % ((st.get('boq') or {}).get('file', {}).get('filename', '-'), (st.get('boq') or {}).get('sheet', '-'))
     ws['A5'] = 'Currency: %s' % s['currency_label']
-    rows = [('Original BOQ value (valued items)', "=SUM(%sL2:L%d)" % (DR, last), MONEY), ('Confirmed MIR value', "=SUM(%sM2:M%d)" % (DR, last), MONEY),
-            ('Remaining BOQ value', "=SUM(%sN2:N%d)" % (DR, last), MONEY), ('Overall financial % (MIR / BOQ)', '=IFERROR(B8/B7,"N/A")', PCT),
+    rows = [('Original BOQ value (valued items)', "=SUM(%sL2:L%d)" % (DR, last), MONEY), ('Recognized financial value (invoice, otherwise MIR estimate)', "=SUM(%sO2:O%d)" % (DR, last), MONEY),
+            ('Remaining BOQ value', "=SUM(%sP2:P%d)" % (DR, last), MONEY), ('Overall financial % (recognized / BOQ)', '=IFERROR(B8/B7,"N/A")', PCT),
             ('Total BOQ items', s['boq_items'], '0'), ('Items with confirmed MIR qty', s['items_with_confirmed'], '0'),
             ('Items pending review', s['items_pending_review'], '0'), ('Items with no MIR', s['items_without_mir'], '0'),
             ('Items over BOQ quantity', s['items_over_boq'], '0'), ('Items without a valid price (excluded from value)', s['items_unvalued'], '0'),
             ('MIR PDFs in reconciliation', s['mir_docs'], '0'), ('MIR PDFs with OCR run', s['mir_docs_ocr_done'], '0'),
-            ('MIR records (lines)', s['mir_records'], '0'), ('MIR records reviewed', s['records_reviewed'], '0'),
+            ('Invoice PDFs in reconciliation', s.get('invoice_docs', 0), '0'), ('Invoice PDFs with OCR run', s.get('invoice_docs_ocr_done', 0), '0'),
+            ('MIR records (lines)', s['mir_records'], '0'), ('Invoice records (lines)', s.get('invoice_records', 0), '0'), ('Invoice records reviewed', s.get('invoice_records_reviewed', 0), '0'), ('MIR records reviewed', s['records_reviewed'], '0'),
             ('MIR records not matched to a BOQ row', s['unmatched_mir_records'], '0'), ('Warnings / errors', s['warnings'], '0')]
     for i, (a, b, f) in enumerate(rows, 7 - 0):
         ws.cell(row=i, column=1, value=a).font = Font(bold=True); c = ws.cell(row=i, column=2, value=b); c.number_format = f
@@ -1691,11 +1696,13 @@ def export_xlsx(st, comp, out_path, project_name=''):
         f = st['boq']['file']; ws.cell(row=k, column=1, value='BOQ: ' + f['filename']); ws.cell(row=k, column=2, value='sha256 ' + f['sha256'][:16]); k += 1
     for d in st['mir_docs']:
         ws.cell(row=k, column=1, value='MIR: ' + d['filename']); ws.cell(row=k, column=2, value='sha256 ' + d['sha256'][:16]); ws.cell(row=k, column=3, value='%d page(s); OCR: %s' % (d['pages'], d.get('ocr_status'))); k += 1
+    for d in st.get('invoice_docs', []):
+        ws.cell(row=k, column=1, value='Invoice: ' + d['filename']); ws.cell(row=k, column=2, value='sha256 ' + d['sha256'][:16]); ws.cell(row=k, column=3, value='%d page(s); OCR: %s' % (d['pages'], d.get('ocr_status'))); k += 1
 
     # ---- Brand summary (SUMIFS over the detailed sheet so it always reconciles)
     wbs = wb.create_sheet('Brand Summary', 1)
     head(wbs, 1, ['Brand', 'BOQ Items', 'Items w/ confirmed MIR', 'Item coverage %', 'Quantities by unit (BOQ / confirmed / remaining)', 'Items with unspecified unit (qty not summed)',
-                  'Original BOQ Value', 'MIR Value', 'Remaining Value', 'Financial %', 'Items missing MIR', 'Items over BOQ', 'Items awaiting review', 'Unmatched MIR records'],
+                  'Original BOQ Value', 'Recognized Financial Value', 'Remaining Value', 'Financial %', 'Items missing MIR', 'Items over BOQ', 'Items awaiting review', 'Unmatched records'],
          [18, 9, 12, 11, 48, 16, 17, 17, 17, 10, 38, 28, 38, 12])
     for n, b in enumerate(comp['brands'], 2):
         qs = '; '.join('%s: %s / %s / %s (%s)' % (u, v['boq'], v['confirmed'], v['remaining'], ('%.1f%%' % v['pct']) if v['pct'] is not None else 'n/a') for u, v in b['qty_by_unit'].items()) or '-'
@@ -1705,8 +1712,8 @@ def export_xlsx(st, comp, out_path, project_name=''):
         wbs.cell(row=n, column=4, value='=IFERROR(C%d/B%d,"N/A")' % (n, n)); wbs.cell(row=n, column=4).number_format = PCT
         wbs.cell(row=n, column=5, value=qs); wbs.cell(row=n, column=6, value=b['unspecified_unit_items'])
         wbs.cell(row=n, column=7, value='=SUMIFS(%sL2:L%d,%sE2:E%d,A%d)' % (DR, last, DR, last, n))
-        wbs.cell(row=n, column=8, value='=SUMIFS(%sM2:M%d,%sE2:E%d,A%d)' % (DR, last, DR, last, n))
-        wbs.cell(row=n, column=9, value='=G%d-H%d' % (n, n))
+        wbs.cell(row=n, column=8, value='=SUMIFS(%sO2:O%d,%sE2:E%d,A%d)' % (DR, last, DR, last, n))
+        wbs.cell(row=n, column=9, value='=SUMIFS(%sP2:P%d,%sE2:E%d,A%d)' % (DR, last, DR, last, n))
         wbs.cell(row=n, column=10, value='=IF(G%d>0,H%d/G%d,"N/A")' % (n, n, n)); wbs.cell(row=n, column=10).number_format = PCT
         wbs.cell(row=n, column=11, value=', '.join(b['missing_mir']) or '-'); wbs.cell(row=n, column=12, value=', '.join(b['over_boq']) or '-')
         wbs.cell(row=n, column=13, value=', '.join(b['awaiting_review']) or '-'); wbs.cell(row=n, column=14, value=b['unmatched_mir_records'])
