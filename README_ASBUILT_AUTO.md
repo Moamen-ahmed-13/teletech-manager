@@ -52,3 +52,18 @@ nested edits are recorded for review.
   drawing before using the generated DXF for construction.
 - The repository CI tests synthetic DXF instance isolation and markup colors;
   they do not certify every entity in the Mansoura production DXF.
+
+
+## Update: verified registration, arrow and DXF core
+
+- `asbuilt_registration.py`: SIFT + MAGSAC homography, ECC refinement, and strict validation
+  (inliers, reprojection error, coverage, ink-overlap, alias test). Failing pages are
+  `REGISTRATION_FAILED` and send their markups to review.
+- `asbuilt_arrow.py`: blue ink is detected by chroma (`B - max(R,G)`), so grey printed lines are ignored; the
+  arrowhead is located by ink thickness and the tip is the head apex.
+- `asbuilt_pipeline.py` / `asbuilt_apply.py`: markups are matched to the endpoint *symbol under the highlighter*
+  (all counted endpoints, not only a block-name list). Equally covered symbols are `AMBIGUOUS`, not guessed.
+- `dxfedit.py`: correct nested transforms (child @ parent, block base points), copy-on-write clones, and
+  `verify_output()` which re-reads the written DXF and proves only the intended INSERTs changed.
+- Verified on `Mansoura University - HUM - G - A.B.dxf` with the two Hum G1/G2 pages: 13 deletions + 1 move applied,
+  1 ambiguous item (yellow over Projector + D-V BOX) sent to review, original DXF byte-identical.
