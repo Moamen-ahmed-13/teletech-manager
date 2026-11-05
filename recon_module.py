@@ -1093,8 +1093,8 @@ def update_record(st, rec_id, fields, mark_reviewed, user):
         missing = []
         if not r['user'].get('description'): missing.append('description')
         # Unit is optional metadata; it never blocks review or numeric quantity subtraction.
-        if r['user'].get('qty') is None: missing.append('qty (Q.T)')
         is_invoice = r.get('doc_kind') == 'invoice'
+        if not is_invoice and r['user'].get('qty') is None: missing.append('qty (Q.T)')
         if is_invoice:
             if r['user'].get('total') is None: missing.append('invoice line amount')
             if not r['user'].get('mir_status'): r['user']['mir_status'] = 'A'  # reviewer confirmation, never OCR auto-approval
@@ -1417,7 +1417,7 @@ def compute(st):
     pending_ptr = {it['id']: 0 for it in items}
     for rv in recs:
         m = rv['match']
-        if m.get('state') in ('suggested', 'exact') and m.get('boq_id') in pending_ptr:
+        if r.get('doc_kind') != 'invoice' and m.get('state') in ('suggested', 'exact') and m.get('boq_id') in pending_ptr:
             pending_ptr[m['boq_id']] += 1
     rows = []
     for it in items:
@@ -1514,7 +1514,8 @@ def compute(st):
                         bk = k; break
             rv['brand_key'] = bk or '?'
             sm = rv['match'].get('state') or 'not_matched'
-            exc('warning', 'mir_' + sm, rv['id'], '%s p%d: MIR line "%s" (%s) is %s - not counted.' % (rv['filename'], rv['page'], rv['eff']['description'] or '(blank)', rv['eff']['qty'], sm.replace('_', ' ')))
+            kind_label = 'invoice' if rv.get('doc_kind') == 'invoice' else 'mir'
+            exc('warning', kind_label + '_' + sm, rv['id'], '%s p%d: MIR line "%s" (%s) is %s - not counted.' % (rv['filename'], rv['page'], rv['eff']['description'] or '(blank)', rv['eff']['qty'], sm.replace('_', ' ')))
         if 'duplicate' in rv['flags']:
             if rv['dup_of'] == 'REVIEWER':
                 exc('info', 'duplicate_record', rv['id'], '%s p%d (%s %s %s) was marked as a duplicate by the reviewer - excluded from totals.' % (rv['filename'], rv['page'], rv['eff']['ref_no'] or '?', rv['eff']['qty'], rv['eff']['unit'] or ''))
