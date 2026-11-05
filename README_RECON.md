@@ -15,7 +15,7 @@ import of the add-on; 2 entries in `_AUTH_ROLE_ALLOWLIST` (ADMIN/ENGINEER write;
 POST `/api/recon/{upload,action}`; UI injection into the Documents view. Existing routes are untouched.
 
 ## Data location (per project, survives restart)
-`workspace/projects/<project_id>/reconciliation/` : `state.json`, `boq/`, `mir/` (originals, never modified), `pages/`, `exports/`.
+`workspace/projects/<project_id>/reconciliation/` : `state.json`, `boq/`, `mir/`, `invoice/` (source originals, never modified), `pages/`, `exports/`.
 
 ## Counting rule
 A MIR line counts only if: reviewed by a person AND matched to a BOQ row AND approved AND MIR status A or B AND no unit conflict AND not a duplicate.
