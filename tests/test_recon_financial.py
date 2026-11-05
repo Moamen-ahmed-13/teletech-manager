@@ -58,6 +58,16 @@ class FinancialCalculationTests(unittest.TestCase):
         self.assertEqual(row['financial_value'], 180.0)
         self.assertEqual(row['remaining_value'], 720.0)
 
+    def test_invoice_parser_keeps_arabic_description_and_arabic_numbers(self):
+        parsed = R.parse_invoice_lines([
+            {'text': 'فاتورة رقم ١ كابل شبكة ١٠ لفة ٥٠٠ ٥٠٠٠', 'conf': 82}
+        ], 'فاتورة رقم 1.pdf')
+        self.assertEqual(parsed['ref_no'], '١')
+        self.assertEqual(len(parsed['rows']), 1)
+        self.assertIn('كابل', parsed['rows'][0]['description'])
+        self.assertEqual(parsed['rows'][0]['qty'], 10.0)
+        self.assertEqual(parsed['rows'][0]['total'], 5000.0)
+
     def test_mir_unit_conflict_is_not_counted(self):
         st = state([record('mir-1', 'mir', 'MIR-001', 2.0, None, unit='ROLL')])
         row = R.compute(st)['items'][0]
