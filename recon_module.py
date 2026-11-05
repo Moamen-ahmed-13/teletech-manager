@@ -1440,7 +1440,7 @@ def compute(st):
     pending_ptr = {it['id']: 0 for it in items}
     for rv in recs:
         m = rv['match']
-        if r.get('doc_kind') != 'invoice' and m.get('state') in ('suggested', 'exact') and m.get('boq_id') in pending_ptr:
+        if rv.get('doc_kind') != 'invoice' and m.get('state') in ('suggested', 'exact') and m.get('boq_id') in pending_ptr:
             pending_ptr[m['boq_id']] += 1
     rows = []
     for it in items:
@@ -1465,7 +1465,7 @@ def compute(st):
             recorded += q
             st_ = e['mir_status'] if e['mir_status'] in by_status else 'unknown'
             mu = canon_unit(e['unit'])
-            # Quantity reconciliation is numeric per BOQ item; unit text is metadata and does not block subtraction.
+            # A known unit mismatch blocks quantity confirmation; unknown units are retained but flagged.
             conflict = bool(ub and mu and ub != mu)
             if rv['review_status'] != 'reviewed' or st_ == 'unknown':
                 pending += q; awaiting += 1; by_status['unknown'] += q if st_ == 'unknown' else 0
@@ -1483,7 +1483,7 @@ def compute(st):
         qty_ok = qty is not None and qty >= 0
         boq_value = sheet_total if (sheet_total is not None and sheet_total >= 0) else (qty * effective_unit_price if (qty_ok and effective_unit_price is not None) else None)
         if not qty_ok: unavailable['boq_qty'] = 'BOQ quantity missing/invalid'
-        if up is None or up < 0: unavailable['price'] = 'unit price missing/invalid - no financial values'
+        if effective_unit_price is None: unavailable['price'] = 'unit price and BOQ line total missing/invalid - no financial values'
         remaining = (qty - confirmed) if qty_ok else None
         qty_pct = (confirmed / qty * 100) if (qty_ok and qty > 0) else None
         if qty_pct is None: unavailable['qty_pct'] = 'BOQ quantity is zero or unavailable'
