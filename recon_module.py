@@ -838,7 +838,7 @@ def parse_invoice_lines(lines, filename_hint=None):
     """Generic invoice OCR: extracts likely item rows as drafts, never auto-approves them."""
     texts = [str(x.get('text') or '') for x in lines]
     blob = '\n'.join(texts)
-    m = re.search(r'(?:invoice|inv\.?|فاتورة|رقم\s*الفاتورة)\s*(?:no\.?|number|#|:)?\s*([A-Z0-9][A-Z0-9/\-_]{1,30})', blob, re.I)
+    m = re.search(r'(?:invoice|inv\.?|فاتورة|رقم\s*الفاتورة)\s*(?:رقم|no\.?|number|#|:)?\s*([A-Z0-9][A-Z0-9/\-_]{1,30})', blob, re.I)
     ref = m.group(1).strip() if m else _invoice_ref_from_filename(filename_hint)
     dates = _date_candidates(blob)
     rows, seen = [], set()
