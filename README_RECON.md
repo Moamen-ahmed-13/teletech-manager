@@ -62,3 +62,19 @@ MIR-004 (150, status C) is never counted. The 548 / 407 / 57.38 % figure from yo
 - M10LE-262 faceplate has no exact BOQ row; pick the BOQ row manually.
 - MGS600 outlets appear on three BOQ rows (R47/R50/R53): shown as ambiguous; reviewer chooses. One MIR line maps to one BOQ row; to split, add manual lines.
 - Needs: Python 3.10+, openpyxl, pymupdf, opencv-python, numpy, Tesseract (set TESSERACT_CMD on Windows).
+
+
+## Update 3 - circular BOQ summary, financial balance correction, and supplier invoices
+
+- The BOQ executive summary is now rendered as circular progress indicators, consistent with the brand quantity rings.
+- Financial calculations now use the BOQ line total as the authoritative contract value when present. If the BOQ total is present but unit price is blank, the effective rate is derived as line total / BOQ quantity. This prevents the old calculation from silently ignoring the line-total column.
+- Remaining financial value is calculated per BOQ row, then aggregated by brand. It is not calculated from a mixed-unit quantity total.
+- Approved invoice line amounts are used as the financial value for that BOQ row. If there is no approved invoice amount for a row, the existing MIR-derived estimate remains the fallback. Invoice values are never added on top of MIR estimates for the same row, preventing double counting.
+- Invoice rows with a confirmed unit conflict are excluded until corrected. Invoice value above the BOQ row value is retained as an overrun and reported as an error; it is not capped.
+- A new **فواتير التوريد** upload option accepts scanned invoice PDFs. It runs OCR (English + Arabic when the Arabic Tesseract language pack is installed), extracts likely invoice reference/date/description/unit/quantity/line amount as drafts, and uses the same manual review + BOQ match approval workflow. OCR never approves or counts an invoice automatically.
+- Project Documents import now classifies PDFs whose filenames contain "invoice" or "فاتورة" as invoices; other PDFs remain MIRs.
+- The export now includes MIR estimate, approved invoice value, recognized financial value, remaining value, and invoice source documents. The executive and brand summary formulas use the recognized financial value.
+
+**Important accounting rule:** MIR confirms inspection/quantity evidence; an invoice is financial evidence. If an approved invoice is matched to a BOQ row, its reviewed line amount is used for that row's financial progress. Otherwise the row falls back to the MIR-derived estimate. This is a per-row choice, not a sum of both sources.
+
+**Current invoice fixture in this repository:** `فاتورة رقم 1 بنى سويف لامر التوريد القديم.pdf`. The application can upload it directly through the new invoice control, or import it from the project's Documents list if it has already been added there. The generic invoice OCR is conservative and must be checked against the scan before confirming the record.
