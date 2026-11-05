@@ -318,9 +318,8 @@ def _ref_from_filename(name):
 
 def _invoice_ref_from_filename(name):
     stem = Path(str(name or '')).stem
-    m = re.search(r'(?:invoice|inv|فاتورة)\\s*(?:رقم|no\\.?|number|#)?\\s*([A-Z0-9][A-Z0-9/\\-]{0,24})', stem, re.I)
+    m = re.search(r'(?:invoice|inv|فاتورة)\s*(?:رقم|no\.?|number|#)?\s*([A-Z0-9][A-Z0-9/\-]{0,24})', stem, re.I)
     return m.group(1) if m else stem[:80]
-
 
 def stored_path(project_dir, kind, meta):
     base = (recon_dir(project_dir) / ('boq' if kind == 'boq' else ('invoice' if kind == 'invoice' else 'mir'))).resolve()
@@ -828,46 +827,55 @@ def _ocr_page_legacy(pg, doc):
 
 def _clean_invoice_desc(value):
     s = str(value or '')
-    s = re.sub(r'[^\\w\\s()\\-/#&+.,]', ' ', s, flags=re.UNICODE)
-    words = re.findall(r'[A-Za-z0-9\\u0600-\\u06ff]+(?:[-/#&+.,][A-Za-z0-9\\u0600-\\u06ff]+)*', s)
-    while words and len(words[0]) <= 1: words.pop(0)
+    s = re.sub(r'[^\w\s()\-/#&+.,]', ' ', s, flags=re.UNICODE)
+    words = re.findall(r'[A-Za-z0-9\u0600-\u06ff]+(?:[-/#&+.,][A-Za-z0-9\u0600-\u06ff]+)*', s)
+    while words and len(words[0]) <= 1:
+        words.pop(0)
     return ' '.join(words).strip()
 
 
 def parse_invoice_lines(lines, filename_hint=None):
     """Generic invoice OCR: extracts likely item rows as drafts, never auto-approves them."""
     texts = [str(x.get('text') or '') for x in lines]
-    blob = '\\n'.join(texts)
-    m = re.search(r'(?:invoice|inv\\.?|فاتورة|رقم\\s*الفاتورة)\\s*(?:no\\.?|number|#|:)?\\s*([A-Z0-9][A-Z0-9/\\-_]{1,30})', blob, re.I)
+    blob = '\n'.join(texts)
+    m = re.search(r'(?:invoice|inv\.?|فاتورة|رقم\s*الفاتورة)\s*(?:no\.?|number|#|:)?\s*([A-Z0-9][A-Z0-9/\-_]{1,30})', blob, re.I)
     ref = m.group(1).strip() if m else _invoice_ref_from_filename(filename_hint)
     dates = _date_candidates(blob)
     rows, seen = [], set()
     for line in lines:
         raw = str(line.get('text') or '').strip()
-        if not raw or re.search(r'^(?:subtotal|grand\\s+total|tax|vat|total\\b|الإجمالي|الاجمالي|ضريبة)\\b', raw, re.I):
+        if not raw or re.search(r'^(?:subtotal|grand\s+total|tax|vat|total\b|الإجمالي|الاجمالي|ضريبة)\b', raw, re.I):
             continue
-        nums = re.findall(r'(?<![A-Za-z])[-+]?\\d[\\d,]*(?:\\.\\d+)?', raw)
+        nums = re.findall(r'(?<![A-Za-z])[-+]?[0-9٠-٩۰-۹][0-9٠-٩۰-۹,]*(?:[.\u066b][0-9٠-٩۰-۹]+)?', raw)
         vals = [to_number(x) for x in nums]
         vals = [x for x in vals if x is not None]
-        if not vals: continue
+        if not vals:
+            continue
         desc = raw
-        for token in reversed(nums): desc = re.sub(re.escape(token), ' ', desc, count=1)
+        for token in reversed(nums):
+            desc = re.sub(re.escape(token), ' ', desc, count=1)
         unit = None
-        for word in reversed(re.findall(r'[A-Za-z\\u0600-\\u06ff]+', desc)):
+        for word in reversed(re.findall(r'[A-Za-z\u0600-\u06ff]+', desc)):
             u, _ = fuzzy_unit(word)
             if u:
                 unit = u
                 desc = re.sub(re.escape(word), ' ', desc, flags=re.I)
                 break
         desc = _clean_invoice_desc(desc)
-        if len(norm_alnum(desc)) < 4: continue
+        if len(norm_alnum(desc)) < 4:
+            continue
         qty = rate = amount = None
-        if len(vals) >= 3: qty, rate, amount = vals[-3], vals[-2], vals[-1]
-        elif len(vals) == 2: qty, amount = vals[-2], vals[-1]
-        else: amount = vals[-1]
-        if amount is None or amount < 0 or (qty is not None and qty < 0): continue
+        if len(vals) >= 3:
+            qty, rate, amount = vals[-3], vals[-2], vals[-1]
+        elif len(vals) == 2:
+            qty, amount = vals[-2], vals[-1]
+        else:
+            amount = vals[-1]
+        if amount is None or amount < 0 or (qty is not None and qty < 0):
+            continue
         key = (norm_alnum(desc), qty, amount)
-        if key in seen: continue
+        if key in seen:
+            continue
         seen.add(key)
         rows.append({'description': desc, 'unit': unit, 'qty': qty, 'total': amount, 'unit_price': rate,
                      'conf': line.get('conf'), 'row_flags': ['invoice_ocr_draft']})
