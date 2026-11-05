@@ -975,8 +975,8 @@ def _apply_ocr(st, doc, results, user):
                                                          total=row.get('total'), unit_price=row.get('unit_price'), conf=row.get('conf'), invoice_no=row.get('invoice_no'),
                                                          alts=row.get('alts'), extra_text=row.get('extra') or None, raw_text=''), list(dict.fromkeys(fl)))
             st['records'].append(rec); n_new += 1
-    doc.update({'ocr_status': 'done', 'ocr_backend': 'tesseract (layout reader + 3-variant vote)', 'ocr_at': _now(), 'ocr_error': None, 'ocr_progress': None})
-    _audit(st, user, 'MIR_OCR', '%s records=%d' % (doc['filename'], n_new))
+    doc.update({'ocr_status': 'done', 'ocr_backend': ('tesseract (invoice line draft; Arabic if installed)' if doc.get('kind') == 'invoice' else 'tesseract (layout reader + 3-variant vote)'), 'ocr_at': _now(), 'ocr_error': None, 'ocr_progress': None})
+    _audit(st, user, 'INVOICE_OCR' if doc.get('kind') == 'invoice' else 'MIR_OCR', '%s records=%d' % (doc['filename'], n_new))
     return n_new
 
 
@@ -1012,7 +1012,7 @@ def start_ocr(project_dir, st, doc_id, user):
         raise ReconError('OCR is already running for this PDF.')
     doc.update({'ocr_status': 'running', 'ocr_proc': _PROC_ID, 'ocr_started_at': _now(), 'ocr_error': None,
                 'ocr_progress': {'page': 0, 'pages': doc['pages']}})
-    _audit(st, user, 'MIR_OCR_START', doc['filename'])
+    _audit(st, user, 'INVOICE_OCR_START' if doc.get('kind') == 'invoice' else 'MIR_OCR_START', doc['filename'])
     threading.Thread(target=_ocr_worker, args=(str(project_dir), dict(doc), status, dict(user or {})), daemon=True, name='recon-ocr').start()
     return True
 
@@ -1065,7 +1065,7 @@ def add_manual_record(st, doc_id, page, user):
                                             'ref_no': None, 'date': None, 'conf': None, 'raw_text': ''}, ['manual_entry'])
     rec['edited_by'], rec['edited_at'] = (user or {}).get('username', ''), _now()
     st['records'].append(rec)
-    _audit(st, user, 'MIR_RECORD_ADD', '%s p%d' % (doc['filename'], page))
+    _audit(st, user, 'INVOICE_RECORD_ADD' if doc.get('kind') == 'invoice' else 'MIR_RECORD_ADD', '%s p%d' % (doc['filename'], page))
     return rec
 
 
@@ -1129,7 +1129,7 @@ def update_record(st, rec_id, fields, mark_reviewed, user):
     elif changed:
         r['review_status'] = 'pending'  # an edit invalidates a previous review
     r['edited_by'], r['edited_at'] = (user or {}).get('username', ''), _now()
-    _audit(st, user, 'MIR_RECORD_REVIEW' if mark_reviewed else 'MIR_RECORD_EDIT', '%s fields=%s' % (rec_id, ','.join(changed) or '-'))
+    _audit(st, user, ('INVOICE_RECORD_REVIEW' if mark_reviewed else 'INVOICE_RECORD_EDIT') if r.get('doc_kind') == 'invoice' else ('MIR_RECORD_REVIEW' if mark_reviewed else 'MIR_RECORD_EDIT'), '%s fields=%s' % (rec_id, ','.join(changed) or '-'))
     return r
 
 
@@ -1138,7 +1138,7 @@ def delete_record(st, rec_id, user):
     if not r:
         raise ReconError('Record not found.')
     st['records'].remove(r)
-    _audit(st, user, 'MIR_RECORD_DELETE', '%s origin=%s' % (rec_id, r['origin']))
+    _audit(st, user, 'INVOICE_RECORD_DELETE' if r.get('doc_kind') == 'invoice' else 'MIR_RECORD_DELETE', '%s origin=%s' % (rec_id, r['origin']))
 
 
 def delete_doc(project_dir, st, doc_id, user):
@@ -1149,7 +1149,7 @@ def delete_doc(project_dir, st, doc_id, user):
     (st['invoice_docs'] if doc.get('kind') == 'invoice' else st['mir_docs']).remove(doc)
     # the original file is kept on disk (evidence); it is only removed from the reconciliation set
     st.setdefault('removed_docs', []).append({**doc, 'removed_at': _now(), 'removed_by': (user or {}).get('username', '')})
-    _audit(st, user, 'MIR_DOC_REMOVE', doc['filename'])
+    _audit(st, user, 'INVOICE_DOC_REMOVE' if doc.get('kind') == 'invoice' else 'MIR_DOC_REMOVE', doc['filename'])
 
 
 # ----------------------------------------------------------------------------
