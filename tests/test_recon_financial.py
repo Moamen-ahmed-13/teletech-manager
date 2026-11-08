@@ -78,21 +78,17 @@ class FinancialCalculationTests(unittest.TestCase):
         self.assertGreater(len(table_pages), 0, 'The invoice page classifier should detect at least one item-table page')
         self.assertGreater(len(rows), 0, 'Detected invoice table pages should yield draft lines for manual review')
 
-    def test_invoice_page_without_detected_rows_still_creates_review_placeholder(self):
+    def test_invoice_page_without_detected_rows_is_diagnostic_not_fake_line(self):
         doc = {'id': 'invoice-doc', 'kind': 'invoice', 'filename': 'invoice.pdf',
                'pages': 1, 'ocr_status': 'running'}
         st = state([], [doc])
         parsed = {'rows': [], 'flags': [], 'page_analysis': {'is_table': True, 'header_hits': ['qty']},
                   'status': {}, 'raw_text': 'Invoice table header only'}
         count = R._apply_ocr(st, doc, [(1, parsed)], {'username': 'tester'})
-        self.assertEqual(count, 1)
-        self.assertEqual(len(st['records']), 1)
-        rec = st['records'][0]
-        self.assertEqual(rec['doc_kind'], 'invoice')
-        self.assertEqual(rec['review_status'], 'pending')
-        self.assertIn('ocr_no_lines', rec['ocr_flags'])
-        self.assertIsNone(rec['ocr']['description'])
+        self.assertEqual(count, 0)
+        self.assertEqual(len(st['records']), 0)
         self.assertEqual(doc['invoice_page_analysis'][0]['row_count'], 0)
+        self.assertIn('ocr_no_lines', doc['invoice_page_analysis'][0]['flags'])
         self.assertEqual(doc['ocr_status'], 'done')
 
     def test_invoice_amount_is_used_instead_of_adding_to_mir_estimate(self):
