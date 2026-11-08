@@ -221,6 +221,27 @@ class InvoiceTableGeometryTests(unittest.TestCase):
         self.assertFalse(row['math_valid'])
         self.assertIn('numeric_columns_require_review', row['row_flags'])
 
+    def test_invoice_page_classifier_recognizes_arabic_table_headers(self):
+        words = [
+            {'text': 'بيان', 'left': 900, 'top': 100, 'width': 80, 'height': 25},
+            {'text': 'الصنف', 'left': 820, 'top': 100, 'width': 70, 'height': 25},
+            {'text': 'الوحدة', 'left': 650, 'top': 100, 'width': 60, 'height': 25},
+            {'text': 'الكمية', 'left': 520, 'top': 100, 'width': 60, 'height': 25},
+            {'text': 'سعر', 'left': 340, 'top': 100, 'width': 40, 'height': 25},
+            {'text': 'الوحدة', 'left': 290, 'top': 100, 'width': 50, 'height': 25},
+            {'text': 'الإجمالي', 'left': 100, 'top': 100, 'width': 80, 'height': 25},
+            {'text': 'كابل', 'left': 900, 'top': 150, 'width': 80, 'height': 25},
+            {'text': 'PC', 'left': 650, 'top': 150, 'width': 25, 'height': 25},
+            {'text': '10', 'left': 520, 'top': 150, 'width': 25, 'height': 25},
+            {'text': '100', 'left': 320, 'top': 150, 'width': 35, 'height': 25},
+            {'text': '1000', 'left': 120, 'top': 150, 'width': 45, 'height': 25},
+        ]
+        evidence = R._invoice_page_table_evidence(words)
+        self.assertTrue(evidence['is_table'])
+        self.assertIn('qty', evidence['header_hits'])
+        self.assertIn('description', evidence['header_hits'])
+        self.assertIn('total', evidence['header_hits'])
+
     def test_invoice_page_classifier_detects_table_headers(self):
         words = [
             self.word('Item', 30, 40), self.word('Description', 100, 40, 80),
