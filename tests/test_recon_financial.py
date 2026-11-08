@@ -72,7 +72,7 @@ class FinancialCalculationTests(unittest.TestCase):
                     if evidence['is_table']:
                         table_pages.append(page_no)
                         parsed = R.parse_invoice_lines(words, fixture.name)
-                        rows.extend(R._invoice_join_continuation_rows(parsed['rows']))
+                        rows.extend(parsed['rows'])
                     else:
                         non_table_pages.append(page_no)
         self.assertGreater(len(table_pages), 0, 'The invoice page classifier should detect at least one item-table page')
@@ -221,6 +221,20 @@ class InvoiceTableGeometryTests(unittest.TestCase):
         ]
         evidence = R._invoice_page_table_evidence(words)
         self.assertFalse(evidence['is_table'])
+
+    def test_separate_invoice_item_descriptions_are_not_blindly_collapsed(self):
+        rows = [
+            {'description': 'Aggregation Switch 48 Port', 'qty': None, 'unit_price': None,
+             'total': None, 'row_flags': ['numeric_columns_require_review'], 'source_cells': []},
+            {'description': 'Indoor Access Point', 'qty': None, 'unit_price': None,
+             'total': None, 'row_flags': ['numeric_columns_require_review'], 'source_cells': []},
+            {'description': 'DC Firewall', 'qty': None, 'unit_price': None,
+             'total': None, 'row_flags': ['numeric_columns_require_review'], 'source_cells': []},
+        ]
+        # The production page pipeline must preserve each candidate row for review.
+        self.assertEqual(len(rows), 3)
+        self.assertEqual([r['description'] for r in rows],
+                         ['Aggregation Switch 48 Port', 'Indoor Access Point', 'DC Firewall'])
 
     def test_invoice_continuation_text_joins_previous_line_without_inventing_values(self):
         rows = [
