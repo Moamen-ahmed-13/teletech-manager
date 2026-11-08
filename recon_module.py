@@ -905,9 +905,9 @@ def _invoice_header_centers(visual_rows):
                     if any((b['left'] - (a['left'] + a['width'])) > max(45, 1.8 * max(a['height'], b['height']))
                            for a, b in zip(part, part[1:])):
                         continue
-                    phrase = re.sub(r'[^a-z0-9\\u0600-\\u06ff]', '', ' '.join(str(w['text']).lower() for w in part))
+                    phrase = re.sub(r'[^a-z0-9\u0600-\u06ff]', '', ' '.join(str(w['text']).lower() for w in part))
                     for label in labels:
-                        target = re.sub(r'[^a-z0-9\\u0600-\\u06ff]', '', label.lower())
+                        target = re.sub(r'[^a-z0-9\u0600-\u06ff]', '', label.lower())
                         if phrase == target:
                             # "unit" alone is never treated as a price header.
                             found.setdefault(field, []).append(sum(w['left'] + w['width'] / 2.0 for w in part) / len(part))
@@ -926,10 +926,10 @@ def _invoice_page_table_evidence(words, image_path=None):
         'total': ('amount', 'total', 'الإجمالي', 'الاجمالي', 'الاجمالى'),
         'unit': ('unit', 'uom', 'الوحدة', 'وحدة القياس'),
     }
-    normalized = re.sub(r'[^a-z0-9\\u0600-\\u06ff]+', ' ', text)
+    normalized = re.sub(r'[^a-z0-9\u0600-\u06ff]+', ' ', text)
     hits = set()
     for key, labels in header_groups.items():
-        if any(re.search(r'(?<![a-z0-9\\u0600-\\u06ff])' + re.escape(label.lower()) + r'(?![a-z0-9\\u0600-\\u06ff])', normalized)
+        if any(re.search(r'(?<![a-z0-9\u0600-\u06ff])' + re.escape(label.lower()) + r'(?![a-z0-9\u0600-\u06ff])', normalized)
                for label in labels):
             hits.add(key)
     numeric_words = sum(1 for w in words if _invoice_numeric_word(w.get('text')) is not None)
