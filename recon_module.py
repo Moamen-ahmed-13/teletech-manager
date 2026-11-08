@@ -1014,7 +1014,21 @@ def parse_invoice_lines(lines, filename_hint=None):
             unit_word = next((w for w in visual if canon_unit(w['text']) in set(UNIT_ALIASES.values())), None)
             desc = _clean_invoice_desc(' '.join(w['text'] for w in visual
                                                  if _invoice_numeric_word(w['text']) is None and w is not unit_word))
-            if len(norm_alnum(desc)) < 4 or len(numeric) < 2:
+            if len(norm_alnum(desc)) < 4:
+                continue
+            if len(numeric) < 2:
+                # Keep likely wrapped description fragments only when table column geometry is known
+                # and the text remains entirely to the left of the Qty column.
+                qty_center = header_centers.get('qty')
+                text_words = [w for w in visual if _invoice_numeric_word(w['text']) is None and w is not unit_word]
+                if (qty_center is not None and text_words
+                        and all((w['left'] + w['width']) <= qty_center for w in text_words)
+                        and not re.search(r'\b(?:description|quantity|qty|unit|price|amount|total|invoice|date)\b|وصف|الكمية|الوحدة|الإجمالي', desc, re.I)):
+                    rows.append({'description': desc, 'unit': None, 'qty': None, 'unit_price': None, 'total': None,
+                                 'conf': None, 'math_valid': False, 'source_cells': [
+                                     {'text': w['text'], 'left': int(w['left']), 'top': int(w['top']),
+                                      'width': int(w['width']), 'height': int(w['height']), 'conf': w.get('conf')}
+                                     for w in visual], 'row_flags': ['invoice_description_continuation_candidate']})
                 continue
             if len(numeric) >= 4 and numeric[0][1].is_integer() and 0 < numeric[0][1] <= 999:
                 numeric = numeric[1:]  # likely item serial number, not a financial cell
@@ -1200,6 +1214,8 @@ def _supplier_from_text(st, text):
 def _apply_ocr(st, doc, results, user):
     """Light part: turn page results into DRAFT records (OCR values are kept untouched in rec['ocr'])."""
     n_new = 0
+    if doc.get('kind') == 'invoice':
+        doc['invoice_page_analysis'] = []
     for page_no, parsed in results:
         stat = parsed.get('status') or {}
         base = {'ref_no': parsed.get('ref_no'), 'date': parsed.get('date'), 'date_alternatives': parsed.get('date_alternatives') or [],
@@ -1214,7 +1230,7 @@ def _apply_ocr(st, doc, results, user):
         if not rows:
             if doc.get('kind') == 'invoice':
                 # A page with no detected item rows must not become a fake blank invoice line.
-                doc.setdefault('invoice_page_analysis', []).append({
+                doc['invoice_page_analysis'].append({
                     'page': page_no, 'is_table': bool((parsed.get('page_analysis') or {}).get('is_table')),
                     'header_hits': (parsed.get('page_analysis') or {}).get('header_hits', []),
                     'flags': list(pflags), 'row_count': 0})
@@ -1223,6 +1239,11 @@ def _apply_ocr(st, doc, results, user):
                                                          raw_text=parsed.get('raw_text', '')), list(dict.fromkeys(pflags + ['ocr_no_lines'])))
             st['records'].append(rec); n_new += 1
             continue
+        if doc.get('kind') == 'invoice':
+            doc['invoice_page_analysis'].append({
+                'page': page_no, 'is_table': bool((parsed.get('page_analysis') or {}).get('is_table')),
+                'header_hits': (parsed.get('page_analysis') or {}).get('header_hits', []),
+                'flags': list(pflags), 'row_count': len(rows)})
         for row in rows:
             fl = list(pflags) + list(row.get('row_flags') or [])
             if row.get('unit_fuzzy') and 'old_form_partial' not in fl and 'unit_fuzzy' not in fl:
@@ -1234,7 +1255,7 @@ def _apply_ocr(st, doc, results, user):
                                                          total=row.get('total'), unit_price=row.get('unit_price'), conf=row.get('conf'), invoice_no=row.get('invoice_no'),
                                                          alts=row.get('alts'), extra_text=row.get('extra') or None, raw_text=''), list(dict.fromkeys(fl)))
             st['records'].append(rec); n_new += 1
-    doc.update({'ocr_status': 'done', 'ocr_backend': ('tesseract (invoice line draft; Arabic if installed)' if doc.get('kind') == 'invoice' else 'tesseract (layout reader + 3-variant vote)'), 'ocr_at': _now(), 'ocr_error': None, 'ocr_progress': None})
+    doc.update({'ocr_status': 'done', 'ocr_backend': ('PDF-native text + Tesseract table-page detection (Arabic if installed)' if doc.get('kind') == 'invoice' else 'tesseract (layout reader + 3-variant vote)'), 'ocr_at': _now(), 'ocr_error': None, 'ocr_progress': None})
     _audit(st, user, 'INVOICE_OCR' if doc.get('kind') == 'invoice' else 'MIR_OCR', '%s records=%d' % (doc['filename'], n_new))
     return n_new
 
