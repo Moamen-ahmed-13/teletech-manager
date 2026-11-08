@@ -221,6 +221,56 @@ class InvoiceTableGeometryTests(unittest.TestCase):
         self.assertFalse(row['math_valid'])
         self.assertIn('numeric_columns_require_review', row['row_flags'])
 
+    def test_invoice_parser_excludes_header_and_footer_metadata(self):
+        words = [
+            self.word('Company', 100, 10, 80),
+            self.word('Address', 190, 10, 70),
+            self.word('Cairo', 270, 10, 45),
+            self.word('Description', 100, 60, 100),
+            self.word('Qty', 700, 60, 28),
+            self.word('Price', 800, 60, 40),
+            self.word('Total', 900, 60, 40),
+            self.word('Aggregation', 100, 110, 90),
+            self.word('Switch', 195, 110, 55),
+            self.word('PC', 620, 110, 25),
+            self.word('2', 700, 110, 15),
+            self.word('50', 800, 110, 25),
+            self.word('100', 900, 110, 30),
+            self.word('Address', 100, 900, 70),
+            self.word('Cairo', 180, 900, 45),
+            self.word('Phone', 240, 900, 50),
+            self.word('0123456789', 300, 900, 90),
+        ]
+        parsed = R.parse_invoice_lines(words, 'invoice.pdf')
+        self.assertEqual(len(parsed['rows']), 1)
+        self.assertIn('Aggregation Switch', parsed['rows'][0]['description'])
+        self.assertEqual(parsed['rows'][0]['qty'], 2.0)
+        self.assertEqual(parsed['rows'][0]['unit_price'], 50.0)
+        self.assertEqual(parsed['rows'][0]['total'], 100.0)
+
+    def test_invoice_parser_preserves_multiple_distinct_item_rows(self):
+        words = [
+            self.word('Description', 100, 40, 100),
+            self.word('Qty', 700, 40, 28),
+            self.word('Price', 800, 40, 40),
+            self.word('Total', 900, 40, 40),
+            self.word('Aggregation', 100, 100, 90),
+            self.word('Switch', 195, 100, 55),
+            self.word('2', 700, 100, 15),
+            self.word('50', 800, 100, 25),
+            self.word('100', 900, 100, 30),
+            self.word('Indoor', 100, 150, 55),
+            self.word('Access', 160, 150, 45),
+            self.word('Point', 210, 150, 40),
+            self.word('3', 700, 150, 15),
+            self.word('20', 800, 150, 25),
+            self.word('60', 900, 150, 25),
+        ]
+        parsed = R.parse_invoice_lines(words, 'invoice.pdf')
+        self.assertEqual(len(parsed['rows']), 2)
+        self.assertIn('Aggregation Switch', parsed['rows'][0]['description'])
+        self.assertIn('Indoor Access Point', parsed['rows'][1]['description'])
+
     def test_invoice_page_classifier_recognizes_arabic_table_headers(self):
         words = [
             {'text': 'بيان', 'left': 900, 'top': 100, 'width': 80, 'height': 25},
