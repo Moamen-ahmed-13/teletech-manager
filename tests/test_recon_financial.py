@@ -55,20 +55,28 @@ class FinancialCalculationTests(unittest.TestCase):
         if not shutil.which('tesseract'):
             self.skipTest('Tesseract is not installed')
         rows = []
+        table_pages = []
+        non_table_pages = []
         with tempfile.TemporaryDirectory(prefix='invoice_fixture_') as tmp:
             with fitz.open(str(fixture)) as pdf:
                 for page_no, page in enumerate(pdf, 1):
                     image = Path(tmp) / ('page_%d.png' % page_no)
                     page.get_pixmap(matrix=fitz.Matrix(2.5, 2.5)).save(str(image))
                     try:
-                        lines = R._tesseract_lines(image, langs='eng+ara')
+                        words = R._tesseract_lines(image, langs='eng+ara', psm=6, output='words')
                     except R.ReconError as exc:
                         if 'ara' in str(exc).lower():
                             self.skipTest('Arabic Tesseract language pack is unavailable')
                         raise
-                    parsed = R.parse_invoice_lines(lines, fixture.name)
-                    rows.extend(parsed['rows'])
-        self.assertGreater(len(rows), 0, 'The repository invoice scan should yield draft lines for manual review')
+                    evidence = R._invoice_page_table_evidence(words, image)
+                    if evidence['is_table']:
+                        table_pages.append(page_no)
+                        parsed = R.parse_invoice_lines(words, fixture.name)
+                        rows.extend(R._invoice_join_continuation_rows(parsed['rows']))
+                    else:
+                        non_table_pages.append(page_no)
+        self.assertGreater(len(table_pages), 0, 'The invoice page classifier should detect at least one item-table page')
+        self.assertGreater(len(rows), 0, 'Detected invoice table pages should yield draft lines for manual review')
 
     def test_invoice_amount_is_used_instead_of_adding_to_mir_estimate(self):
         st = state([
