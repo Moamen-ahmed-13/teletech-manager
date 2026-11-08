@@ -1283,12 +1283,13 @@ def _apply_ocr(st, doc, results, user):
         rows = parsed.get('rows') or []
         if not rows:
             if doc.get('kind') == 'invoice':
-                # Keep a visible page-level review draft when invoice OCR finds no rows.
-                # This is a clearly flagged placeholder, not an extracted item.
+                # Page diagnostics belong to the document, not to a fake line item.
+                # A page with no extracted material rows must not enter matching/review/quantity totals.
                 doc['invoice_page_analysis'].append({
                     'page': page_no, 'is_table': bool((parsed.get('page_analysis') or {}).get('is_table')),
                     'header_hits': (parsed.get('page_analysis') or {}).get('header_hits', []),
-                    'flags': list(pflags), 'row_count': 0})
+                    'flags': list(pflags + ['ocr_no_lines']), 'row_count': 0})
+                continue
             rec = _new_record(doc, page_no, 'ocr', dict(base, description=None, unit=None, qty=None, total=None,
                                                          unit_price=None, conf=None, raw_text=parsed.get('raw_text', '')),
                               list(dict.fromkeys(pflags + ['ocr_no_lines'])))
