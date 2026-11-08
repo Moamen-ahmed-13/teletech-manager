@@ -887,9 +887,10 @@ def _invoice_numeric_word(value):
 def _invoice_header_centers(visual_rows):
     """Infer numeric column centers from single- or multi-word English/Arabic headers."""
     phrases = {
-        'qty': ('qty', 'quantity', 'الكميه', 'الكمية', 'كمية'),
-        'unit_price': ('unit price', 'unit rate', 'price', 'rate', 'سعر الوحدة', 'سعر الوحده'),
-        'total': ('amount', 'total', 'line total', 'total amount', 'الإجمالي', 'الاجمالي', 'الاجمالى', 'اجمالي'),
+        'qty': ('qty', 'q t', 'qt', 'quantity', 'q.t', 'الكمية q.t', 'الكميه', 'الكمية', 'كمية'),
+        'unit_price': ('unit price', 'unit rate', 'price', 'rate', 'سعر الوحدة', 'سعر الوحده', 'سعر الوحده'),
+        'total': ('amount', 'total', 'line total', 'total amount', 'قيمة بند الفاتورة',
+                  'قيمة الفاتورة', 'الإجمالي', 'الاجمالي', 'الاجمالى', 'اجمالي'),
     }
     found = {}
     for row in visual_rows:
@@ -1135,7 +1136,8 @@ def _ocr_pages(project_dir, doc, status, progress=None):
                     native_evidence = _invoice_page_table_evidence(native_words)
                     native_candidate = parse_invoice_lines(native_words, doc.get('filename'))
                     native_candidate['page_analysis'] = native_evidence
-                    native_candidate['rows'] = _invoice_join_continuation_rows(native_candidate.get('rows') or [])
+                    # Keep OCR visual rows separate. Blind continuation merging previously
+                    # collapsed multiple invoice items into one page-sized description.
                     native_score = (int(native_evidence['is_table']), native_evidence['header_score'],
                                     sum(1 for r in native_candidate.get('rows', []) if r.get('math_valid')),
                                     len(native_candidate.get('rows') or []),
@@ -1147,7 +1149,8 @@ def _ocr_pages(project_dir, doc, status, progress=None):
                         evidence = _invoice_page_table_evidence(words, variant_path)
                         candidate = parse_invoice_lines(words, doc.get('filename'))
                         candidate['page_analysis'] = evidence
-                        candidate['rows'] = _invoice_join_continuation_rows(candidate.get('rows') or [])
+                        # Do not merge adjacent description-only rows: without confirmed
+                        # grid-row boundaries they may be distinct invoice items.
                         score = (int(evidence['is_table']), evidence['header_score'],
                                  sum(1 for r in candidate.get('rows', []) if r.get('math_valid')),
                                  len(candidate.get('rows') or []),
