@@ -995,6 +995,47 @@ def _invoice_assign_from_headers(numeric, centers):
     return qty, rate, amount
 
 
+def _invoice_header_y(visual_rows):
+    """Return the bottom edge of a likely table-header row, if one is visible."""
+    header_terms = (
+        'description', 'item', 'particular', 'material', 'qty', 'quantity',
+        'unit', 'uom', 'price', 'rate', 'amount', 'total',
+        'بيان', 'الصنف', 'وصف', 'الكمية', 'الكميه', 'الوحدة', 'سعر', 'الإجمالي', 'الاجمالي',
+    )
+    candidates = []
+    for row in visual_rows:
+        words = [str(w.get('text') or '').strip().lower() for w in row]
+        joined = ' '.join(words)
+        hits = sum(1 for term in header_terms if re.search(
+            r'(?<![a-z0-9\u0600-\u06ff])' + re.escape(term) + r'(?![a-z0-9\u0600-\u06ff])',
+            joined, re.I))
+        if hits >= 2:
+            candidates.append(max(float(w['top']) + float(w['height']) for w in row))
+    return min(candidates) if candidates else None
+
+
+def _invoice_non_item_text(description):
+    """Reject obvious invoice metadata, column labels and footer/address text, not product names."""
+    s = re.sub(r'\s+', ' ', str(description or '').strip().lower())
+    if len(norm_alnum(s)) < 4:
+        return True
+    metadata = (
+        r'\b(?:invoice|tax invoice|invoice date|invoice no|customer|supplier|address|'
+        r'phone|telephone|tel|fax|email|website|page\s*\d+|subtotal|grand total|'
+        r'vat|tax number|commercial register|signature|approved by)\b',
+        r'(?:رقم الفاتورة|فاتورة ضريبية|تاريخ الفاتورة|اسم العميل|اسم المورد|'
+        r'العنوان|القاهرة|شارع|تليفون|هاتف|موبايل|فاكس|السجل التجاري|'
+        r'الرقم الضريبي|ضريبة|الإجمالي|الاجمالي|التوقيع|صفحة)',
+    )
+    if any(re.search(pattern, s, re.I) for pattern in metadata):
+        return True
+    header_words = {'description', 'item', 'qty', 'quantity', 'unit', 'uom', 'price',
+                    'rate', 'amount', 'total', 'بيان', 'الصنف', 'الكمية', 'الكميه',
+                    'الوحدة', 'سعر', 'الإجمالي', 'الاجمالي'}
+    tokens_found = set(re.findall(r'[a-z]+|[\u0600-\u06ff]+', s))
+    return len(tokens_found) <= 4 and len(tokens_found & header_words) >= 2
+
+
 def parse_invoice_lines(lines, filename_hint=None):
     """Conservative invoice parser: TSV boxes where available; no guessed units or unverified column mapping."""
     blob = '\n'.join(str(x.get('text') or '') for x in lines)
@@ -1007,8 +1048,17 @@ def parse_invoice_lines(lines, filename_hint=None):
     if boxed:
         visual_rows = _invoice_word_rows(lines)
         header_centers = _invoice_header_centers(visual_rows)
+        table_header_bottom = _invoice_header_y(visual_rows)
         for visual in visual_rows:
             row_text = ' '.join(w['text'] for w in visual)
+            row_top = min(float(w['top']) for w in visual)
+            row_bottom = max(float(w['top']) + float(w['height']) for w in visual)
+            row_center = (row_top + row_bottom) / 2.0
+            # Never turn column headings or text above the table into invoice items.
+            if table_header_bottom is not None and row_bottom <= table_header_bottom + 2:
+                continue
+            if _invoice_non_item_text(row_text):
+                continue
             if re.search(r'\b(?:subtotal|grand\s+total|tax|vat|total)\b|الإجمالي|الاجمالي|ضريبة', row_text, re.I):
                 continue
             numeric = [(w, _invoice_numeric_word(w['text'])) for w in visual]
@@ -1016,7 +1066,7 @@ def parse_invoice_lines(lines, filename_hint=None):
             unit_word = next((w for w in visual if canon_unit(w['text']) in set(UNIT_ALIASES.values())), None)
             desc = _clean_invoice_desc(' '.join(w['text'] for w in visual
                                                  if _invoice_numeric_word(w['text']) is None and w is not unit_word))
-            if len(norm_alnum(desc)) < 4:
+            if _invoice_non_item_text(desc):
                 continue
             if len(numeric) < 2:
                 # Keep likely wrapped description fragments only when table column geometry is known
