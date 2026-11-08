@@ -1233,14 +1233,15 @@ def _apply_ocr(st, doc, results, user):
         rows = parsed.get('rows') or []
         if not rows:
             if doc.get('kind') == 'invoice':
-                # A page with no detected item rows must not become a fake blank invoice line.
+                # Keep a visible page-level review draft when invoice OCR finds no rows.
+                # This is a clearly flagged placeholder, not an extracted item.
                 doc['invoice_page_analysis'].append({
                     'page': page_no, 'is_table': bool((parsed.get('page_analysis') or {}).get('is_table')),
                     'header_hits': (parsed.get('page_analysis') or {}).get('header_hits', []),
                     'flags': list(pflags), 'row_count': 0})
-                continue
-            rec = _new_record(doc, page_no, 'ocr', dict(base, description=None, unit=None, qty=None, total=None, conf=None,
-                                                         raw_text=parsed.get('raw_text', '')), list(dict.fromkeys(pflags + ['ocr_no_lines'])))
+            rec = _new_record(doc, page_no, 'ocr', dict(base, description=None, unit=None, qty=None, total=None,
+                                                         unit_price=None, conf=None, raw_text=parsed.get('raw_text', '')),
+                              list(dict.fromkeys(pflags + ['ocr_no_lines'])))
             st['records'].append(rec); n_new += 1
             continue
         if doc.get('kind') == 'invoice':
@@ -1335,7 +1336,7 @@ def _ocr_worker(project_dir, doc, status, user):
 # ----------------------------------------------------------------------------
 # records: manual add / edit / review
 # ----------------------------------------------------------------------------
-EDITABLE = ('description', 'unit', 'qty', 'total', 'ref_no', 'date', 'mir_status', 'brand', 'note')
+EDITABLE = ('description', 'unit', 'qty', 'unit_price', 'total', 'ref_no', 'date', 'mir_status', 'brand', 'note')
 
 
 def add_manual_record(st, doc_id, page, user):
@@ -1356,7 +1357,7 @@ def add_manual_record(st, doc_id, page, user):
 def _clean_field(k, v):
     if v is None:
         return None
-    if k in ('qty', 'total'):
+    if k in ('qty', 'unit_price', 'total'):
         if str(v).strip() == '':
             return None
         n = to_number(v)
