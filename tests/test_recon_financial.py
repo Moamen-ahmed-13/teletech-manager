@@ -190,6 +190,43 @@ class InvoiceTableGeometryTests(unittest.TestCase):
         self.assertFalse(row['math_valid'])
         self.assertIn('numeric_columns_require_review', row['row_flags'])
 
+    def test_invoice_page_classifier_detects_table_headers(self):
+        words = [
+            self.word('Item', 30, 40), self.word('Description', 100, 40, 80),
+            self.word('Qty', 700, 40), self.word('Unit', 790, 40),
+            self.word('Price', 830, 40), self.word('Amount', 930, 40),
+            self.word('Cable', 100, 100, 55), self.word('10', 700, 100, 20),
+            self.word('5', 820, 100, 12), self.word('50', 930, 100, 20),
+        ]
+        evidence = R._invoice_page_table_evidence(words)
+        self.assertTrue(evidence['is_table'])
+        self.assertIn('qty', evidence['header_hits'])
+        self.assertIn('description', evidence['header_hits'])
+
+    def test_invoice_certificate_page_is_not_misclassified_from_amounts_alone(self):
+        words = [
+            self.word('Certificate', 100, 40, 100),
+            self.word('Date', 100, 100), self.word('2026', 220, 100),
+            self.word('Reference', 100, 150, 80), self.word('12345', 220, 150),
+            self.word('Total', 100, 220), self.word('5000', 220, 220),
+            self.word('Approved', 100, 300, 90),
+        ]
+        evidence = R._invoice_page_table_evidence(words)
+        self.assertFalse(evidence['is_table'])
+
+    def test_invoice_continuation_text_joins_previous_line_without_inventing_values(self):
+        rows = [
+            {'description': 'CAT6A cable', 'qty': 10.0, 'unit_price': 5.0, 'total': 50.0,
+             'row_flags': [], 'source_cells': []},
+            {'description': 'indoor UTP blue', 'qty': None, 'unit_price': None, 'total': None,
+             'row_flags': [], 'source_cells': [{'text': 'indoor'}]},
+        ]
+        merged = R._invoice_join_continuation_rows(rows)
+        self.assertEqual(len(merged), 1)
+        self.assertIn('indoor UTP blue', merged[0]['description'])
+        self.assertEqual(merged[0]['qty'], 10.0)
+        self.assertIn('description_continuation_joined', merged[0]['row_flags'])
+
 
 if __name__ == '__main__':
     unittest.main()
