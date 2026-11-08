@@ -89,11 +89,17 @@ class FinancialCalculationTests(unittest.TestCase):
         self.assertEqual(row['boq_value'], 900.0)
         self.assertEqual(row['mir_value'], 180.0)
         self.assertEqual(row['invoice_value'], 250.0)
+        self.assertEqual(row['confirmed_qty'], 2.0, 'Invoice qty must not be added to MIR-confirmed qty')
+        self.assertEqual(row['invoice_confirmed_qty'], 1.0, 'Approved invoice qty is tracked separately')
+        self.assertEqual(row['invoice_pending_qty'], 0.0)
+        self.assertEqual(row['invoice_qty_by_unit'], {'PC': 1.0})
         self.assertEqual(row['financial_value'], 250.0)
         self.assertEqual(row['financial_source'], 'invoice')
         self.assertEqual(row['remaining_value'], 650.0)
         self.assertAlmostEqual(row['fin_pct'], 27.78, places=2)
         self.assertEqual(result['brands'][0]['remaining_value'], 650.0)
+        self.assertEqual(result['brands'][0]['invoice_qty_by_unit'], {'PC': 1.0})
+        self.assertEqual(result['brands'][0]['invoice_confirmed_qty_total'], 1.0)
 
     def test_mir_estimate_remains_fallback_when_no_approved_invoice_exists(self):
         st = state([record('mir-1', 'mir', 'MIR-001', 2.0, None)])
