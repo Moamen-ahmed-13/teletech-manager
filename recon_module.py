@@ -922,9 +922,9 @@ def _invoice_page_table_evidence(words, image_path=None):
     text = ' '.join(flat)
     header_groups = {
         'description': ('description', 'item', 'particular', 'material', 'بيان', 'الصنف', 'وصف'),
-        'qty': ('qty', 'quantity', 'الكميه', 'الكمية', 'كمية'),
-        'unit_price': ('unit price', 'unit rate', 'price', 'rate', 'سعر'),
-        'total': ('amount', 'total', 'الإجمالي', 'الاجمالي', 'الاجمالى'),
+        'qty': ('qty', 'q.t', 'qt', 'quantity', 'الكمية q.t', 'الكميه', 'الكمية', 'كمية'),
+        'unit_price': ('unit price', 'unit rate', 'price', 'rate', 'سعر الوحدة', 'سعر الوحده', 'سعر'),
+        'total': ('amount', 'total', 'قيمة بند الفاتورة', 'قيمة الفاتورة', 'الإجمالي', 'الاجمالي', 'الاجمالى'),
         'unit': ('unit', 'uom', 'الوحدة', 'وحدة القياس'),
     }
     normalized = re.sub(r'[^a-z0-9\u0600-\u06ff]+', ' ', text)
