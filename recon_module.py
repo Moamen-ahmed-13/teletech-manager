@@ -1784,6 +1784,25 @@ def compute(st):
                 invoice_amount += amount; invoice_lines += 1
                 invoice_sources.append({'file': ir['filename'], 'page': ir['page'], 'ref_no': ir['eff']['ref_no'], 'date': ir['eff']['date'], 'amount': amount, 'record_id': ir['id']})
         invoice_value = _r(invoice_amount, 2) if invoice_lines else None
+        # Invoice quantities are tracked independently from MIR-confirmed quantities.
+        # Never add both sources into one consumption number: they may describe the same delivery.
+        invoice_confirmed_qty = invoice_pending_qty = 0.0
+        invoice_qty_by_unit = {}
+        for ir in invoice_by_item[it['id']]:
+            if 'duplicate' in ir['flags']:
+                continue
+            iq = ir['eff'].get('qty')
+            iu = canon_unit(ir['eff'].get('unit'))
+            if iq is None or iq < 0:
+                continue
+            if ub and iu and iu != ub:
+                continue
+            if ir['review_status'] == 'reviewed':
+                invoice_confirmed_qty += iq
+                if iu:
+                    invoice_qty_by_unit[iu] = invoice_qty_by_unit.get(iu, 0.0) + iq
+            else:
+                invoice_pending_qty += iq
         financial_value = invoice_value if invoice_value is not None else mir_value
         financial_source = 'invoice' if invoice_value is not None else ('mir_estimate' if mir_value is not None else None)
         fin_pct = (financial_value / boq_value * 100) if (boq_value is not None and boq_value > 0 and financial_value is not None) else None
@@ -1815,6 +1834,8 @@ def compute(st):
                      'reference': it['reference'], 'part': it['part'], 'brand': it['brand'] or '(no brand)', 'brand_key': brand_key(it['brand']) or '?',
                      'unit': ub, 'unit_source': usrc, 'ring_unit': ring_unit, 'boq_qty': qty, 'unit_price': effective_unit_price, 'boq_value': _r(boq_value, 2), 'sheet_total': it['total_price'],
                      'recorded_qty': _r(recorded), 'confirmed_qty': _r(confirmed), 'pending_qty': _r(pending), 'not_approved_qty': _r(notappr),
+                     'invoice_confirmed_qty': _r(invoice_confirmed_qty), 'invoice_pending_qty': _r(invoice_pending_qty),
+                     'invoice_qty_by_unit': {k: _r(v) for k, v in invoice_qty_by_unit.items()},
                      'unit_conflict_qty': _r(uconf), 'remaining_qty': _r(remaining), 'qty_pct': _r(qty_pct, 2), 'mir_value': _r(mir_value, 2),
                      'remaining_value': _r(rem_value, 2), 'fin_pct': _r(fin_pct, 2), 'invoice_value': invoice_value, 'financial_value': _r(financial_value, 2), 'financial_source': financial_source, 'invoice_over_boq': invoice_over, 'unavailable': unavailable, 'status': status,
                      'flags': sorted(set(flags)), 'sources': sources, 'invoice_sources': invoice_sources, 'by_status': {k: _r(v) for k, v in by_status.items()},
@@ -1844,9 +1865,15 @@ def compute(st):
     brands = {}
     for row in rows:
         b = brands.setdefault(row['brand_key'], {'brand': row['brand'], 'key': row['brand_key'], 'items': 0, 'items_valued': 0, 'items_unvalued': 0,
-                                                 'qty_by_unit': {}, 'boq_qty_total': 0.0, 'confirmed_qty_total': 0.0, 'unspecified_unit_items': 0, 'unspecified_qty_items': 0, 'boq_value': 0.0, 'mir_value': 0.0, 'remaining_value': 0.0,
+                                                 'qty_by_unit': {}, 'invoice_qty_by_unit': {}, 'invoice_confirmed_qty_total': 0.0, 'invoice_pending_qty_total': 0.0,
+                                                 'boq_qty_total': 0.0, 'confirmed_qty_total': 0.0, 'unspecified_unit_items': 0, 'unspecified_qty_items': 0, 'boq_value': 0.0, 'mir_value': 0.0, 'remaining_value': 0.0,
                                                  'items_with_confirmed': 0, 'missing_mir': [], 'over_boq': [], 'financial_over_boq': [], 'awaiting_review': [], 'unmatched_mir_records': 0})
         b['items'] += 1
+        b['invoice_confirmed_qty_total'] += row.get('invoice_confirmed_qty') or 0
+        b['invoice_pending_qty_total'] += row.get('invoice_pending_qty') or 0
+        for unit_name, invoice_qty in (row.get('invoice_qty_by_unit') or {}).items():
+            bucket = b['invoice_qty_by_unit'].setdefault(unit_name, 0.0)
+            b['invoice_qty_by_unit'][unit_name] = bucket + invoice_qty
         if row['boq_value'] is not None and row['financial_value'] is not None:
             b['items_valued'] += 1; b['boq_value'] += row['boq_value']; b['mir_value'] += row['financial_value']; b['remaining_value'] += row['remaining_value']
         else:
@@ -1872,10 +1899,14 @@ def compute(st):
         if rv['approved_boq_id'] is None:
             k = rv.get('brand_key', '?')
             brands.setdefault(k, {'brand': '(unknown brand)' if k == '?' else names.get(k, k), 'key': k, 'items': 0, 'items_valued': 0, 'items_unvalued': 0,
-                                  'qty_by_unit': {}, 'boq_qty_total': 0.0, 'confirmed_qty_total': 0.0, 'unspecified_unit_items': 0, 'unspecified_qty_items': 0, 'boq_value': 0.0, 'mir_value': 0.0, 'remaining_value': 0.0,
+                                  'qty_by_unit': {}, 'invoice_qty_by_unit': {}, 'invoice_confirmed_qty_total': 0.0, 'invoice_pending_qty_total': 0.0,
+                                                 'boq_qty_total': 0.0, 'confirmed_qty_total': 0.0, 'unspecified_unit_items': 0, 'unspecified_qty_items': 0, 'boq_value': 0.0, 'mir_value': 0.0, 'remaining_value': 0.0,
                                   'items_with_confirmed': 0, 'missing_mir': [], 'over_boq': [], 'awaiting_review': [], 'unmatched_mir_records': 0})['unmatched_mir_records'] += 1
     brand_list = []
     for b in brands.values():
+        b['invoice_qty_by_unit'] = {k: _r(v) for k, v in b.get('invoice_qty_by_unit', {}).items()}
+        b['invoice_confirmed_qty_total'] = _r(b.get('invoice_confirmed_qty_total', 0.0))
+        b['invoice_pending_qty_total'] = _r(b.get('invoice_pending_qty_total', 0.0))
         for u in b['qty_by_unit'].values():
             u['remaining'] = _r(u['boq'] - u['confirmed']); u['pct'] = _r(u['confirmed'] / u['boq'] * 100, 2) if u['boq'] > 0 else None
             u['boq'], u['confirmed'] = _r(u['boq']), _r(u['confirmed'])
