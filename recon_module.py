@@ -1093,12 +1093,40 @@ def _ocr_pages(project_dir, doc, status, progress=None):
     pages = render_pages(project_dir, doc)
     if doc.get('kind') == 'invoice':
         out = []; tmp = tempfile.mkdtemp(prefix='recon_invoice_')
+        native_pages = {}
         try:
+            # Prefer PDF-native text geometry when available; scanned pages fall back to OCR.
+            try:
+                import fitz
+                with fitz.open(str(stored_path(project_dir, 'invoice', doc))) as native_pdf:
+                    for page_no, native_page in enumerate(native_pdf, 1):
+                        native_words = []
+                        for item in native_page.get_text('words'):
+                            if len(item) >= 5 and str(item[4]).strip():
+                                x0, y0, x1, y1 = map(float, item[:4])
+                                native_words.append({'text': str(item[4]), 'left': x0, 'top': y0,
+                                                     'width': max(1.0, x1-x0), 'height': max(1.0, y1-y0),
+                                                     'conf': 100.0})
+                        if native_words:
+                            native_pages[page_no] = native_words
+            except Exception as native_exc:
+                print('[RECON] native invoice text unavailable for %s (%s)' % (doc.get('filename'), native_exc))
             for pg in pages:
                 if progress: progress(pg['page'], len(pages))
                 variants = _image_variants(pg['path'], tmp)
                 invoice_lang = 'eng+ara' if 'ara' in (status.get('langs') or []) else 'eng'
                 candidates = []
+                native_words = native_pages.get(pg['page']) or []
+                if native_words:
+                    native_evidence = _invoice_page_table_evidence(native_words)
+                    native_candidate = parse_invoice_lines(native_words, doc.get('filename'))
+                    native_candidate['page_analysis'] = native_evidence
+                    native_candidate['rows'] = _invoice_join_continuation_rows(native_candidate.get('rows') or [])
+                    native_score = (int(native_evidence['is_table']), native_evidence['header_score'],
+                                    sum(1 for r in native_candidate.get('rows', []) if r.get('math_valid')),
+                                    len(native_candidate.get('rows') or []),
+                                    sum((r.get('conf') or 0) for r in native_candidate.get('rows', [])))
+                    candidates.append((native_score, 'pdf-native-text', native_candidate))
                 for variant_name, variant_path in (variants or [('original', pg['path'])]):
                     for psm in (6, 4):
                         words = _tesseract_lines(variant_path, langs=invoice_lang, psm=psm, output='words')
