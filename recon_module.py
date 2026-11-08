@@ -885,23 +885,93 @@ def _invoice_numeric_word(value):
 
 
 def _invoice_header_centers(visual_rows):
-    """Infer numeric column centers from explicit table headers when OCR can read them."""
-    found = {}
-    patterns = {
-        'qty': re.compile(r'^(?:qty|quantity|الكميه|الكمية)$', re.I),
-        'unit_price': re.compile(r'^(?:unit|price|rate|سعر|الوحدة|الوحده)$', re.I),
-        'total': re.compile(r'^(?:amount|total|line|الإجمالي|الاجمالي|الاجمالى)$', re.I),
+    """Infer numeric column centers from single- or multi-word English/Arabic headers."""
+    phrases = {
+        'qty': ('qty', 'quantity', 'الكميه', 'الكمية', 'كمية'),
+        'unit_price': ('unit price', 'unit rate', 'price', 'rate', 'سعر الوحدة', 'سعر الوحده'),
+        'total': ('amount', 'total', 'line total', 'total amount', 'الإجمالي', 'الاجمالي', 'الاجمالى', 'اجمالي'),
     }
+    found = {}
     for row in visual_rows:
         words = [w for w in row if str(w.get('text') or '').strip()]
-        for field, pattern in patterns.items():
-            hits = [w for w in words if pattern.match(str(w['text']).strip())]
-            if field == 'unit_price':
-                # Require a price/rate word; a standalone "unit" or Arabic "الوحدة" is not enough.
-                hits = [w for w in hits if re.search(r'price|rate|سعر', str(w['text']), re.I)]
-            if hits:
-                found.setdefault(field, []).extend(w['left'] + w['width'] / 2.0 for w in hits)
+        words.sort(key=lambda w: w['left'])
+        for field, labels in phrases.items():
+            for i in range(len(words)):
+                for size in (1, 2, 3):
+                    part = words[i:i + size]
+                    if len(part) != size:
+                        continue
+                    # Adjacent header tokens must be close enough to form one phrase.
+                    if any((b['left'] - (a['left'] + a['width'])) > max(45, 1.8 * max(a['height'], b['height']))
+                           for a, b in zip(part, part[1:])):
+                        continue
+                    phrase = re.sub(r'[^a-z0-9\\u0600-\\u06ff]', '', ' '.join(str(w['text']).lower() for w in part))
+                    for label in labels:
+                        target = re.sub(r'[^a-z0-9\\u0600-\\u06ff]', '', label.lower())
+                        if phrase == target:
+                            # "unit" alone is never treated as a price header.
+                            found.setdefault(field, []).append(sum(w['left'] + w['width'] / 2.0 for w in part) / len(part))
     return {k: sum(v) / len(v) for k, v in found.items() if v}
+
+
+def _invoice_page_table_evidence(words, image_path=None):
+    """Classify a PDF page as a line-item table using header, numeric and grid evidence."""
+    rows = _invoice_word_rows(words)
+    flat = [str(w.get('text') or '').strip().lower() for w in words if str(w.get('text') or '').strip()]
+    text = ' '.join(flat)
+    header_groups = {
+        'description': ('description', 'item', 'particular', 'material', 'بيان', 'الصنف', 'وصف'),
+        'qty': ('qty', 'quantity', 'الكميه', 'الكمية', 'كمية'),
+        'unit_price': ('unit price', 'unit rate', 'price', 'rate', 'سعر'),
+        'total': ('amount', 'total', 'الإجمالي', 'الاجمالي', 'الاجمالى'),
+        'unit': ('unit', 'uom', 'الوحدة', 'وحدة القياس'),
+    }
+    normalized = re.sub(r'[^a-z0-9\\u0600-\\u06ff]+', ' ', text)
+    hits = set()
+    for key, labels in header_groups.items():
+        if any(re.search(r'(?<![a-z0-9\\u0600-\\u06ff])' + re.escape(label.lower()) + r'(?![a-z0-9\\u0600-\\u06ff])', normalized)
+               for label in labels):
+            hits.add(key)
+    numeric_words = sum(1 for w in words if _invoice_numeric_word(w.get('text')) is not None)
+    grid = False
+    if image_path:
+        try:
+            import cv2
+            import numpy as np
+            im = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+            if im is not None:
+                bw = cv2.threshold(im, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+                hk = cv2.getStructuringElement(cv2.MORPH_RECT, (max(30, im.shape[1] // 18), 1))
+                vk = cv2.getStructuringElement(cv2.MORPH_RECT, (1, max(25, im.shape[0] // 24)))
+                horizontal = cv2.morphologyEx(bw, cv2.MORPH_OPEN, hk)
+                vertical = cv2.morphologyEx(bw, cv2.MORPH_OPEN, vk)
+                h_count = cv2.countNonZero(horizontal) / max(1, im.shape[1])
+                v_count = cv2.countNonZero(vertical) / max(1, im.shape[0])
+                grid = h_count >= 2.0 and v_count >= 1.0
+        except Exception:
+            grid = False
+    # Require multiple independent signals; a certificate containing a date and amounts is not a table.
+    header_score = len(hits)
+    is_table = (('qty' in hits and ('description' in hits or 'unit' in hits) and header_score >= 2)
+                or (header_score >= 3 and numeric_words >= 4)
+                or (grid and numeric_words >= 6 and header_score >= 1))
+    return {'is_table': bool(is_table), 'header_hits': sorted(hits), 'header_score': header_score,
+            'numeric_words': numeric_words, 'grid_evidence': bool(grid), 'visual_rows': len(rows)}
+
+
+def _invoice_join_continuation_rows(rows):
+    """Join description-only OCR fragments to the preceding item without merging financial rows."""
+    out = []
+    for row in rows:
+        if row.get('qty') is None and row.get('unit_price') is None and row.get('total') is None:
+            if out and len(norm_alnum(row.get('description'))) >= 3:
+                out[-1]['description'] = _clean_invoice_desc(
+                    (out[-1].get('description') or '') + ' ' + (row.get('description') or ''))
+                out[-1].setdefault('row_flags', []).append('description_continuation_joined')
+                out[-1].setdefault('continuation_cells', []).extend(row.get('source_cells') or [])
+                continue
+        out.append(row)
+    return out
 
 
 def _invoice_assign_from_headers(numeric, centers):
@@ -1030,18 +1100,29 @@ def _ocr_pages(project_dir, doc, status, progress=None):
                 invoice_lang = 'eng+ara' if 'ara' in (status.get('langs') or []) else 'eng'
                 candidates = []
                 for variant_name, variant_path in (variants or [('original', pg['path'])]):
-                    words = _tesseract_lines(variant_path, langs=invoice_lang, psm=6, output='words')
-                    candidate = parse_invoice_lines(words, doc.get('filename'))
-                    score = (sum(1 for r in candidate.get('rows', []) if r.get('math_valid')),
-                             len(candidate.get('rows') or []),
-                             sum((r.get('conf') or 0) for r in candidate.get('rows', [])))
-                    candidates.append((score, variant_name, candidate))
+                    for psm in (6, 4):
+                        words = _tesseract_lines(variant_path, langs=invoice_lang, psm=psm, output='words')
+                        evidence = _invoice_page_table_evidence(words, variant_path)
+                        candidate = parse_invoice_lines(words, doc.get('filename'))
+                        candidate['page_analysis'] = evidence
+                        candidate['rows'] = _invoice_join_continuation_rows(candidate.get('rows') or [])
+                        score = (int(evidence['is_table']), evidence['header_score'],
+                                 sum(1 for r in candidate.get('rows', []) if r.get('math_valid')),
+                                 len(candidate.get('rows') or []),
+                                 sum((r.get('conf') or 0) for r in candidate.get('rows', [])))
+                        candidates.append((score, variant_name + '_psm' + str(psm), candidate))
                 candidates.sort(key=lambda x: x[0], reverse=True)
                 parsed = candidates[0][2] if candidates else parse_invoice_lines([], doc.get('filename'))
+                evidence = parsed.get('page_analysis') or {'is_table': False, 'header_hits': [], 'numeric_words': 0}
+                if not evidence.get('is_table'):
+                    parsed['rows'] = []
+                    parsed['flags'] = list(parsed.get('flags') or []) + ['invoice_page_not_classified_as_table']
+                elif not parsed.get('rows'):
+                    parsed['flags'] = list(parsed.get('flags') or []) + ['invoice_table_detected_but_no_rows_extracted']
                 if len(candidates) > 1:
                     parsed['flags'] = list(parsed.get('flags') or []) + ['preprocessing_variant_selected:%s' % candidates[0][1]]
                     parsed['variant_row_counts'] = {name: len(item.get('rows') or []) for _, name, item in candidates}
-                parsed.update({'engine': 'invoice-tesseract', 'template': 'invoice', 'supplier': None,
+                parsed.update({'engine': 'invoice-tesseract-table-detection', 'template': 'invoice', 'supplier': None,
                                'status': {'value': None, 'confidence': 'review-required', 'note': 'Reviewer confirmation required'}})
                 out.append((pg['page'], parsed))
         finally: shutil.rmtree(tmp, ignore_errors=True)
@@ -1103,6 +1184,13 @@ def _apply_ocr(st, doc, results, user):
             pflags.append('status_unclear')
         rows = parsed.get('rows') or []
         if not rows:
+            if doc.get('kind') == 'invoice':
+                # A page with no detected item rows must not become a fake blank invoice line.
+                doc.setdefault('invoice_page_analysis', []).append({
+                    'page': page_no, 'is_table': bool((parsed.get('page_analysis') or {}).get('is_table')),
+                    'header_hits': (parsed.get('page_analysis') or {}).get('header_hits', []),
+                    'flags': list(pflags), 'row_count': 0})
+                continue
             rec = _new_record(doc, page_no, 'ocr', dict(base, description=None, unit=None, qty=None, total=None, conf=None,
                                                          raw_text=parsed.get('raw_text', '')), list(dict.fromkeys(pflags + ['ocr_no_lines'])))
             st['records'].append(rec); n_new += 1
