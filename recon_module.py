@@ -922,7 +922,7 @@ def _invoice_page_table_evidence(words, image_path=None):
     text = ' '.join(flat)
     header_groups = {
         'description': ('description', 'item', 'particular', 'material', 'بيان', 'الصنف', 'وصف'),
-        'qty': ('qty', 'q.t', 'qt', 'quantity', 'الكمية q.t', 'الكميه', 'الكمية', 'كمية'),
+        'qty': ('qty', 'q t', 'qt', 'quantity', 'الكمية q t', 'الكميه', 'الكمية', 'كمية'),
         'unit_price': ('unit price', 'unit rate', 'price', 'rate', 'سعر الوحدة', 'سعر الوحده', 'سعر'),
         'total': ('amount', 'total', 'قيمة بند الفاتورة', 'قيمة الفاتورة', 'الإجمالي', 'الاجمالي', 'الاجمالى'),
         'unit': ('unit', 'uom', 'الوحدة', 'وحدة القياس'),
@@ -930,8 +930,9 @@ def _invoice_page_table_evidence(words, image_path=None):
     normalized = re.sub(r'[^a-z0-9\u0600-\u06ff]+', ' ', text)
     hits = set()
     for key, labels in header_groups.items():
-        if any(re.search(r'(?<![a-z0-9\u0600-\u06ff])' + re.escape(label.lower()) + r'(?![a-z0-9\u0600-\u06ff])', normalized)
-               for label in labels):
+        normalized_labels = [re.sub(r'[^a-z0-9\\u0600-\\u06ff]+', ' ', label.lower()).strip() for label in labels]
+        if any(re.search(r'(?<![a-z0-9\\u0600-\\u06ff])' + re.escape(label) + r'(?![a-z0-9\\u0600-\\u06ff])', normalized)
+               for label in normalized_labels if label):
             hits.add(key)
     numeric_words = sum(1 for w in words if _invoice_numeric_word(w.get('text')) is not None)
     grid = False
