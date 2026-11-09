@@ -242,11 +242,6 @@ def _invoice_api_key(provider: str) -> str:
 
 
 def _call_invoice_page_vision(page_png: str, page_no: int, provider: str, model: str, api_key: str) -> Dict[str, Any]:
-    try:
-        import server as server_mod  # Reuse the repo's existing providers/helpers.
-    except Exception as exc:  # pragma: no cover - only if server is unavailable in isolated usage
-        raise RuntimeError(f"Could not import server helpers for invoice vision: {exc}")
-
     prompt = (
         INVOICE_LLM_SYSTEM_PROMPT
         + "\n\nReturn JSON only and keep the response schema exact. "
@@ -302,6 +297,11 @@ def _call_invoice_page_vision(page_png: str, page_no: int, provider: str, model:
             if not match:
                 raise RuntimeError("GLM invoice extraction did not return valid JSON.") from exc
             return json.loads(match.group(0))
+
+    try:
+        import server as server_mod  # Reuse the repo's existing Gemini/OpenAI helpers only.
+    except Exception as exc:  # pragma: no cover - only if server is unavailable in isolated usage
+        raise RuntimeError(f"Could not import server helpers for invoice vision: {exc}")
 
     if provider == "gemini":
         file_info = server_mod._gemini_upload_file(page_png, api_key, "image/png")
