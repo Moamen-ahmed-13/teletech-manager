@@ -1103,7 +1103,8 @@ def parse_invoice_lines(lines, filename_hint=None, inherited_header_centers=None
         local_header_centers = _invoice_header_centers(visual_rows)
         header_centers = dict(inherited_header_centers or {})
         header_centers.update(local_header_centers)
-        used_inherited_header_centers = bool(inherited_header_centers) and not bool(local_header_centers)
+        used_inherited_header_centers = bool(inherited_header_centers) and not all(
+            key in local_header_centers for key in ('qty', 'unit_price', 'total'))
         table_header_bottom = _invoice_header_y(visual_rows)
         for visual in visual_rows:
             row_text = ' '.join(w['text'] for w in visual)
