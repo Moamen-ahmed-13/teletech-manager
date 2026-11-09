@@ -1776,6 +1776,39 @@ def _kind(text):
     return None
 
 
+def _spec_value(text, patterns):
+    t = (text or '').lower().replace('–', '-').replace('—', '-')
+    for rx in patterns:
+        m = re.search(rx, t, re.I)
+        if m:
+            try: return int(m.group(1))
+            except (TypeError, ValueError): pass
+    return None
+
+
+def _switch_family(text):
+    t = (text or '').lower()
+    if re.search(r'\baggregation\b|\bagg\.?\s*switch\b', t): return 'aggregation'
+    if re.search(r'\baccess\b|\bedge\s*switch\b', t): return 'access'
+    return None
+
+
+def _spec_conflict(mir_text, boq_text):
+    # Hard constraints prevent technically different products from being suggested.
+    port_patterns = [r'\b(\d{1,3})\s*-?\s*ports?\b', r'\bports?\s*(\d{1,3})\b']
+    mir_ports = _spec_value(mir_text, port_patterns)
+    boq_ports = _spec_value(boq_text, port_patterns)
+    if mir_ports is not None and boq_ports is not None and mir_ports != boq_ports:
+        return 'port_count_mismatch'
+    mir_role, boq_role = _switch_family(mir_text), _switch_family(boq_text)
+    if mir_role and boq_role and mir_role != boq_role:
+        return 'switch_role_mismatch'
+    rack_patterns = [r'\b(\d{1,3})\s*u\b', r'\brack\s*(\d{1,3})\s*u\b']
+    mir_u, boq_u = _spec_value(mir_text, rack_patterns), _spec_value(boq_text, rack_patterns)
+    if mir_u is not None and boq_u is not None and mir_u != boq_u:
+        return 'rack_height_mismatch'
+    return None
+
 def _score_candidates(st, rec):
     items = (st.get('boq') or {}).get('items', [])
     desc = eff(rec, 'description') or ''
@@ -1790,6 +1823,9 @@ def _score_candidates(st, rec):
     out = []
     for it in items:
         if it['id'] in rejected:
+            continue
+        boq_text = ' '.join(str(it.get(k) or '') for k in ('item', 'reference', 'part', 'brand'))
+        if _spec_conflict(match_text, boq_text):
             continue
         reasons, score, strong = [], 0.0, None
         part_n = norm_alnum(it['part'])
@@ -1836,10 +1872,8 @@ def classify_candidates(cands):
     if not cands:
         return 'unmatched', None
     top = cands[0]
-    if top['score'] < 0.30:
-        # weak but clearly leading: offered as a suggestion only (never auto-approved); the reviewer decides
-        if top['score'] >= 0.18 and (len(cands) == 1 or top['score'] - cands[1]['score'] >= 0.05):
-            return 'suggested', top['boq_id']
+    # Low semantic scores are not useful suggestions; keep them unmatched.
+    if top['score'] < 0.45:
         return 'unmatched', None
     near = [c for c in cands[1:] if top['score'] - c['score'] <= 0.03]
     same_ev = [c for c in cands[1:] if top['strong'] and c['strong'] and c['strong'] == top['strong']]
