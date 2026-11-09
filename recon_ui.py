@@ -180,7 +180,8 @@ function render(){
       :d.ocr_status==='interrupted'?chip('Interrupted · retry OCR','c-warn')
       :chip('OCR not started','c-mute');
     const invoiceRows=D.comp.records.filter(r=>r.doc_id===d.id&&r.doc_kind==='invoice');
-    const qualityBad=invoiceRows.filter(r=>(r.ocr&&r.ocr.row_flags||[]).some(f=>String(f).includes('review')||String(f).includes('mismatch')||String(f).includes('scale_error'))||r.flags.some(f=>String(f).includes('review')||String(f).includes('mismatch')||String(f).includes('scale_error'))).length;
+    const invoiceQualitySet=new Set(['invoice_math_mismatch_review','invoice_math_incomplete_review','invoice_raw_value_mismatch','invoice_possible_zero_scale_error','line_math_review_required']);
+    const qualityBad=invoiceRows.filter(r=>[...(r.ocr&&r.ocr.row_flags||[]),...(r.flags||[])].some(f=>invoiceQualitySet.has(f))).length;
     const invoiceMeta=d.invoice_document_meta||{};
     const metaText=isInvoice?'<div class="rc-source-meta">رقم الفاتورة: '+esc(invoiceMeta.invoice_no||'?')+' · أمر التوريد: '+esc(invoiceMeta.supply_order_no||'?')+' · العميل: '+esc(invoiceMeta.customer||'?')+' · المورد: '+esc(invoiceMeta.supplier||'?')+' · التاريخ: '+esc(invoiceMeta.date||'?')+' · الإجمالي المطبوع: '+esc(invoiceMeta.printed_grand_total??'غير مؤكد')+'</div>':'';
     const qualityText=isInvoice&&invoiceRows.length?'<div class="rc-source-meta" style="color:'+(qualityBad?'#b42318':'#067647')+'">فحص الأرقام: '+(invoiceRows.length-qualityBad)+' سليم مبدئيًا · '+qualityBad+' يحتاج مراجعة (لا يتم التصحيح تلقائيًا)</div>':'';
@@ -212,7 +213,8 @@ function renderRecs(){
   const mathExpected=(isInvoice&&o.qty!=null&&o.unit_price!=null)?Number(o.qty)*Number(o.unit_price):null;
   const mathDelta=(mathExpected!=null&&o.total!=null)?mathExpected-Number(o.total):null;
   const qualityFlags=[...(o.row_flags||[]),...(r.flags||[])].filter((v,i,a)=>a.indexOf(v)===i);
-  const qualityLabels=qualityFlags.filter(f=>String(f).startsWith('invoice_')||f==='line_math_review_required');
+  const invoiceQualitySet=new Set(['invoice_math_mismatch_review','invoice_math_incomplete_review','invoice_raw_value_mismatch','invoice_possible_zero_scale_error','line_math_review_required']);
+  const qualityLabels=qualityFlags.filter(f=>invoiceQualitySet.has(f));
   const qualityNames={invoice_math_mismatch_review:'الكمية × سعر الوحدة لا يساوي الإجمالي',invoice_math_incomplete_review:'بيانات الحساب غير مكتملة',invoice_raw_value_mismatch:'القيم النهائية تختلف عن النص الخام للنموذج',invoice_possible_zero_scale_error:'احتمال سقوط صفر أو تغيير مقياس الرقم',line_math_review_required:'الحساب يحتاج مراجعة'};
   const qualityPanel=isInvoice?'<div class="rc-ocr"><b>فحص الأرقام:</b> '+(qualityLabels.length?'<span style="color:#b42318">يحتاج مراجعة</span>':'<span style="color:#067647">لا يوجد تعارض مكتشف</span>')+' · المحسوب: '+(mathExpected==null?'N/A':esc(mathExpected))+' · الفرق عن الإجمالي: '+(mathDelta==null?'N/A':esc(mathDelta))+'<br>النص الخام الذي أعاده النموذج: كمية '+esc(rawValues.qty??'—')+' · سعر '+esc(rawValues.unit_price??'—')+' · إجمالي '+esc(rawValues.line_total??'—')+'<br>التحذيرات: '+esc(qualityLabels.map(f=>qualityNames[f]||f).join('، ')||'لا توجد')+'</div>':'';
   const rawEvidence=rawOcr?'<details class="rc-advanced"><summary>Original OCR evidence · '+sourceCells.length+' source cells</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;margin:8px 0;font:12px/1.5 monospace">'+esc(rawOcr)+'</pre>'+(o.row_flags&&o.row_flags.length?'<div class="small sub">Extraction flags: '+esc(o.row_flags.join(', '))+'</div>':'')+'</details>':'';
