@@ -1001,7 +1001,7 @@ def _invoice_candidate_score(parsed, evidence=None):
     quality = []
     for row in rows:
         desc = str(row.get('description') or '').strip()
-        words = re.findall(r'[A-Za-z0-9\\u0600-\\u06ff]+', desc)
+        words = re.findall(r'[A-Za-z0-9\u0600-\u06ff]+', desc)
         score = min(len(words), 8) + (2 if len(norm_alnum(desc)) >= 10 else 0)
         score += 2 if row.get('unit') else 0
         score += 2 if row.get('qty') is not None else 0
@@ -1133,7 +1133,7 @@ def parse_invoice_lines(lines, filename_hint=None):
                     previous_left = previous.get('_description_left')
                     median_height = sorted(float(w['height']) for w in visual)[len(visual)//2] if visual else 0
                     gap = row_top - float(previous_bottom) if previous_bottom is not None else float('inf')
-                    code_or_new_item = bool(re.match(r'^(?:item\\b|p\\s*/?\\s*n\\b|part\\b|model\\b|[A-Z]{1,4}[-/]?\\d{3,})', desc, re.I))
+                    code_or_new_item = bool(re.match(r'^(?:item\b|p\s*/?\s*n\b|part\b|model\b|[A-Z]{1,4}[-/]?\d{3,})', desc, re.I))
                     aligned = (continuation_left is not None and previous_left is not None
                                and abs(continuation_left - float(previous_left)) <= max(28.0, median_height * 0.8))
                     close = 0 <= gap <= max(42.0, median_height * 2.5)
