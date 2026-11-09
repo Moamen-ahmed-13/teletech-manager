@@ -989,6 +989,32 @@ def _invoice_rows_should_be_retained(parsed, evidence=None):
     return False
 
 
+def _invoice_candidate_score(parsed, evidence=None):
+    """Rank OCR variants by row quality, not by raw row count alone."""
+    evidence = evidence or parsed.get('page_analysis') or {}
+    rows = parsed.get('rows') or []
+    if not rows:
+        return (int(bool(evidence.get('is_table'))), int(evidence.get('header_score') or 0), 0, 0, 0, 0)
+    valid_math = sum(1 for row in rows if row.get('math_valid'))
+    confs = [float(row['conf']) for row in rows if row.get('conf') is not None]
+    confidence = sum(confs) / len(confs) if confs else 0.0
+    quality = []
+    for row in rows:
+        desc = str(row.get('description') or '').strip()
+        words = re.findall(r'[A-Za-z0-9\\u0600-\\u06ff]+', desc)
+        score = min(len(words), 8) + (2 if len(norm_alnum(desc)) >= 10 else 0)
+        score += 2 if row.get('unit') else 0
+        score += 2 if row.get('qty') is not None else 0
+        score += 2 if row.get('unit_price') is not None else 0
+        score += 2 if row.get('total') is not None else 0
+        quality.append(score)
+    mean_quality = sum(quality) / len(quality)
+    # Ratios prevent a noisy variant from winning merely because it emitted more fragments.
+    return (int(bool(evidence.get('is_table'))), int(evidence.get('header_score') or 0),
+            round(valid_math / len(rows), 4), round(mean_quality, 3),
+            round(confidence, 2), len(rows))
+
+
 def _invoice_assign_from_headers(numeric, centers):
     """Assign numeric cells only when explicit Qty, Unit Price and Total headers are detected."""
     if not all(k in centers for k in ('qty', 'unit_price', 'total')):
@@ -1081,8 +1107,31 @@ def parse_invoice_lines(lines, filename_hint=None):
                                                  if _invoice_numeric_word(w['text']) is None and w is not unit_word))
             if _invoice_non_item_text(desc):
                 continue
-            # Conservative extraction: if a row cannot be tied to numeric invoice cells, it is not a real item row.
+            # A wrapped description often occupies its own visual line. Preserve it only
+            # when it is close to, and aligned with, the preceding numeric item row.
             if len(numeric) < 2:
+                if rows and desc and not _invoice_non_item_text(desc):
+                    desc_words = [w for w in visual if _invoice_numeric_word(w['text']) is None and w is not unit_word]
+                    continuation_left = min((float(w['left']) for w in desc_words), default=None)
+                    previous = rows[-1]
+                    previous_bottom = previous.get('_row_bottom')
+                    previous_left = previous.get('_description_left')
+                    median_height = sorted(float(w['height']) for w in visual)[len(visual)//2] if visual else 0
+                    gap = row_top - float(previous_bottom) if previous_bottom is not None else float('inf')
+                    code_or_new_item = bool(re.match(r'^(?:item\\b|p\\s*/?\\s*n\\b|part\\b|model\\b|[A-Z]{1,4}[-/]?\\d{3,})', desc, re.I))
+                    aligned = (continuation_left is not None and previous_left is not None
+                               and abs(continuation_left - float(previous_left)) <= max(28.0, median_height * 0.8))
+                    close = 0 <= gap <= max(42.0, median_height * 2.5)
+                    if aligned and close and not code_or_new_item:
+                        previous['description'] = _clean_invoice_desc(
+                            (previous.get('description') or '') + ' ' + desc)
+                        previous.setdefault('row_flags', []).append('description_continuation_joined')
+                        previous.setdefault('source_cells', []).extend({
+                            'text': w['text'], 'left': int(w['left']), 'top': int(w['top']),
+                            'width': int(w['width']), 'height': int(w['height']), 'conf': w.get('conf')
+                        } for w in visual)
+                        previous['_row_bottom'] = row_bottom
+                        continue
                 continue
             if len(numeric) >= 4 and numeric[0][1].is_integer() and 0 < numeric[0][1] <= 999:
                 numeric = numeric[1:]  # likely item serial number, not a financial cell
@@ -1107,9 +1156,12 @@ def parse_invoice_lines(lines, filename_hint=None):
             if key in seen:
                 continue
             seen.add(key)
+            desc_words = [w for w in visual if _invoice_numeric_word(w['text']) is None and w is not unit_word]
             rows.append({'description': desc, 'unit': unit, 'qty': qty, 'unit_price': rate, 'total': amount,
                          'conf': conf, 'math_valid': qty is not None, 'source_cells': source_cells,
-                         'row_flags': flags})
+                         'row_flags': flags,
+                         '_description_left': min((float(w['left']) for w in desc_words), default=None),
+                         '_row_bottom': row_bottom})
     else:
         # Backward-compatible path for line-level OCR callers; ambiguous financial columns remain review-only.
         for line in lines:
@@ -1152,6 +1204,9 @@ def parse_invoice_lines(lines, filename_hint=None):
                 rows.append({'description': desc, 'unit': unit, 'qty': qty, 'unit_price': rate, 'total': amount,
                              'conf': line.get('conf'), 'math_valid': 'line_math_consistent' in flags,
                              'row_flags': flags})
+    for row in rows:
+        row.pop('_description_left', None)
+        row.pop('_row_bottom', None)
     return {'ref_no': ref, 'date': dates[0] if dates else None, 'rows': rows,
             'flags': ['invoice_ocr_draft'], 'raw_text': blob[:6000]}
 
@@ -1253,10 +1308,7 @@ def _ocr_pages(project_dir, doc, status, progress=None):
                     native_candidate['page_analysis'] = native_evidence
                     # Keep OCR visual rows separate. Blind continuation merging previously
                     # collapsed multiple invoice items into one page-sized description.
-                    native_score = (int(native_evidence['is_table']), native_evidence['header_score'],
-                                    sum(1 for r in native_candidate.get('rows', []) if r.get('math_valid')),
-                                    len(native_candidate.get('rows') or []),
-                                    sum((r.get('conf') or 0) for r in native_candidate.get('rows', [])))
+                    native_score = _invoice_candidate_score(native_candidate, native_evidence)
                     candidates.append((native_score, 'pdf-native-text', native_candidate))
                 for variant_name, variant_path in (variants or [('original', pg['path'])]):
                     for psm in (6, 4):
@@ -1266,10 +1318,7 @@ def _ocr_pages(project_dir, doc, status, progress=None):
                         candidate['page_analysis'] = evidence
                         # Do not merge adjacent description-only rows: without confirmed
                         # grid-row boundaries they may be distinct invoice items.
-                        score = (int(evidence['is_table']), evidence['header_score'],
-                                 sum(1 for r in candidate.get('rows', []) if r.get('math_valid')),
-                                 len(candidate.get('rows') or []),
-                                 sum((r.get('conf') or 0) for r in candidate.get('rows', [])))
+                        score = _invoice_candidate_score(candidate, evidence)
                         candidates.append((score, variant_name + '_psm' + str(psm), candidate))
                 candidates.sort(key=lambda x: x[0], reverse=True)
                 parsed = candidates[0][2] if candidates else parse_invoice_lines([], doc.get('filename'))
