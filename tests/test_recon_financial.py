@@ -235,6 +235,43 @@ class FinancialCalculationTests(unittest.TestCase):
             self.assertEqual(L._select_invoice_vision_provider(), 'glm')
             self.assertEqual(L._invoice_api_key('glm'), 'explicit-glm-key')
 
+    def test_glm_invoice_vision_sends_image_and_parses_json_response(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        import invoice_llm as L
+
+        class FakeResponse:
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def read(self):
+                payload = {'choices': [{'message': {'content': json.dumps({
+                    'document': {'invoice_no': 'INV-1', 'supply_order_no': None,
+                                 'customer': None, 'supplier': None, 'date': None,
+                                 'printed_grand_total': None},
+                    'pages': [{'page_no': 1, 'type': 'items', 'lines': []}],
+                })}}]}
+                return json.dumps(payload).encode('utf-8')
+
+        with tempfile.TemporaryDirectory(prefix='glm_invoice_test_') as tmp:
+            image_path = Path(tmp) / 'page.png'
+            image_path.write_bytes(b'fake-png-bytes')
+            with patch.dict('os.environ', {'TELETECH_INVOICE_GLM_BASE_URL': 'https://api.z.ai/api/paas/v4'}):
+                with patch('invoice_llm.urllib.request.urlopen', return_value=FakeResponse()) as mocked:
+                    result = L._call_invoice_page_vision(
+                        str(image_path), 1, 'glm', 'glm-4.6v', 'test-glm-key')
+            self.assertEqual(result['document']['invoice_no'], 'INV-1')
+            request = mocked.call_args.args[0]
+            self.assertEqual(request.full_url, 'https://api.z.ai/api/paas/v4/chat/completions')
+            self.assertEqual(request.headers.get('Authorization'), 'Bearer test-glm-key')
+            body = json.loads(request.data.decode('utf-8'))
+            self.assertEqual(body['model'], 'glm-4.6v')
+            self.assertEqual(body['thinking']['type'], 'disabled')
+            self.assertTrue(body['messages'][0]['content'][0]['image_url']['url'].startswith('data:image/png;base64,'))
+
     def test_line_total_derives_rate_when_unit_price_is_blank(self):
         st = state([record('mir-1', 'mir', 'MIR-001', 2.0, None)])
         st['boq']['items'][0]['unit_price'] = None
