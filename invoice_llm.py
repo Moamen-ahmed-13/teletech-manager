@@ -482,7 +482,14 @@ def extract_invoice_with_vision(pdf_path: str | Path, provider: Optional[str] = 
     try:
         for page_no, page_png in rendered_pages:
             page_payload = _call_invoice_page_vision(page_png, page_no, provider, model_name, key)
-            payload["pages"].append(page_payload.get("pages", [{}])[0] if isinstance(page_payload, dict) and "pages" in page_payload and page_payload["pages"] else page_payload)
+            if isinstance(page_payload, dict) and isinstance(page_payload.get("pages"), list):
+                page_payload = page_payload["pages"][0] if page_payload["pages"] else {}
+            page_payload = dict(page_payload or {})
+            # The renderer is authoritative for page numbering; do not trust model-generated page numbers.
+            page_payload["page_no"] = page_no
+            page_payload.setdefault("type", "other")
+            page_payload.setdefault("lines", [])
+            payload["pages"].append(page_payload)
     except Exception:
         raise
 
