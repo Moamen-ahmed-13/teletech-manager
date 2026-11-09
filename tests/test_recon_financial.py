@@ -109,7 +109,11 @@ class FinancialCalculationTests(unittest.TestCase):
                'pages': 1, 'ocr_status': 'running'}
         st = state([], [doc])
         cells = [{'text': 'Aggregation', 'left': 100, 'top': 100, 'width': 90, 'height': 18, 'conf': 92},
-                 {'text': 'Switch', 'left': 195, 'top': 100, 'width': 55, 'height': 18, 'conf': 90}]
+                 {'text': 'Switch', 'left': 195, 'top': 100, 'width': 55, 'height': 18, 'conf': 90},
+                 {'text': 'PC', 'left': 620, 'top': 100, 'width': 25, 'height': 18, 'conf': 90},
+                 {'text': '2', 'left': 700, 'top': 100, 'width': 15, 'height': 18, 'conf': 92},
+                 {'text': '50', 'left': 800, 'top': 100, 'width': 25, 'height': 18, 'conf': 92},
+                 {'text': '100', 'left': 900, 'top': 100, 'width': 30, 'height': 18, 'conf': 92}]
         parsed = {'rows': [{'description': 'Aggregation Switch', 'unit': 'PC', 'qty': 2,
                             'unit_price': 50, 'total': 100, 'conf': 91, 'source_cells': cells,
                             'row_flags': ['line_math_consistent']}],
