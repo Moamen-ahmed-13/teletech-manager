@@ -1110,8 +1110,23 @@ def parse_invoice_lines(lines, filename_hint=None):
             # A wrapped description often occupies its own visual line. Preserve it only
             # when it is close to, and aligned with, the preceding numeric item row.
             if len(numeric) < 2:
-                if rows and desc and not _invoice_non_item_text(desc):
-                    desc_words = [w for w in visual if _invoice_numeric_word(w['text']) is None and w is not unit_word]
+                # A lone digit in the description column (e.g. "48 Port") is text,
+                # not a financial value. Use the known numeric header centers to tell
+                # it apart from Qty/Price/Total cells.
+                fragment_words = []
+                for w in visual:
+                    if w is unit_word:
+                        continue
+                    value = _invoice_numeric_word(w['text'])
+                    if value is not None and header_centers:
+                        center = float(w['left']) + float(w['width']) / 2.0
+                        nearest = min(abs(center - x) for x in header_centers.values())
+                        if nearest <= max(32.0, float(w['width']) * 1.5):
+                            continue
+                    fragment_words.append(w)
+                fragment_desc = _clean_invoice_desc(' '.join(w['text'] for w in fragment_words))
+                if rows and fragment_desc and not _invoice_non_item_text(fragment_desc):
+                    desc_words = fragment_words
                     continuation_left = min((float(w['left']) for w in desc_words), default=None)
                     previous = rows[-1]
                     previous_bottom = previous.get('_row_bottom')
@@ -1124,7 +1139,7 @@ def parse_invoice_lines(lines, filename_hint=None):
                     close = 0 <= gap <= max(42.0, median_height * 2.5)
                     if aligned and close and not code_or_new_item:
                         previous['description'] = _clean_invoice_desc(
-                            (previous.get('description') or '') + ' ' + desc)
+                            (previous.get('description') or '') + ' ' + fragment_desc)
                         previous.setdefault('row_flags', []).append('description_continuation_joined')
                         previous.setdefault('source_cells', []).extend({
                             'text': w['text'], 'left': int(w['left']), 'top': int(w['top']),
