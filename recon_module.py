@@ -1263,6 +1263,44 @@ def parse_invoice_lines(lines, filename_hint=None, inherited_header_centers=None
             'flags': ['invoice_ocr_draft'], 'raw_text': blob[:6000]}
 
 
+def _invoice_raw_number(value):
+    """Parse a model-reported raw cell conservatively; trailing OCR punctuation is ignored."""
+    if value is None:
+        return None
+    s = str(value).translate(str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789"))
+    s = s.replace(",", "").replace("٬", "").replace("٫", ".").strip()
+    s = re.sub(r"[.。]+$", "", s)
+    if not re.fullmatch(r"[-+]?\d+(?:\.\d+)?", s):
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def _invoice_line_quality(qty, unit_price, line_total, raw):
+    """Return non-destructive validation flags; never alter the extracted values."""
+    flags = []
+    if qty is None or unit_price is None or line_total is None:
+        flags.append("invoice_math_incomplete_review")
+    else:
+        expected = float(qty) * float(unit_price)
+        tolerance = max(0.5, abs(float(line_total)) * 0.001)
+        if abs(expected - float(line_total)) > tolerance:
+            flags.append("invoice_math_mismatch_review")
+    raw = raw if isinstance(raw, dict) else {}
+    for field, value in (("qty", qty), ("unit_price", unit_price), ("line_total", line_total)):
+        raw_value = _invoice_raw_number(raw.get(field))
+        if raw_value is None or value is None or float(value) == 0:
+            continue
+        if abs(raw_value - float(value)) > max(0.0001, abs(raw_value) * 0.000001):
+            flags.append("invoice_raw_value_mismatch")
+            ratio = max(abs(raw_value), abs(float(value))) / max(0.000001, min(abs(raw_value), abs(float(value))))
+            if any(abs(ratio - factor) < 0.02 for factor in (10.0, 100.0, 1000.0)):
+                flags.append("invoice_possible_zero_scale_error")
+    return list(dict.fromkeys(flags))
+
+
 def _invoice_vision_pages(project_dir, doc, status):
     """Prefer the invoice LLM extractor when configured, but never block the legacy OCR fallback."""
     try:
@@ -1282,6 +1320,8 @@ def _invoice_vision_pages(project_dir, doc, status):
         return None
 
     doc_meta = (parsed_doc or {}).get('document') or {}
+    doc['invoice_document_meta'] = dict(doc_meta)
+    doc['invoice_document_sources'] = list((parsed_doc or {}).get('document_sources') or [])
     ref_no = doc_meta.get('invoice_no') or doc_meta.get('supply_order_no') or _invoice_ref_from_filename(doc.get('filename'))
     doc_date = doc_meta.get('date') or None
     out = []
@@ -1317,8 +1357,11 @@ def _invoice_vision_pages(project_dir, doc, status):
             flags = list(line.get('flags') or [])
             if 'invoice_vision_extracted' not in flags:
                 flags.append('invoice_vision_extracted')
-            math_valid = qty is not None and unit_price is not None and line_total is not None and abs(float(qty) * float(unit_price) - float(line_total)) <= max(1.0, abs(float(line_total)) * 0.02)
-            if not math_valid:
+            quality_flags = _invoice_line_quality(qty, unit_price, line_total, line.get('raw') or {})
+            flags.extend(quality_flags)
+            math_valid = qty is not None and unit_price is not None and line_total is not None and not any(
+                f in quality_flags for f in ('invoice_math_mismatch_review', 'invoice_math_incomplete_review'))
+            if not math_valid and 'line_math_review_required' not in flags:
                 flags.append('line_math_review_required')
             rows.append({'description': description.strip(), 'description_en': line.get('description_en'),
                          'contract_item_no': line.get('contract_item_no'),
@@ -1329,7 +1372,7 @@ def _invoice_vision_pages(project_dir, doc, status):
                                                 if str(line.get('raw', {}).get(k) or '').strip()),
                          'unit': unit, 'qty': qty, 'unit_price': unit_price,
                          'total': line_total, 'conf': conf, 'math_valid': bool(math_valid),
-                         'source_cells': [], 'row_flags': flags})
+                         'source_cells': [], 'row_flags': list(dict.fromkeys(flags))})
         if not rows:
             continue
         out.append((page_no, {'ref_no': ref_no, 'date': doc_date, 'rows': rows, 'flags': ['invoice_vision_extracted'],
