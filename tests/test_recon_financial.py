@@ -88,7 +88,7 @@ class FinancialCalculationTests(unittest.TestCase):
             self.assertTrue(all((r.get('ocr') or {}).get('description') for r in rows),
                             'Extracted invoice records must contain a non-empty item description')
             self.assertTrue(all(r.get('doc_kind') == 'invoice' for r in rows))
-            print('[INVOICE FIXTURE] pages=%d table_pages=%d skipped_or_empty=%d draft_rows=%d' % (
+            print('[INVOICE FIXTURE] pages=%d table_pages=%d non_table_pages=%d draft_rows=%d' % (
                 doc['pages'], table_pages, doc['pages'] - table_pages, count))
             for page_info in doc.get('invoice_page_analysis') or []:
                 print('[INVOICE PAGE] page=%s table=%s rows=%s flags=%s' % (
