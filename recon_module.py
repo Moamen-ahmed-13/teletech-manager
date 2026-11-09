@@ -540,28 +540,39 @@ def ocr_status():
 
 def render_pages(project_dir, doc, dpi=200):
     """Render every page to PNG (cached). Returns [{'page': n, 'path': Path}]."""
-    rd = recon_dir(project_dir)
-    pdf = stored_path(project_dir, doc.get('kind', 'mir'), doc)
+    # Use absolute paths throughout: PyMuPDF can fail to save to a relative
+    # path when the server's working directory differs from the project root.
+    rd = recon_dir(project_dir).resolve()
+    pages_dir = (rd / 'pages').resolve()
+    pages_dir.mkdir(parents=True, exist_ok=True)
+    pdf = stored_path(project_dir, doc.get('kind', 'mir'), doc).resolve()
     dpi_suffix = '' if int(dpi) == 200 else '_%ddpi' % int(dpi)
-    outs = [(n, rd / 'pages' / ('%s_p%d%s.png' % (doc['id'], n, dpi_suffix)))
+    outs = [(n, (pages_dir / ('%s_p%d%s.png' % (doc['id'], n, dpi_suffix))).resolve())
             for n in range(1, int(doc['pages']) + 1)]
-    if all(p.is_file() for _, p in outs):
+    if all(p.is_file() and p.stat().st_size > 0 for _, p in outs):
         return [{'page': n, 'path': p} for n, p in outs]
     try:
         import fitz
         with fitz.open(str(pdf)) as d:
             for n, p in outs:
-                if not p.is_file():
-                    d[n - 1].get_pixmap(matrix=fitz.Matrix(dpi / 72.0, dpi / 72.0)).save(str(p))
+                if not p.is_file() or p.stat().st_size == 0:
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    pix = d[n - 1].get_pixmap(matrix=fitz.Matrix(dpi / 72.0, dpi / 72.0))
+                    pix.save(str(p.resolve()))
+                    if not p.is_file() or p.stat().st_size == 0:
+                        raise ReconError('Rendered page image was not created: %s' % p)
     except ImportError:
-        tmp = Path(tempfile.mkdtemp(prefix='recon_'))
+        tmp = Path(tempfile.mkdtemp(prefix='recon_')).resolve()
         try:
             subprocess.run(['pdftoppm', '-r', str(dpi), '-png', str(pdf), str(tmp / 'pg')], check=True, capture_output=True, timeout=300)
             files = sorted(tmp.glob('pg-*.png'))
             if len(files) != len(outs):
                 raise ReconError('Page rendering produced %d images for %d pages.' % (len(files), len(outs)))
             for (n, p), f in zip(outs, files):
-                shutil.move(str(f), str(p))
+                p.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(f.resolve()), str(p.resolve()))
+                if not p.is_file() or p.stat().st_size == 0:
+                    raise ReconError('Rendered page image was not created: %s' % p)
         except (OSError, subprocess.SubprocessError) as e:
             raise ReconError('Cannot render PDF pages (install PyMuPDF or poppler): %s' % e)
         finally:
