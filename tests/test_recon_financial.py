@@ -339,6 +339,48 @@ class InvoiceTableGeometryTests(unittest.TestCase):
         self.assertEqual(merged[0]['qty'], 10.0)
         self.assertIn('description_continuation_joined', merged[0]['row_flags'])
 
+    def test_parser_joins_geometry_aligned_wrapped_description(self):
+        words = [
+            self.word('Description', 100, 40, 100),
+            self.word('Qty', 700, 40, 28),
+            self.word('Price', 800, 40, 40),
+            self.word('Total', 900, 40, 40),
+            self.word('Aggregation', 100, 100, 90),
+            self.word('Switch', 195, 100, 55),
+            self.word('PC', 620, 100, 25),
+            self.word('2', 700, 100, 15),
+            self.word('50', 800, 100, 25),
+            self.word('100', 900, 100, 30),
+            self.word('48', 100, 125, 18),
+            self.word('Port', 125, 125, 35),
+            self.word('Managed', 165, 125, 60),
+        ]
+        parsed = R.parse_invoice_lines(words, 'invoice.pdf')
+        self.assertEqual(len(parsed['rows']), 1)
+        row = parsed['rows'][0]
+        self.assertIn('Aggregation Switch 48 Port Managed', row['description'])
+        self.assertEqual(row['qty'], 2.0)
+        self.assertEqual(row['unit_price'], 50.0)
+        self.assertEqual(row['total'], 100.0)
+        self.assertIn('description_continuation_joined', row['row_flags'])
+
+    def test_invoice_candidate_score_does_not_reward_noisy_row_count(self):
+        evidence = {'is_table': True, 'header_score': 3}
+        good = {'rows': [
+            {'description': 'Aggregation Switch 48 Port', 'unit': 'PC', 'qty': 2,
+             'unit_price': 50, 'total': 100, 'math_valid': True, 'conf': 92},
+        ]}
+        noisy = {'rows': [
+            {'description': 'Aggregation Switch 48 Port', 'unit': 'PC', 'qty': 2,
+             'unit_price': 50, 'total': 100, 'math_valid': True, 'conf': 92},
+            {'description': 'gill Tent Cy', 'unit': None, 'qty': None,
+             'unit_price': None, 'total': None, 'math_valid': False, 'conf': 15},
+            {'description': 'Of O WA', 'unit': None, 'qty': None,
+             'unit_price': None, 'total': None, 'math_valid': False, 'conf': 12},
+        ]}
+        self.assertGreater(R._invoice_candidate_score(good, evidence),
+                           R._invoice_candidate_score(noisy, evidence))
+
 
 if __name__ == '__main__':
     unittest.main()
