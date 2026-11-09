@@ -540,10 +540,11 @@ def ocr_status():
 
 def render_pages(project_dir, doc, dpi=200):
     """Render every page to PNG (cached). Returns [{'page': n, 'path': Path}]."""
-    # Use absolute paths throughout: PyMuPDF can fail to save to a relative
-    # path when the server's working directory differs from the project root.
-    rd = recon_dir(project_dir).resolve()
-    pages_dir = (rd / 'pages').resolve()
+    # Windows MAX_PATH: project roots can be deeply nested (e.g. user/project
+    # workspaces), making reconciliation/pages/<uuid>_pN.png exceed 260 chars.
+    # Keep rendered cache images under the short system temp path instead.
+    project_key = hashlib.sha256(str(Path(project_dir).resolve()).encode('utf-8')).hexdigest()[:12]
+    pages_dir = (Path(tempfile.gettempdir()) / 'tt_recon_pages' / project_key).resolve()
     pages_dir.mkdir(parents=True, exist_ok=True)
     pdf = stored_path(project_dir, doc.get('kind', 'mir'), doc).resolve()
     dpi_suffix = '' if int(dpi) == 200 else '_%ddpi' % int(dpi)
