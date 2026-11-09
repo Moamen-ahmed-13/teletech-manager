@@ -336,6 +336,42 @@ class InvoiceTableGeometryTests(unittest.TestCase):
         self.assertIn('qty', evidence['header_hits'])
         self.assertIn('description', evidence['header_hits'])
 
+    def test_headerless_invoice_continuation_uses_previous_page_columns(self):
+        first_page = [
+            self.word('Description', 100, 40, 100),
+            self.word('Qty', 700, 40, 28),
+            self.word('Price', 800, 40, 40),
+            self.word('Total', 900, 40, 40),
+            self.word('Aggregation', 100, 100, 90),
+            self.word('Switch', 195, 100, 55),
+            self.word('PC', 620, 100, 25),
+            self.word('2', 700, 100, 15),
+            self.word('50', 800, 100, 25),
+            self.word('100', 900, 100, 30),
+        ]
+        first = R.parse_invoice_lines(first_page, 'invoice.pdf')
+        self.assertTrue(all(k in first['header_centers'] for k in ('qty', 'unit_price', 'total')))
+        second_page = [
+            self.word('Indoor', 100, 100, 55),
+            self.word('Access', 160, 100, 45),
+            self.word('Point', 210, 100, 40),
+            self.word('PC', 620, 100, 25),
+            self.word('3', 700, 100, 15),
+            self.word('20', 800, 100, 25),
+            self.word('60', 900, 100, 25),
+        ]
+        parsed = R.parse_invoice_lines(second_page, 'invoice.pdf',
+                                       inherited_header_centers=first['header_centers'])
+        evidence = R._invoice_page_table_evidence(second_page)
+        evidence = R._invoice_mark_continuation_page(parsed, evidence, first['header_centers'])
+        self.assertTrue(parsed['used_inherited_header_centers'])
+        self.assertTrue(evidence['is_table'])
+        self.assertTrue(evidence['continuation'])
+        self.assertEqual(len(parsed['rows']), 1)
+        self.assertEqual(parsed['rows'][0]['qty'], 3.0)
+        self.assertEqual(parsed['rows'][0]['unit_price'], 20.0)
+        self.assertEqual(parsed['rows'][0]['total'], 60.0)
+
     def test_invoice_certificate_page_is_not_misclassified_from_amounts_alone(self):
         words = [
             self.word('Certificate', 100, 40, 100),
