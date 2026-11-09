@@ -1320,8 +1320,7 @@ def _invoice_vision_pages(project_dir, doc, status):
         return None
 
     doc_meta = (parsed_doc or {}).get('document') or {}
-    doc['invoice_document_meta'] = dict(doc_meta)
-    doc['invoice_document_sources'] = list((parsed_doc or {}).get('document_sources') or [])
+    doc_sources = list((parsed_doc or {}).get('document_sources') or [])
     ref_no = doc_meta.get('invoice_no') or doc_meta.get('supply_order_no') or _invoice_ref_from_filename(doc.get('filename'))
     doc_date = doc_meta.get('date') or None
     out = []
@@ -1338,6 +1337,7 @@ def _invoice_vision_pages(project_dir, doc, status):
                 'page_analysis': {'is_table': False, 'page_type': page_type,
                                   'header_hits': [], 'numeric_words': 0},
                 'engine': 'invoice-vision', 'template': 'invoice',
+                'invoice_document_meta': dict(doc_meta), 'invoice_document_sources': doc_sources,
                 'status': {'value': None, 'confidence': 'review-required',
                            'note': 'Vision classified this page as non-item content'},
             }))
@@ -1379,6 +1379,7 @@ def _invoice_vision_pages(project_dir, doc, status):
                              'raw_text': '', 'page_analysis': {'is_table': True, 'header_hits': ['description', 'qty', 'unit_price', 'total'],
                                                              'numeric_words': sum(1 for r in rows if r.get('qty') is not None or r.get('unit_price') is not None or r.get('total') is not None)},
                              'engine': 'invoice-vision', 'template': 'invoice', 'supplier': None,
+                             'invoice_document_meta': dict(doc_meta), 'invoice_document_sources': doc_sources,
                              'status': {'value': None, 'confidence': 'review-required', 'note': 'Reviewer confirmation required'}}))
     return out if any((parsed.get('rows') or []) for _, parsed in out) else None
 
@@ -1516,6 +1517,9 @@ def _apply_ocr(st, doc, results, user):
     if doc.get('kind') == 'invoice':
         doc['invoice_page_analysis'] = []
     for page_no, parsed in results:
+        if doc.get('kind') == 'invoice' and parsed.get('invoice_document_meta'):
+            doc['invoice_document_meta'] = dict(parsed.get('invoice_document_meta') or {})
+            doc['invoice_document_sources'] = list(parsed.get('invoice_document_sources') or [])
         stat = parsed.get('status') or {}
         base = {'ref_no': parsed.get('ref_no'), 'date': parsed.get('date'), 'date_alternatives': parsed.get('date_alternatives') or [],
                 'ref_source': parsed.get('ref_source'), 'template': parsed.get('template'), 'engine': parsed.get('engine'),
