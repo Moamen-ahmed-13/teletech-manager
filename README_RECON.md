@@ -79,3 +79,19 @@ MIR-004 (150, status C) is never counted. The 548 / 407 / 57.38 % figure from yo
 **Important accounting rule:** MIR confirms inspection/quantity evidence; an invoice is financial evidence. If an approved invoice is matched to a BOQ row, its reviewed line amount is used for that row's financial progress. Otherwise the row falls back to the MIR-derived estimate. This is a per-row choice, not a sum of both sources.
 
 **Current invoice fixture in this repository:** `فاتورة رقم 1 بنى سويف لامر التوريد القديم.pdf`. The application can upload it directly through the new invoice control, or import it from the project's Documents list if it has already been added there. The generic invoice OCR is conservative and must be checked against the scan before confirming the record.
+
+
+## Optional GLM Vision OCR for invoices
+
+The invoice reader can use GLM vision to read the scanned page layout directly instead of relying only on Tesseract. This is optional; if no GLM key is configured or the API call fails, the existing Tesseract pipeline remains the fallback.
+
+Add these settings to the project `.env` file (never paste the key into the UI):
+
+```dotenv
+GLM_API_KEY=your_zai_api_key
+TELETECH_INVOICE_VISION_PROVIDER=glm
+TELETECH_INVOICE_GLM_MODEL=glm-4.6v
+TELETECH_INVOICE_GLM_BASE_URL=https://api.z.ai/api/paas/v4
+```
+
+If your account uses a different compatible Z.AI/BigModel endpoint, set `TELETECH_INVOICE_GLM_BASE_URL` to that account's documented API base URL. The GLM result is still a draft: raw printed numeric strings are retained, arithmetic is checked, and a reviewer must confirm the line and BOQ match. The cache is separated by provider and model so switching from Gemini/OpenAI to GLM does not reuse an older provider's extraction.
