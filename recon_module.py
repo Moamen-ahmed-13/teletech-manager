@@ -976,6 +976,19 @@ def _invoice_join_continuation_rows(rows):
     return out
 
 
+def _invoice_rows_should_be_retained(parsed, evidence=None):
+    """Keep valid invoice rows even when the page-level table classifier is conservative."""
+    rows = parsed.get('rows') if isinstance(parsed, dict) else []
+    if not rows:
+        return False
+    if any(bool(row.get('math_valid')) for row in rows):
+        return True
+    evidence = evidence or {}
+    if int(evidence.get('numeric_words') or 0) >= 2 and len(evidence.get('header_hits') or []) >= 1:
+        return True
+    return False
+
+
 def _invoice_assign_from_headers(numeric, centers):
     """Assign numeric cells only when explicit Qty, Unit Price and Total headers are detected."""
     if not all(k in centers for k in ('qty', 'unit_price', 'total')):
@@ -1068,19 +1081,8 @@ def parse_invoice_lines(lines, filename_hint=None):
                                                  if _invoice_numeric_word(w['text']) is None and w is not unit_word))
             if _invoice_non_item_text(desc):
                 continue
+            # Conservative extraction: if a row cannot be tied to numeric invoice cells, it is not a real item row.
             if len(numeric) < 2:
-                # Keep likely wrapped description fragments only when table column geometry is known
-                # and the text remains entirely to the left of the Qty column.
-                qty_center = header_centers.get('qty')
-                text_words = [w for w in visual if _invoice_numeric_word(w['text']) is None and w is not unit_word]
-                if (qty_center is not None and text_words
-                        and all((w['left'] + w['width']) <= qty_center for w in text_words)
-                        and not re.search(r'\b(?:description|quantity|qty|unit|price|amount|total|invoice|date)\b|وصف|الكمية|الوحدة|الإجمالي', desc, re.I)):
-                    rows.append({'description': desc, 'unit': None, 'qty': None, 'unit_price': None, 'total': None,
-                                 'conf': None, 'math_valid': False, 'source_cells': [
-                                     {'text': w['text'], 'left': int(w['left']), 'top': int(w['top']),
-                                      'width': int(w['width']), 'height': int(w['height']), 'conf': w.get('conf')}
-                                     for w in visual], 'row_flags': ['invoice_description_continuation_candidate']})
                 continue
             if len(numeric) >= 4 and numeric[0][1].is_integer() and 0 < numeric[0][1] <= 999:
                 numeric = numeric[1:]  # likely item serial number, not a financial cell
@@ -1154,10 +1156,72 @@ def parse_invoice_lines(lines, filename_hint=None):
             'flags': ['invoice_ocr_draft'], 'raw_text': blob[:6000]}
 
 
+def _invoice_vision_pages(project_dir, doc, status):
+    """Prefer the invoice LLM extractor when configured, but never block the legacy OCR fallback."""
+    try:
+        import invoice_llm
+    except Exception:
+        return None
+    try:
+        provider = invoice_llm._select_invoice_vision_provider()
+        if not provider:
+            return None
+        pdf_path = stored_path(project_dir, 'invoice', doc)
+        parsed_doc = invoice_llm.extract_invoice_with_vision(pdf_path, provider=provider)
+    except Exception as e:
+        safe_name = str(doc.get('filename') or '').encode('ascii', 'replace').decode('ascii')
+        safe_error = str(e).encode('ascii', 'replace').decode('ascii')
+        print('[RECON] invoice vision unavailable for %s: %s' % (safe_name, safe_error))
+        return None
+
+    doc_meta = (parsed_doc or {}).get('document') or {}
+    ref_no = doc_meta.get('invoice_no') or doc_meta.get('supply_order_no') or _invoice_ref_from_filename(doc.get('filename'))
+    doc_date = doc_meta.get('date') or None
+    out = []
+    for page in (parsed_doc or {}).get('pages') or []:
+        if not isinstance(page, dict):
+            continue
+        if str(page.get('type') or '').lower() != 'items':
+            continue
+        page_no = int(page.get('page_no') or 1)
+        rows = []
+        for line in page.get('lines') or []:
+            if not isinstance(line, dict):
+                continue
+            description = (line.get('description_en') or line.get('description_ar') or '').strip()
+            if not description:
+                description = ' '.join(str(x).strip() for x in (line.get('part_numbers') or []) if str(x).strip())
+            qty = line.get('qty')
+            unit_price = line.get('unit_price')
+            line_total = line.get('line_total')
+            unit = line.get('unit')
+            conf = line.get('confidence')
+            flags = list(line.get('flags') or [])
+            if 'invoice_vision_extracted' not in flags:
+                flags.append('invoice_vision_extracted')
+            math_valid = qty is not None and unit_price is not None and line_total is not None and abs(float(qty) * float(unit_price) - float(line_total)) <= max(1.0, abs(float(line_total)) * 0.02)
+            if not math_valid:
+                flags.append('line_math_review_required')
+            rows.append({'description': description.strip(), 'unit': unit, 'qty': qty, 'unit_price': unit_price,
+                         'total': line_total, 'conf': conf, 'math_valid': bool(math_valid),
+                         'source_cells': [], 'row_flags': flags})
+        if not rows:
+            continue
+        out.append((page_no, {'ref_no': ref_no, 'date': doc_date, 'rows': rows, 'flags': ['invoice_vision_extracted'],
+                             'raw_text': '', 'page_analysis': {'is_table': True, 'header_hits': ['description', 'qty', 'unit_price', 'total'],
+                                                             'numeric_words': sum(1 for r in rows if r.get('qty') is not None or r.get('unit_price') is not None or r.get('total') is not None)},
+                             'engine': 'invoice-vision', 'template': 'invoice', 'supplier': None,
+                             'status': {'value': None, 'confidence': 'review-required', 'note': 'Reviewer confirmation required'}}))
+    return out or None
+
+
 def _ocr_pages(project_dir, doc, status, progress=None):
     """Heavy part (touches no project state): render + read every page. Returns [(page_no, parsed_dict)]."""
     pages = render_pages(project_dir, doc)
     if doc.get('kind') == 'invoice':
+        vision_pages = _invoice_vision_pages(project_dir, doc, status)
+        if vision_pages is not None:
+            return vision_pages
         out = []; tmp = tempfile.mkdtemp(prefix='recon_invoice_')
         native_pages = {}
         try:
@@ -1210,11 +1274,13 @@ def _ocr_pages(project_dir, doc, status, progress=None):
                 candidates.sort(key=lambda x: x[0], reverse=True)
                 parsed = candidates[0][2] if candidates else parse_invoice_lines([], doc.get('filename'))
                 evidence = parsed.get('page_analysis') or {'is_table': False, 'header_hits': [], 'numeric_words': 0}
-                if not evidence.get('is_table'):
+                if not evidence.get('is_table') and not _invoice_rows_should_be_retained(parsed, evidence):
                     parsed['rows'] = []
                     parsed['flags'] = list(parsed.get('flags') or []) + ['invoice_page_not_classified_as_table']
                 elif not parsed.get('rows'):
                     parsed['flags'] = list(parsed.get('flags') or []) + ['invoice_table_detected_but_no_rows_extracted']
+                if not evidence.get('is_table') and _invoice_rows_should_be_retained(parsed, evidence):
+                    parsed['flags'] = list(parsed.get('flags') or []) + ['invoice_rows_retained_despite_weak_table_evidence']
                 if len(candidates) > 1:
                     parsed['flags'] = list(parsed.get('flags') or []) + ['preprocessing_variant_selected:%s' % candidates[0][1]]
                     parsed['variant_row_counts'] = {name: len(item.get('rows') or []) for _, name, item in candidates}

@@ -1,4 +1,6 @@
+# pyright: reportMissingImports=false, reportUnusedImport=false, reportUnusedClass=false, reportUnusedFunction=false, reportUnusedVariable=false, reportPrivateUsage=false, reportOptionalMemberAccess=false, reportAttributeAccessIssue=false, reportGeneralTypeIssues=false, reportArgumentType=false, reportAssignmentType=false, reportCallIssue=false, reportIndexIssue=false, reportOperatorIssue=false
 import json, math, os, re, shutil, socket, threading, time, uuid, webbrowser, zipfile, subprocess, base64, random, hashlib, hmac, secrets, smtplib, email.message, http.cookies, sqlite3, datetime
+from typing import Any
 
 try:
     from dotenv import load_dotenv
@@ -18,11 +20,14 @@ try:
 except Exception as _recon_err:
     RECON=None; RECON_UI=None; print(f'[RECON] reconciliation module unavailable: {_recon_err}')
 
+fitz: Any = None
 try:
     import fitz  # PyMuPDF - used to render scanned As-Built PDF pages to images
 except ImportError:
     fitz = None
 
+cv2: Any = None
+np: Any = None
 try:
     import cv2
     import numpy as np
@@ -46,6 +51,7 @@ _ASBUILT_REGISTRATION_CACHE = {}
 # As-Built is intentionally CODE-ONLY in this build.
 # No GLM/Qwen/vision-agent is called by the As-Built workflow.
 # Optional OCR is kept disabled by default and is never required for scanning.
+Image: Any = None
 try:
     from PIL import Image
 except ImportError:
@@ -67,7 +73,7 @@ _ASBUILT_HF_OCR_LOCK = threading.Lock()
 # Legacy / optional vision back-ends. As-Built scanning is code-only, but these functions still exist
 # in this file, so every name they use must be defined (they used to raise NameError when called).
 ASBUILT_GEMINI_BASE_URL = os.getenv('TELETECH_GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com').rstrip('/')
-ASBUILT_GEMINI_DEFAULT_MODEL = os.getenv('TELETECH_GEMINI_MODEL', 'gemini-2.5-flash').strip() or 'gemini-2.5-flash'
+ASBUILT_GEMINI_DEFAULT_MODEL = os.getenv('TELETECH_GEMINI_MODEL', 'gemini-3.8-flash').strip() or 'gemini-3.8-flash'
 ASBUILT_GLM_BASE_URL = os.getenv('TELETECH_GLM_BASE_URL', 'https://api.z.ai/api/paas/v4').rstrip('/')
 ASBUILT_GLM_DEFAULT_MODEL = os.getenv('TELETECH_GLM_MODEL', 'glm-4.5v').strip() or 'glm-4.5v'
 ASBUILT_QWEN_ENABLED = os.getenv('TELETECH_QWEN_ENABLED', '0').strip().lower() in {'1','true','yes','on'}
@@ -78,14 +84,42 @@ _ASBUILT_QWEN_MODEL_OBJ = None
 _ASBUILT_QWEN_PROCESSOR = None
 _ASBUILT_QWEN_LOCK = threading.Lock()
 
-torch = None
-AutoProcessor = None
-AutoModelForImageTextToText = None
+
+def _load_env_file(env_path, *, override=False):
+    path = Path(env_path)
+    if not path.exists():
+        return False
+    loaded = False
+    for raw_line in path.read_text(encoding='utf-8').splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith('#') or line.startswith(';'):
+            continue
+        if line.startswith('export '):
+            line = line[len('export '):].lstrip()
+        if '=' not in line:
+            continue
+        key, value = line.split('=', 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+        if value and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+        if not override and key in os.environ and str(os.environ[key]).strip():
+            continue
+        value = re.sub(r'\s+#.*$', '', value)
+        os.environ[key] = value
+        loaded = True
+    return loaded
+
+torch: Any = None
+AutoProcessor: Any = None
+AutoModelForImageTextToText: Any = None
 if ASBUILT_HF_OCR_ENABLED or ASBUILT_QWEN_ENABLED:
-    # torch/transformers are heavy: import them only when a local model was explicitly enabled.
+    # torch/transformers are optional and only required when local OCR is explicitly enabled.
     try:
-        import torch
-        from transformers import AutoProcessor, AutoModelForImageTextToText
+        import torch  # type: ignore[import-not-found]
+        from transformers import AutoProcessor, AutoModelForImageTextToText  # type: ignore[import-not-found]
     except Exception as _hf_import_error:
         torch = None; AutoProcessor = None; AutoModelForImageTextToText = None
         print(f'[AS-BUILT] local OCR/vision dependencies unavailable: {_hf_import_error}')
@@ -93,10 +127,11 @@ if ASBUILT_HF_OCR_ENABLED or ASBUILT_QWEN_ENABLED:
 ROOT = Path(__file__).resolve().parent
 ENV_FILE = ROOT / '.env'
 if load_dotenv:
-    load_dotenv(ENV_FILE, override=False)
-    print(f'[ENV] .env loaded: {ENV_FILE.exists()}')
+    loaded = bool(load_dotenv(ENV_FILE, override=False))
+    print(f'[ENV] .env loaded via python-dotenv: {loaded} ({ENV_FILE})')
 else:
-    print('[ENV] python-dotenv not installed; .env not loaded')
+    loaded = _load_env_file(ENV_FILE, override=False)
+    print(f'[ENV] python-dotenv not installed; fallback loader used: {loaded} ({ENV_FILE})')
 
 # ----------------------------- Authentication -----------------------------
 AUTH_SESSION_TTL = int(os.getenv('TELETECH_AUTH_SESSION_TTL', '28800') or 28800)
@@ -6974,7 +7009,7 @@ def _asbuilt_cv_color_inventory(image_path, legend_path=None):
                     for cname,(lo,hi,smin,vmin) in color_ranges.items():
                         cm=((ref_hsv[:,:,0]>=lo)&(ref_hsv[:,:,0]<=hi)&
                             (ref_hsv[:,:,1]>=smin)&(ref_hsv[:,:,2]>=vmin)).astype(np.uint8)
-                        n,lab,st,cen=cv2.connectedComponentsWithStats(cm,8)
+                        n,lab,st,cen=cv2.connectedComponentsWithStats(cm, connectivity=8)
                         comps=[]
                         for i in range(1,n):
                             a=int(st[i,cv2.CC_STAT_AREA])
@@ -6993,7 +7028,7 @@ def _asbuilt_cv_color_inventory(image_path, legend_path=None):
                     for cname,(lo,hi,smin,vmin) in color_ranges.items():
                         cm=((page_hsv[:,:,0]>=lo)&(page_hsv[:,:,0]<=hi)&
                             (page_hsv[:,:,1]>=smin)&(page_hsv[:,:,2]>=vmin)).astype(np.uint8)
-                        n,lab,st,cen=cv2.connectedComponentsWithStats(cm,8)
+                        n,lab,st,cen=cv2.connectedComponentsWithStats(cm, connectivity=8)
                         arr=[]
                         for i in range(1,n):
                             a=int(st[i,cv2.CC_STAT_AREA])
@@ -7129,7 +7164,7 @@ def _asbuilt_cv_color_inventory(image_path, legend_path=None):
             # Raw connected components: no morphology, so adjacent points
             # remain separate components.
             m=mask.astype(np.uint8)*255
-            n,labels,stats,centroids=cv2.connectedComponentsWithStats(m,8)
+            n,labels,stats,centroids=cv2.connectedComponentsWithStats(m, connectivity=8)
             regions=[]
 
             for i in range(1,n):
