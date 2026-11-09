@@ -292,6 +292,26 @@ class FinancialCalculationTests(unittest.TestCase):
             self.assertEqual(call.call_args.args[2], 'glm')
             self.assertTrue(list(cache_dir.glob('*.glm.glm-4.6v.json')))
 
+    def test_invoice_vision_pages_keep_non_item_page_diagnostics_and_raw_values(self):
+        doc = {'id': 'invoice-doc', 'kind': 'invoice', 'filename': 'invoice.pdf'}
+        parsed_doc = {'document': {'invoice_no': 'INV-1', 'date': None},
+                      'pages': [
+                          {'page_no': 1, 'type': 'certificate', 'lines': []},
+                          {'page_no': 2, 'type': 'items', 'lines': [{
+                              'description_ar': 'سويتش شبكة', 'description_en': 'Network Switch',
+                              'part_numbers': ['ABC-123'], 'contract_item_no': '7',
+                              'unit': 'PC', 'qty': 2, 'unit_price': 50, 'line_total': 100,
+                              'raw': {'qty': '2', 'unit_price': '50.00', 'line_total': '100.00'},
+                              'confidence': 95, 'flags': []}]}]}
+        with patch.dict('os.environ', {'GLM_API_KEY': 'test-glm-key'}):
+            with patch('invoice_llm.extract_invoice_with_vision', return_value=parsed_doc):
+                result = R._invoice_vision_pages(Path('.'), doc, {})
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0][1]['rows'], [])
+        self.assertEqual(result[0][1]['page_analysis']['page_type'], 'certificate')
+        self.assertEqual(result[1][1]['rows'][0]['raw']['unit_price'], '50.00')
+        self.assertEqual(result[1][1]['rows'][0]['part_numbers'], ['ABC-123'])
+
     def test_line_total_derives_rate_when_unit_price_is_blank(self):
         st = state([record('mir-1', 'mir', 'MIR-001', 2.0, None)])
         st['boq']['items'][0]['unit_price'] = None
