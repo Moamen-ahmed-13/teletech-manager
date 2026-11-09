@@ -90,6 +90,16 @@ class FinancialCalculationTests(unittest.TestCase):
             self.assertTrue(all(r.get('doc_kind') == 'invoice' for r in rows))
             print('[INVOICE FIXTURE] pages=%d table_pages=%d skipped_or_empty=%d draft_rows=%d' % (
                 doc['pages'], table_pages, doc['pages'] - table_pages, count))
+            for page_info in doc.get('invoice_page_analysis') or []:
+                print('[INVOICE PAGE] page=%s table=%s rows=%s flags=%s' % (
+                    page_info.get('page'), page_info.get('is_table'), page_info.get('row_count'),
+                    ','.join(page_info.get('flags') or [])))
+            for rec in rows:
+                ocr = rec.get('ocr') or {}
+                print('[INVOICE LINE] page=%s desc=%r unit=%r qty=%r unit_price=%r total=%r conf=%r flags=%s' % (
+                    rec.get('page'), ocr.get('description'), ocr.get('unit'), ocr.get('qty'),
+                    ocr.get('unit_price'), ocr.get('total'), ocr.get('conf'),
+                    ','.join(rec.get('ocr_flags') or [])))
 
     def test_invoice_page_without_detected_rows_is_diagnostic_not_fake_line(self):
         doc = {'id': 'invoice-doc', 'kind': 'invoice', 'filename': 'invoice.pdf',
