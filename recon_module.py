@@ -1276,9 +1276,20 @@ def _invoice_vision_pages(project_dir, doc, status):
     for page in (parsed_doc or {}).get('pages') or []:
         if not isinstance(page, dict):
             continue
-        if str(page.get('type') or '').lower() != 'items':
-            continue
         page_no = int(page.get('page_no') or 1)
+        page_type = str(page.get('type') or 'other').lower()
+        if page_type != 'items':
+            out.append((page_no, {
+                'ref_no': ref_no, 'date': doc_date, 'rows': [],
+                'flags': ['invoice_vision_classified_non_items'],
+                'raw_text': '',
+                'page_analysis': {'is_table': False, 'page_type': page_type,
+                                  'header_hits': [], 'numeric_words': 0},
+                'engine': 'invoice-vision', 'template': 'invoice',
+                'status': {'value': None, 'confidence': 'review-required',
+                           'note': 'Vision classified this page as non-item content'},
+            }))
+            continue
         rows = []
         for line in page.get('lines') or []:
             if not isinstance(line, dict):
@@ -1297,7 +1308,13 @@ def _invoice_vision_pages(project_dir, doc, status):
             math_valid = qty is not None and unit_price is not None and line_total is not None and abs(float(qty) * float(unit_price) - float(line_total)) <= max(1.0, abs(float(line_total)) * 0.02)
             if not math_valid:
                 flags.append('line_math_review_required')
-            rows.append({'description': description.strip(), 'part_numbers': list(line.get('part_numbers') or []),
+            rows.append({'description': description.strip(), 'description_en': line.get('description_en'),
+                         'contract_item_no': line.get('contract_item_no'),
+                         'part_numbers': list(line.get('part_numbers') or []),
+                         'raw': dict(line.get('raw') or {}),
+                         'raw_text': ' | '.join(str(line.get('raw', {}).get(k) or '').strip()
+                                                for k in ('qty', 'unit_price', 'line_total')
+                                                if str(line.get('raw', {}).get(k) or '').strip()),
                          'unit': unit, 'qty': qty, 'unit_price': unit_price,
                          'total': line_total, 'conf': conf, 'math_valid': bool(math_valid),
                          'source_cells': [], 'row_flags': flags})
@@ -1308,7 +1325,7 @@ def _invoice_vision_pages(project_dir, doc, status):
                                                              'numeric_words': sum(1 for r in rows if r.get('qty') is not None or r.get('unit_price') is not None or r.get('total') is not None)},
                              'engine': 'invoice-vision', 'template': 'invoice', 'supplier': None,
                              'status': {'value': None, 'confidence': 'review-required', 'note': 'Reviewer confirmation required'}}))
-    return out or None
+    return out if any((parsed.get('rows') or []) for _, parsed in out) else None
 
 
 def _ocr_pages(project_dir, doc, status, progress=None):
@@ -1490,6 +1507,10 @@ def _apply_ocr(st, doc, results, user):
             # text below the item line (often handwriting) is kept for the reviewer but never mixed into the description used for matching
             row_cells = list(row.get('source_cells') or [])
             row_raw_text = str(row.get('raw_text') or '').strip()
+            if not row_raw_text and row.get('raw'):
+                row_raw_text = ' | '.join(str(row.get('raw', {}).get(k) or '').strip()
+                                           for k in ('qty', 'unit_price', 'line_total')
+                                           if str(row.get('raw', {}).get(k) or '').strip())
             if not row_raw_text and row_cells:
                 row_raw_text = ' '.join(str(cell.get('text') or '').strip() for cell in row_cells if str(cell.get('text') or '').strip())
             if not row_raw_text:
@@ -1499,6 +1520,9 @@ def _apply_ocr(st, doc, results, user):
                                                          alts=row.get('alts'), extra_text=row.get('extra') or None,
                                                          raw_text=row_raw_text, source_cells=row_cells,
                                                          part_numbers=list(row.get('part_numbers') or []),
+                                                         description_en=row.get('description_en'),
+                                                         contract_item_no=row.get('contract_item_no'),
+                                                         raw_values=dict(row.get('raw') or {}),
                                                          row_flags=list(row.get('row_flags') or [])), list(dict.fromkeys(fl)))
             st['records'].append(rec); n_new += 1
     doc.update({'ocr_status': 'done', 'ocr_backend': ('PDF-native text + Tesseract table-page detection (Arabic if installed)' if doc.get('kind') == 'invoice' else 'tesseract (layout reader + 3-variant vote)'), 'ocr_at': _now(), 'ocr_error': None, 'ocr_progress': None})
