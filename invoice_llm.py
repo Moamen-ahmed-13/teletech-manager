@@ -174,7 +174,9 @@ def _gemini_compatible_schema(schema: Any) -> Any:
 
 
 def _invoice_cache_dir() -> Path:
-    root = Path(__file__).resolve().parent / "reconciliation" / "invoice"
+    # Keep cache/checkpoint paths short on Windows (the project path can be deeply nested).
+    root = Path(os.getenv("TELETECH_INVOICE_CACHE_DIR") or
+                (Path(os.getenv("TEMP") or os.getenv("TMP") or ".") / "tt_invoice_cache"))
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -394,6 +396,7 @@ def normalize_invoice_llm_output(raw: Dict[str, Any]) -> Dict[str, Any]:
             "printed_grand_total": document.get("printed_grand_total"),
         },
         "pages": [],
+        "document_sources": list(raw.get("document_sources") or []),
     }
     for page in pages:
         if not isinstance(page, dict):
@@ -478,7 +481,7 @@ def extract_invoice_with_vision(pdf_path: str | Path, provider: Optional[str] = 
         return normalize_invoice_llm_output(cached)
 
     rendered_pages = _render_invoice_pages_to_png(pdf_path)
-    payload: Dict[str, Any] = {"document": {"invoice_no": None, "supply_order_no": None, "customer": None, "supplier": None, "date": None, "printed_grand_total": None}, "pages": []}
+    payload: Dict[str, Any] = {"document": {"invoice_no": None, "supply_order_no": None, "customer": None, "supplier": None, "date": None, "printed_grand_total": None}, "pages": [], "document_sources": []}
     # Per-page checkpoints allow a failed/interrupted invoice to resume without
     # sending already completed pages to the provider again.
     page_cache_dir = cache_path.parent / (cache_path.stem + ".pages")
@@ -509,7 +512,18 @@ def extract_invoice_with_vision(pdf_path: str | Path, provider: Optional[str] = 
 
         for field in document_fields:
             value = page_document.get(field)
-            if value not in (None, "", "null", "None"):
+            if value in (None, "", "null", "None"):
+                continue
+            # Ignore zero/negative totals: they are commonly OCR misses on certificate pages.
+            if field == "printed_grand_total":
+                try:
+                    if float(value) <= 0:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+            payload["document_sources"].append({"page_no": page_no, "field": field, "value": value})
+            # First credible value wins; later pages may fill blanks but cannot overwrite headers.
+            if payload["document"].get(field) in (None, "", "null", "None"):
                 payload["document"][field] = value
         # The renderer is authoritative for page numbering.
         page_payload["page_no"] = page_no
