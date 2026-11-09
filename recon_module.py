@@ -1418,6 +1418,10 @@ def _apply_ocr(st, doc, results, user):
                 doc['invoice_page_analysis'].append({
                     'page': page_no, 'is_table': bool((parsed.get('page_analysis') or {}).get('is_table')),
                     'header_hits': (parsed.get('page_analysis') or {}).get('header_hits', []),
+                    'page_analysis': dict(parsed.get('page_analysis') or {}),
+                    'engine': parsed.get('engine'),
+                    'variant_row_counts': dict(parsed.get('variant_row_counts') or {}),
+                    'raw_text_excerpt': str(parsed.get('raw_text') or '')[:1500],
                     'flags': list(pflags + ['ocr_no_lines']), 'row_count': 0})
                 continue
             rec = _new_record(doc, page_no, 'ocr', dict(base, description=None, unit=None, qty=None, total=None,
@@ -1429,6 +1433,10 @@ def _apply_ocr(st, doc, results, user):
             doc['invoice_page_analysis'].append({
                 'page': page_no, 'is_table': bool((parsed.get('page_analysis') or {}).get('is_table')),
                 'header_hits': (parsed.get('page_analysis') or {}).get('header_hits', []),
+                'page_analysis': dict(parsed.get('page_analysis') or {}),
+                'engine': parsed.get('engine'),
+                'variant_row_counts': dict(parsed.get('variant_row_counts') or {}),
+                'raw_text_excerpt': str(parsed.get('raw_text') or '')[:1500],
                 'flags': list(pflags), 'row_count': len(rows)})
         for row in rows:
             fl = list(pflags) + list(row.get('row_flags') or [])
@@ -1437,9 +1445,17 @@ def _apply_ocr(st, doc, results, user):
             if doc.get('kind') != 'invoice' and row.get('qty') is None and row.get('total') is not None and 'qty_blank_total_only' not in fl: fl.append('qty_blank_total_only')
             if doc.get('kind') != 'invoice' and row.get('qty') is None and row.get('total') is None and 'qty_not_read' not in fl: fl.append('qty_not_read')
             # text below the item line (often handwriting) is kept for the reviewer but never mixed into the description used for matching
+            row_cells = list(row.get('source_cells') or [])
+            row_raw_text = str(row.get('raw_text') or '').strip()
+            if not row_raw_text and row_cells:
+                row_raw_text = ' '.join(str(cell.get('text') or '').strip() for cell in row_cells if str(cell.get('text') or '').strip())
+            if not row_raw_text:
+                row_raw_text = str(parsed.get('raw_text') or '')[:1500]
             rec = _new_record(doc, page_no, 'ocr', dict(base, description=row.get('description') or None, unit=row.get('unit'), qty=row.get('qty'),
                                                          total=row.get('total'), unit_price=row.get('unit_price'), conf=row.get('conf'), invoice_no=row.get('invoice_no'),
-                                                         alts=row.get('alts'), extra_text=row.get('extra') or None, raw_text=''), list(dict.fromkeys(fl)))
+                                                         alts=row.get('alts'), extra_text=row.get('extra') or None,
+                                                         raw_text=row_raw_text, source_cells=row_cells,
+                                                         row_flags=list(row.get('row_flags') or [])), list(dict.fromkeys(fl)))
             st['records'].append(rec); n_new += 1
     doc.update({'ocr_status': 'done', 'ocr_backend': ('PDF-native text + Tesseract table-page detection (Arabic if installed)' if doc.get('kind') == 'invoice' else 'tesseract (layout reader + 3-variant vote)'), 'ocr_at': _now(), 'ocr_error': None, 'ocr_progress': None})
     _audit(st, user, 'INVOICE_OCR' if doc.get('kind') == 'invoice' else 'MIR_OCR', '%s records=%d' % (doc['filename'], n_new))
