@@ -390,7 +390,7 @@ def normalize_invoice_llm_output(raw: Dict[str, Any]) -> Dict[str, Any]:
             "supply_order_no": document.get("supply_order_no"),
             "customer": document.get("customer"),
             "supplier": document.get("supplier"),
-            "date": document.get("date"),
+            "date": (None if str(document.get("date") or "").strip().lower() in {"", "null", "none"} else document.get("date")),
             "printed_grand_total": document.get("printed_grand_total"),
         },
         "pages": [],
@@ -479,21 +479,44 @@ def extract_invoice_with_vision(pdf_path: str | Path, provider: Optional[str] = 
 
     rendered_pages = _render_invoice_pages_to_png(pdf_path)
     payload: Dict[str, Any] = {"document": {"invoice_no": None, "supply_order_no": None, "customer": None, "supplier": None, "date": None, "printed_grand_total": None}, "pages": []}
-    try:
-        for page_no, page_png in rendered_pages:
-            page_payload = _call_invoice_page_vision(page_png, page_no, provider, model_name, key)
-            if isinstance(page_payload, dict) and isinstance(page_payload.get("pages"), list):
-                page_payload = page_payload["pages"][0] if page_payload["pages"] else {}
+    # Per-page checkpoints allow a failed/interrupted invoice to resume without
+    # sending already completed pages to the provider again.
+    page_cache_dir = cache_path.parent / (cache_path.stem + ".pages")
+    page_cache_dir.mkdir(parents=True, exist_ok=True)
+    document_fields = ("invoice_no", "supply_order_no", "customer", "supplier", "date", "printed_grand_total")
+
+    for page_no, page_png in rendered_pages:
+        page_cache_path = page_cache_dir / f"page_{page_no:04d}.json"
+        cached_page = _read_json_cache(page_cache_path)
+        if cached_page and isinstance(cached_page.get("page"), dict):
+            page_payload = dict(cached_page["page"])
+            page_document = cached_page.get("document") or {}
+        else:
+            # Save each successful page immediately. If a later page hits quota,
+            # the next run resumes from the first page without a checkpoint.
+            raw_page = _call_invoice_page_vision(page_png, page_no, provider, model_name, key)
+            page_document = raw_page.get("document") if isinstance(raw_page, dict) else {}
+            if isinstance(raw_page, dict) and isinstance(raw_page.get("pages"), list):
+                page_payload = raw_page["pages"][0] if raw_page["pages"] else {}
+            else:
+                page_payload = raw_page
             page_payload = dict(page_payload or {})
-            # The renderer is authoritative for page numbering; do not trust model-generated page numbers.
             page_payload["page_no"] = page_no
             page_payload.setdefault("type", "other")
             page_payload.setdefault("lines", [])
-            payload["pages"].append(page_payload)
-    except Exception:
-        raise
+            page_document = page_document if isinstance(page_document, dict) else {}
+            _write_json_cache(page_cache_path, {"page": page_payload, "document": page_document})
 
-    # Ensure page numbers and type are present, and normalize the document object.
+        for field in document_fields:
+            value = page_document.get(field)
+            if value not in (None, "", "null", "None"):
+                payload["document"][field] = value
+        # The renderer is authoritative for page numbering.
+        page_payload["page_no"] = page_no
+        page_payload.setdefault("type", "other")
+        page_payload.setdefault("lines", [])
+        payload["pages"].append(page_payload)
+
     normalized = normalize_invoice_llm_output(payload)
     _write_json_cache(cache_path, normalized)
     return normalized
