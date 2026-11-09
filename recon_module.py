@@ -1311,7 +1311,9 @@ def _invoice_vision_pages(project_dir, doc, status):
 
 def _ocr_pages(project_dir, doc, status, progress=None):
     """Heavy part (touches no project state): render + read every page. Returns [(page_no, parsed_dict)]."""
-    pages = render_pages(project_dir, doc)
+    # Invoice scans contain dense bilingual tables; render at print-quality resolution
+    # instead of enlarging a 200-DPI raster later in preprocessing.
+    pages = render_pages(project_dir, doc, dpi=300 if doc.get('kind') == 'invoice' else 200)
     if doc.get('kind') == 'invoice':
         vision_pages = _invoice_vision_pages(project_dir, doc, status)
         if vision_pages is not None:
