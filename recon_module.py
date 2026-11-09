@@ -1873,7 +1873,7 @@ def classify_candidates(cands):
         return 'unmatched', None
     top = cands[0]
     # Low semantic scores are not useful suggestions; keep them unmatched.
-    if top['score'] < 0.45:
+    if top['score'] < 0.30:
         return 'unmatched', None
     near = [c for c in cands[1:] if top['score'] - c['score'] <= 0.03]
     same_ev = [c for c in cands[1:] if top['strong'] and c['strong'] and c['strong'] == top['strong']]
