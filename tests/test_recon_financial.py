@@ -51,32 +51,45 @@ class FinancialCalculationTests(unittest.TestCase):
             self.skipTest('Repository invoice fixture is not present in this checkout')
         import shutil
         import tempfile
-        import fitz
+        from unittest.mock import patch
         if not shutil.which('tesseract'):
             self.skipTest('Tesseract is not installed')
-        rows = []
-        table_pages = []
-        non_table_pages = []
+        status = R.ocr_status()
+        if not status.get('available'):
+            self.skipTest(status.get('message') or 'Tesseract is unavailable')
+        if 'ara' not in (status.get('langs') or []):
+            self.skipTest('Arabic Tesseract language pack is unavailable')
         with tempfile.TemporaryDirectory(prefix='invoice_fixture_') as tmp:
-            with fitz.open(str(fixture)) as pdf:
-                for page_no, page in enumerate(pdf, 1):
-                    image = Path(tmp) / ('page_%d.png' % page_no)
-                    page.get_pixmap(matrix=fitz.Matrix(2.5, 2.5)).save(str(image))
-                    try:
-                        words = R._tesseract_lines(image, langs='eng+ara', psm=6, output='words')
-                    except R.ReconError as exc:
-                        if 'ara' in str(exc).lower():
-                            self.skipTest('Arabic Tesseract language pack is unavailable')
-                        raise
-                    evidence = R._invoice_page_table_evidence(words, image)
-                    if evidence['is_table']:
-                        table_pages.append(page_no)
-                        parsed = R.parse_invoice_lines(words, fixture.name)
-                        rows.extend(parsed['rows'])
-                    else:
-                        non_table_pages.append(page_no)
-        self.assertGreater(len(table_pages), 0, 'The invoice page classifier should detect at least one item-table page')
-        self.assertGreater(len(rows), 0, 'Detected invoice table pages should yield draft lines for manual review')
+            project = Path(tmp) / 'project'
+            doc = {'id': 'invoice-fixture', 'kind': 'invoice', 'filename': fixture.name,
+                   'stored_name': 'fixture.pdf', 'pages': R.pdf_page_count(fixture),
+                   'ocr_status': 'running'}
+            target = R.recon_dir(project) / 'invoice' / doc['stored_name']
+            shutil.copyfile(fixture, target)
+            st = R._new_state()
+            st['invoice_docs'].append(doc)
+            # Exercise the same Tesseract/native-PDF path used by the application,
+            # while explicitly preventing optional external vision API calls.
+            with patch('recon_module._invoice_vision_pages', return_value=None):
+                page_results = R._ocr_pages(project, doc, status)
+            count = R._apply_ocr(st, doc, page_results, {'username': 'fixture-test'})
+            table_pages = sum(1 for _, parsed in page_results
+                              if (parsed.get('page_analysis') or {}).get('is_table'))
+            rows = st['records']
+            self.assertEqual(len(page_results), doc['pages'],
+                             'The OCR pipeline must return a diagnostic result for every PDF page')
+            self.assertEqual(len(doc.get('invoice_page_analysis') or []), doc['pages'],
+                             'Every page must retain its classification and extraction diagnostics')
+            self.assertGreater(table_pages, 0,
+                               'The invoice page classifier should detect at least one item-table page')
+            self.assertGreater(count, 0,
+                               'The complete invoice OCR pipeline should yield draft lines for manual review')
+            self.assertEqual(count, len(rows))
+            self.assertTrue(all((r.get('ocr') or {}).get('description') for r in rows),
+                            'Extracted invoice records must contain a non-empty item description')
+            self.assertTrue(all(r.get('doc_kind') == 'invoice' for r in rows))
+            print('[INVOICE FIXTURE] pages=%d table_pages=%d skipped_or_empty=%d draft_rows=%d' % (
+                doc['pages'], table_pages, doc['pages'] - table_pages, count))
 
     def test_invoice_page_without_detected_rows_is_diagnostic_not_fake_line(self):
         doc = {'id': 'invoice-doc', 'kind': 'invoice', 'filename': 'invoice.pdf',
