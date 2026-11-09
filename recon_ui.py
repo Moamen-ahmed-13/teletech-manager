@@ -213,7 +213,7 @@ function renderRecs(){
   const rawValues=o.raw_values||{};
   const mathExpected=(isInvoice&&e.qty!=null&&e.unit_price!=null)?Number(e.qty)*Number(e.unit_price):null;
   const mathDelta=(mathExpected!=null&&e.total!=null)?mathExpected-Number(e.total):null;
-   const numeric=v=>{if(v==null||String(v).trim()==='')return null;const n=Number(String(v).replace(/[^0-9.+-]/g,''));return Number.isFinite(n)?n:null};
+   const numeric=v=>{if(v==null||String(v).trim()==='')return null;const s=String(v).replace(/[٠-٩۰-۹]/g,ch=>String('٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹'.indexOf(ch)%10)).replace(/[٬،]/g,'').replace(/٫/g,'.').replace(/[^0-9.+-]/g,'');if(!s||!/[0-9]/.test(s))return null;const n=Number(s);return Number.isFinite(n)?n:null};
    const rawMismatch=['qty','unit_price','line_total'].some(k=>{const rv=numeric(rawValues[k]),cv=numeric(k==='line_total'?e.total:e[k]);return rv!==null&&cv!==null&&Math.abs(rv-cv)>Math.max(.0001,Math.abs(rv)*.000001)});
    const scaleMismatch=['qty','unit_price','line_total'].some(k=>{const rv=numeric(rawValues[k]),cv=numeric(k==='line_total'?e.total:e[k]);if(rv===null||cv===null||rv===0||cv===0)return false;const ratio=Math.max(Math.abs(rv),Math.abs(cv))/Math.min(Math.abs(rv),Math.abs(cv));return [10,100,1000].some(n=>Math.abs(ratio-n)<.02)});
    const qualityLabels=[];
