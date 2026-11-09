@@ -193,6 +193,19 @@ class FinancialCalculationTests(unittest.TestCase):
         self.assertEqual(result['summary']['mir_records'], 1)
         self.assertEqual(result['summary']['invoice_records'], 1)
 
+    def test_invoice_vision_part_numbers_are_used_for_boq_matching(self):
+        invoice = record('invoice-1', 'invoice', 'INV-001', 1.0, 250.0)
+        invoice['match'] = {'state': None, 'boq_id': None, 'candidates': []}
+        invoice['ocr']['description'] = 'Aggregation Switch 48 Port'
+        invoice['ocr']['part_numbers'] = ['7601840-7']
+        st = state([invoice], [{'id': 'invoice-1', 'kind': 'invoice', 'filename': 'INV-001.pdf',
+                                'pages': 1, 'uploaded_at': '2026-01-02'}])
+        st['boq']['items'][0]['part'] = '7601840-7'
+        result = R.run_matching(st, {'username': 'tester'})
+        self.assertEqual(result['exact'], 1)
+        self.assertEqual(invoice['match']['state'], 'exact')
+        self.assertEqual(invoice['match']['boq_id'], 'BOQ!R2')
+
     def test_line_total_derives_rate_when_unit_price_is_blank(self):
         st = state([record('mir-1', 'mir', 'MIR-001', 2.0, None)])
         st['boq']['items'][0]['unit_price'] = None
