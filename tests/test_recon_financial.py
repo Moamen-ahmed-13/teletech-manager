@@ -91,6 +91,28 @@ class FinancialCalculationTests(unittest.TestCase):
         self.assertIn('ocr_no_lines', doc['invoice_page_analysis'][0]['flags'])
         self.assertEqual(doc['ocr_status'], 'done')
 
+    def test_invoice_ocr_keeps_row_source_cells_and_original_text(self):
+        doc = {'id': 'invoice-doc', 'kind': 'invoice', 'filename': 'invoice.pdf',
+               'pages': 1, 'ocr_status': 'running'}
+        st = state([], [doc])
+        cells = [{'text': 'Aggregation', 'left': 100, 'top': 100, 'width': 90, 'height': 18, 'conf': 92},
+                 {'text': 'Switch', 'left': 195, 'top': 100, 'width': 55, 'height': 18, 'conf': 90}]
+        parsed = {'rows': [{'description': 'Aggregation Switch', 'unit': 'PC', 'qty': 2,
+                            'unit_price': 50, 'total': 100, 'conf': 91, 'source_cells': cells,
+                            'row_flags': ['line_math_consistent']}],
+                  'flags': ['preprocessing_variant_selected:gray_psm6'],
+                  'page_analysis': {'is_table': True, 'header_hits': ['description', 'qty', 'unit_price', 'total']},
+                  'engine': 'invoice-tesseract-table-detection', 'variant_row_counts': {'gray_psm6': 1},
+                  'status': {}, 'raw_text': 'Aggregation Switch PC 2 50 100'}
+        count = R._apply_ocr(st, doc, [(1, parsed)], {'username': 'tester'})
+        self.assertEqual(count, 1)
+        rec = st['records'][0]
+        self.assertEqual(rec['ocr']['raw_text'], 'Aggregation Switch PC 2 50 100')
+        self.assertEqual(rec['ocr']['source_cells'], cells)
+        self.assertIn('line_math_consistent', rec['ocr_flags'])
+        self.assertEqual(doc['invoice_page_analysis'][0]['engine'], 'invoice-tesseract-table-detection')
+        self.assertEqual(doc['invoice_page_analysis'][0]['variant_row_counts'], {'gray_psm6': 1})
+
     def test_invoice_amount_is_used_instead_of_adding_to_mir_estimate(self):
         st = state([
             record('mir-1', 'mir', 'MIR-001', 2.0, None),
