@@ -542,7 +542,9 @@ def render_pages(project_dir, doc, dpi=200):
     """Render every page to PNG (cached). Returns [{'page': n, 'path': Path}]."""
     rd = recon_dir(project_dir)
     pdf = stored_path(project_dir, doc.get('kind', 'mir'), doc)
-    outs = [(n, rd / 'pages' / ('%s_p%d.png' % (doc['id'], n))) for n in range(1, int(doc['pages']) + 1)]
+    dpi_suffix = '' if int(dpi) == 200 else '_%ddpi' % int(dpi)
+    outs = [(n, rd / 'pages' / ('%s_p%d%s.png' % (doc['id'], n, dpi_suffix)))
+            for n in range(1, int(doc['pages']) + 1)]
     if all(p.is_file() for _, p in outs):
         return [{'page': n, 'path': p} for n, p in outs]
     try:
