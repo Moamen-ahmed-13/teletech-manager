@@ -4,6 +4,8 @@ import json
 import os
 import re
 import tempfile
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -206,8 +208,12 @@ def _write_json_cache(path: Path, payload: Dict[str, Any]) -> None:
 
 def _select_invoice_vision_provider() -> Optional[str]:
     provider = (os.getenv("TELETECH_INVOICE_VISION_PROVIDER") or "").strip().lower()
+    if provider in {"glm", "zai", "zhipu"}:
+        return "glm"
     if provider in {"gemini", "openai"}:
         return provider
+    if (os.getenv("GLM_API_KEY") or os.getenv("ZAI_API_KEY") or os.getenv("ZHIPU_API_KEY") or "").strip():
+        return "glm"
     if (os.getenv("GEMINI_API_KEY") or os.getenv("TELETECH_GEMINI_API_KEY") or "").strip():
         return "gemini"
     if (os.getenv("OPENAI_API_KEY") or "").strip():
@@ -216,6 +222,8 @@ def _select_invoice_vision_provider() -> Optional[str]:
 
 
 def _select_invoice_vision_model(provider: str) -> str:
+    if provider == "glm":
+        return (os.getenv("TELETECH_INVOICE_GLM_MODEL") or "glm-4.6v").strip()
     if provider == "gemini":
         return (os.getenv("TELETECH_INVOICE_GEMINI_MODEL") or os.getenv("TELETECH_GEMINI_MODEL") or "gemini-3.8-flash").strip()
     if provider == "openai":
@@ -224,6 +232,8 @@ def _select_invoice_vision_model(provider: str) -> str:
 
 
 def _invoice_api_key(provider: str) -> str:
+    if provider == "glm":
+        return (os.getenv("GLM_API_KEY") or os.getenv("ZAI_API_KEY") or os.getenv("ZHIPU_API_KEY") or "").strip()
     if provider == "gemini":
         return (os.getenv("GEMINI_API_KEY") or os.getenv("TELETECH_GEMINI_API_KEY") or "").strip()
     if provider == "openai":
@@ -243,6 +253,55 @@ def _call_invoice_page_vision(page_png: str, page_no: int, provider: str, model:
         + "Page classification values: items | certificate | other. "
         + "Certificate pages must return metadata only and zero lines."
     )
+
+    if provider == "glm":
+        b64 = base64.b64encode(Path(page_png).read_bytes()).decode("ascii")
+        base_url = (os.getenv("TELETECH_INVOICE_GLM_BASE_URL") or
+                    "https://api.z.ai/api/paas/v4").strip().rstrip("/")
+        request_payload = {
+            "model": model,
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}},
+                    {"type": "text", "text": prompt},
+                ],
+            }],
+            "temperature": 0,
+            "max_tokens": 12000,
+            "thinking": {"type": "disabled"},
+            "stream": False,
+        }
+        request = urllib.request.Request(
+            base_url + "/chat/completions",
+            data=json.dumps(request_payload, ensure_ascii=False).encode("utf-8"),
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=180) as response:
+                raw_response = json.loads(response.read().decode("utf-8", errors="replace"))
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")[:1200]
+            raise RuntimeError(f"GLM invoice vision HTTP {exc.code}: {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"GLM invoice vision connection failed: {exc}") from exc
+        choices = raw_response.get("choices") or []
+        content = (choices[0].get("message") or {}).get("content") if choices else None
+        if isinstance(content, list):
+            content = " ".join(str(part.get("text") or "") for part in content if isinstance(part, dict))
+        text = str(content or "").strip()
+        if text.startswith("```"):
+            text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.I).strip()
+        if not text:
+            raise RuntimeError("GLM invoice extraction returned no text output.")
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            match = re.search(r"\{.*\}", text, re.S)
+            if not match:
+                raise RuntimeError("GLM invoice extraction did not return valid JSON.") from exc
+            return json.loads(match.group(0))
 
     if provider == "gemini":
         file_info = server_mod._gemini_upload_file(page_png, api_key, "image/png")
