@@ -1991,7 +1991,9 @@ def compute(st):
         if not e['unit']: flags.append('unit_missing')
         if not e['ref_no']: flags.append('ref_no_missing')
         c = (r.get('ocr') or {}).get('conf')
-        if r['origin'] == 'ocr' and c is not None and c < 60: flags.append('low_ocr_confidence')
+        # Vision invoice confidence is normalized to 0..1; legacy OCR confidence is 0..100.
+        c_score = (float(c) * 100.0 if isinstance(c, (int, float)) and 0 <= c <= 1 else float(c)) if isinstance(c, (int, float)) else None
+        if r['origin'] == 'ocr' and c_score is not None and c_score < 60: flags.append('low_ocr_confidence')
         if 'mir_status' not in (r.get('user') or {}) and (r.get('ocr') or {}).get('mir_status'):
             flags.append('status_from_ocr')  # read from the check-box ink by OCR; the reviewer must confirm it on the page
         dup_of = None
