@@ -462,15 +462,17 @@ def extract_invoice_with_vision(pdf_path: str | Path, provider: Optional[str] = 
     pdf_path = Path(pdf_path)
     provider = (provider or _select_invoice_vision_provider() or "").strip().lower()
     if not provider:
-        raise RuntimeError("No invoice vision provider is available. Set OPENAI_API_KEY or GEMINI_API_KEY.")
-    if provider not in {"gemini", "openai"}:
+        raise RuntimeError("No invoice vision provider is available. Set GLM_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY.")
+    if provider not in {"glm", "gemini", "openai"}:
         raise RuntimeError(f"Unsupported invoice vision provider: {provider!r}")
     key = _invoice_api_key(provider)
     if not key:
         raise RuntimeError(f"The {provider} API key is missing. Set the matching environment variable before running invoice OCR.")
     model_name = (model or _select_invoice_vision_model(provider)).strip() or _select_invoice_vision_model(provider)
     digest = _sha256_file(pdf_path)
-    cache_path = _invoice_cache_dir() / f"{digest}.json"
+    # Cache by provider and model as well as source PDF; changing providers must rerun extraction.
+    safe_model = re.sub(r"[^A-Za-z0-9_.-]+", "_", model_name)
+    cache_path = _invoice_cache_dir() / f"{digest}.{provider}.{safe_model}.json"
     cached = _read_json_cache(cache_path)
     if cached:
         return normalize_invoice_llm_output(cached)
