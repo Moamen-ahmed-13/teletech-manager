@@ -293,7 +293,9 @@ class FinancialCalculationTests(unittest.TestCase):
             self.assertTrue(list(cache_dir.glob('*.glm.glm-4.6v.json')))
 
     def test_invoice_vision_pages_keep_non_item_page_diagnostics_and_raw_values(self):
-        doc = {'id': 'invoice-doc', 'kind': 'invoice', 'filename': 'invoice.pdf'}
+        from unittest.mock import patch
+        doc = {'id': 'invoice-doc', 'kind': 'invoice', 'filename': 'invoice.pdf',
+               'stored_name': 'invoice.pdf'}
         parsed_doc = {'document': {'invoice_no': 'INV-1', 'date': None},
                       'pages': [
                           {'page_no': 1, 'type': 'certificate', 'lines': []},
@@ -304,8 +306,9 @@ class FinancialCalculationTests(unittest.TestCase):
                               'raw': {'qty': '2', 'unit_price': '50.00', 'line_total': '100.00'},
                               'confidence': 95, 'flags': []}]}]}
         with patch.dict('os.environ', {'GLM_API_KEY': 'test-glm-key'}):
-            with patch('invoice_llm.extract_invoice_with_vision', return_value=parsed_doc):
-                result = R._invoice_vision_pages(Path('.'), doc, {})
+            with patch('recon_module.stored_path', return_value='invoice.pdf'):
+                with patch('invoice_llm.extract_invoice_with_vision', return_value=parsed_doc):
+                    result = R._invoice_vision_pages(Path('.'), doc, {})
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0][1]['rows'], [])
         self.assertEqual(result[0][1]['page_analysis']['page_type'], 'certificate')
