@@ -6058,19 +6058,13 @@ def _gemini_generate(model, contents, api_key, response_schema=None):
     payload={'contents':contents}
     if response_schema is not None:
         payload['generationConfig']={'responseMimeType':'application/json','responseSchema':response_schema}
-    req=Request(f'{base}/v1beta/models/{model}:generateContent?key={key}',
-        data=json.dumps(payload,ensure_ascii=False).encode('utf-8'), method='POST',
-        headers={'Content-Type':'application/json'})
-    # Gemini can temporarily return 503 when the selected model is overloaded.
-    # Retry with exponential backoff, then try a current stable Flash fallback.
-    # This is especially useful for large scanned As-Built requests.
+    # Retry transient overloads, but never burn requests on exhausted daily quota.
+    # A fallback model is opt-in; it is not silently called after quota/rate-limit errors.
+    fallback=os.getenv('TELETECH_GEMINI_FALLBACK_MODEL','').strip()
     models_to_try=[model]
-    fallback=os.getenv('TELETECH_GEMINI_FALLBACK_MODEL','gemini-3.8-flash').strip()
-    if fallback and fallback not in models_to_try:
-        models_to_try.append(fallback)
     last_error=None
     raw=None
-    for try_model in models_to_try:
+    for model_index, try_model in enumerate(models_to_try):
         req=Request(f'{base}/v1beta/models/{try_model}:generateContent?key={key}',
             data=json.dumps(payload,ensure_ascii=False).encode('utf-8'), method='POST',
             headers={'Content-Type':'application/json'})
@@ -6081,15 +6075,42 @@ def _gemini_generate(model, contents, api_key, response_schema=None):
                 break
             except HTTPError as e:
                 try:
-                    detail=e.read().decode('utf-8','replace'); j=json.loads(detail); msg=((j.get('error') or {}).get('message') or detail)
+                    detail=e.read().decode('utf-8','replace')
+                    j=json.loads(detail)
+                    err=j.get('error') or {}
+                    msg=err.get('message') or detail
+                    status=str(err.get('status') or '').upper()
                 except Exception:
                     msg=str(e)
+                    status=''
                 code=getattr(e,'code',None)
                 last_error=RuntimeError(f'Gemini API HTTP {code}: {msg}')
-                if code in (408,429,500,502,503,504):
+                msg_lower=str(msg).lower()
+                daily_quota = (
+                    code == 429 and (
+                        'requests per day' in msg_lower
+                        or 'per_day' in msg_lower
+                        or 'free_tier_requests' in msg_lower
+                        or 'daily' in msg_lower
+                        or ('quota exceeded' in msg_lower and ('day' in msg_lower or 'limit:' in msg_lower))
+                    )
+                )
+                if daily_quota:
+                    raise last_error
+                # 429 can be RPM/TPM throttling or a spend/rate limit; do not
+                # switch models automatically. Retry only the same model.
+                if code == 429:
                     if attempt < 3:
                         time.sleep((2 ** attempt) + random.random())
                         continue
+                    raise last_error
+                if code in (408,500,502,503,504):
+                    if attempt < 3:
+                        time.sleep((2 ** attempt) + random.random())
+                        continue
+                    # Only a 503 overload may use an explicitly configured fallback.
+                    if code == 503 and fallback and fallback not in models_to_try:
+                        models_to_try.append(fallback)
                     break
                 raise last_error
             except URLError as e:
