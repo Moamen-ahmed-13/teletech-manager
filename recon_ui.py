@@ -210,8 +210,8 @@ function renderRecs(){
   const ocrTxt=r.origin==='ocr'?`${isInvoice?'Invoice OCR draft':'MIR OCR draft'}: بند ${esc(o.contract_item_no||'?')} · ref ${esc(o.ref_no||'?')} · date ${esc(o.date||'?')} · “${esc(o.description||'(nothing read)')}” · unit ${esc(o.unit||'?')} · Q.T ${o.qty??'?'} · ${isInvoice?'Line amount':'TOTAL'} ${o.total??'?'} · conf ${o.conf==null?'n/a':(isInvoice&&Number(o.conf)<=1?Math.round(Number(o.conf)*100)+'%':o.conf)}${o.date_alternatives&&o.date_alternatives.length?' (other date readings: '+esc(o.date_alternatives.join(', '))+')':''}${o.mir_status?' · box ticked: '+esc(o.mir_status):''}${o.invoice_no?' · invoice '+esc(o.invoice_no):''}${o.extra_text?' · handwriting/extra: '+esc(o.extra_text):''}${o.alts&&Object.keys(o.alts).length?' · <b>other readings:</b> '+Object.entries(o.alts).map(([k,v])=>esc(k)+' '+v.join(' / ')).join('; '):''}`:'Manually entered line (no OCR data)';
   const rawOcr=String(o.raw_text||'').trim(), sourceCells=Array.isArray(o.source_cells)?o.source_cells:[];
   const rawValues=o.raw_values||{};
-  const mathExpected=(isInvoice&&o.qty!=null&&o.unit_price!=null)?Number(o.qty)*Number(o.unit_price):null;
-  const mathDelta=(mathExpected!=null&&o.total!=null)?mathExpected-Number(o.total):null;
+  const mathExpected=(isInvoice&&e.qty!=null&&e.unit_price!=null)?Number(e.qty)*Number(e.unit_price):null;
+  const mathDelta=(mathExpected!=null&&e.total!=null)?mathExpected-Number(e.total):null;
    const numeric=v=>{if(v==null||String(v).trim()==='')return null;const n=Number(String(v).replace(/[^0-9.+-]/g,''));return Number.isFinite(n)?n:null};
    const rawMismatch=['qty','unit_price','line_total'].some(k=>{const rv=numeric(rawValues[k]),cv=numeric(k==='line_total'?e.total:e[k]);return rv!==null&&cv!==null&&Math.abs(rv-cv)>Math.max(.0001,Math.abs(rv)*.000001)});
    const scaleMismatch=['qty','unit_price','line_total'].some(k=>{const rv=numeric(rawValues[k]),cv=numeric(k==='line_total'?e.total:e[k]);if(rv===null||cv===null||rv===0||cv===0)return false;const ratio=Math.max(Math.abs(rv),Math.abs(cv))/Math.min(Math.abs(rv),Math.abs(cv));return [10,100,1000].some(n=>Math.abs(ratio-n)<.02)});
