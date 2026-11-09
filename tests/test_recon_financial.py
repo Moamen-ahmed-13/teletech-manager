@@ -272,6 +272,26 @@ class FinancialCalculationTests(unittest.TestCase):
             self.assertEqual(body['thinking']['type'], 'disabled')
             self.assertTrue(body['messages'][0]['content'][0]['image_url']['url'].startswith('data:image/png;base64,'))
 
+    def test_extract_invoice_with_vision_accepts_glm_and_uses_provider_cache(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        import invoice_llm as L
+        with tempfile.TemporaryDirectory(prefix='glm_invoice_pdf_') as tmp:
+            pdf_path = Path(tmp) / 'invoice.pdf'
+            pdf_path.write_bytes(b'pdf-fixture')
+            cache_dir = Path(tmp) / 'cache'
+            page_payload = {'page_no': 1, 'type': 'items', 'lines': []}
+            with patch.dict('os.environ', {'GLM_API_KEY': 'test-glm-key'}, clear=True):
+                with patch.object(L, '_invoice_cache_dir', return_value=cache_dir), \
+                     patch.object(L, '_render_invoice_pages_to_png', return_value=[(1, 'page.png')]), \
+                     patch.object(L, '_call_invoice_page_vision', return_value=page_payload) as call:
+                    result = L.extract_invoice_with_vision(pdf_path, provider='glm', model='glm-4.6v')
+            self.assertEqual(result['pages'][0]['type'], 'items')
+            self.assertEqual(call.call_args.args[2], 'glm')
+            self.assertTrue(list(cache_dir.glob('*.glm.glm-4.6v.json')))
+
     def test_line_total_derives_rate_when_unit_price_is_blank(self):
         st = state([record('mir-1', 'mir', 'MIR-001', 2.0, None)])
         st['boq']['items'][0]['unit_price'] = None
