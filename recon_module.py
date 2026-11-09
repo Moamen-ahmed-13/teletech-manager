@@ -989,6 +989,20 @@ def _invoice_rows_should_be_retained(parsed, evidence=None):
     return False
 
 
+def _invoice_mark_continuation_page(parsed, evidence, inherited_centers):
+    """Recognize a headerless continuation only when inherited columns validate item math."""
+    evidence = dict(evidence or {})
+    rows = parsed.get('rows') or []
+    if (not evidence.get('is_table') and inherited_centers and
+            parsed.get('used_inherited_header_centers') and
+            any(row.get('math_valid') for row in rows)):
+        evidence['is_table'] = True
+        evidence['continuation'] = True
+        evidence['header_hits'] = list(evidence.get('header_hits') or []) + ['inherited_numeric_columns']
+        evidence['header_score'] = max(1, int(evidence.get('header_score') or 0))
+    return evidence
+
+
 def _invoice_candidate_score(parsed, evidence=None):
     """Rank OCR variants by row quality, not by raw row count alone."""
     evidence = evidence or parsed.get('page_analysis') or {}
@@ -1075,7 +1089,7 @@ def _invoice_non_item_text(description):
     return len(tokens_found) <= 4 and len(tokens_found & header_words) >= 2
 
 
-def parse_invoice_lines(lines, filename_hint=None):
+def parse_invoice_lines(lines, filename_hint=None, inherited_header_centers=None):
     """Conservative invoice parser: TSV boxes where available; no guessed units or unverified column mapping."""
     blob = '\n'.join(str(x.get('text') or '') for x in lines)
     m = re.search(r'(?:invoice|inv\.?|فاتورة|رقم\s*الفاتورة)\s*(?:رقم|no\.?|number|#|:)?\s*([A-Z0-9٠-٩۰-۹][A-Z0-9٠-٩۰-۹/\-_]{0,30})', blob, re.I)
@@ -1086,7 +1100,10 @@ def parse_invoice_lines(lines, filename_hint=None):
                                 for x in lines if x.get('text'))
     if boxed:
         visual_rows = _invoice_word_rows(lines)
-        header_centers = _invoice_header_centers(visual_rows)
+        local_header_centers = _invoice_header_centers(visual_rows)
+        header_centers = dict(inherited_header_centers or {})
+        header_centers.update(local_header_centers)
+        used_inherited_header_centers = bool(inherited_header_centers) and not bool(local_header_centers)
         table_header_bottom = _invoice_header_y(visual_rows)
         for visual in visual_rows:
             row_text = ' '.join(w['text'] for w in visual)
@@ -1223,6 +1240,8 @@ def parse_invoice_lines(lines, filename_hint=None):
         row.pop('_description_left', None)
         row.pop('_row_bottom', None)
     return {'ref_no': ref, 'date': dates[0] if dates else None, 'rows': rows,
+            'header_centers': dict(header_centers) if boxed else {},
+            'used_inherited_header_centers': bool(used_inherited_header_centers) if boxed else False,
             'flags': ['invoice_ocr_draft'], 'raw_text': blob[:6000]}
 
 
@@ -1294,6 +1313,8 @@ def _ocr_pages(project_dir, doc, status, progress=None):
             return vision_pages
         out = []; tmp = tempfile.mkdtemp(prefix='recon_invoice_')
         native_pages = {}
+        native_context = {}
+        tesseract_context = {}
         try:
             # Prefer PDF-native text geometry when available; scanned pages fall back to OCR.
             try:
@@ -1319,7 +1340,8 @@ def _ocr_pages(project_dir, doc, status, progress=None):
                 native_words = native_pages.get(pg['page']) or []
                 if native_words:
                     native_evidence = _invoice_page_table_evidence(native_words)
-                    native_candidate = parse_invoice_lines(native_words, doc.get('filename'))
+                    native_candidate = parse_invoice_lines(
+                        native_words, doc.get('filename'), inherited_header_centers=native_context)
                     native_candidate['page_analysis'] = native_evidence
                     # Keep OCR visual rows separate. Blind continuation merging previously
                     # collapsed multiple invoice items into one page-sized description.
@@ -1329,7 +1351,8 @@ def _ocr_pages(project_dir, doc, status, progress=None):
                     for psm in (6, 4):
                         words = _tesseract_lines(variant_path, langs=invoice_lang, psm=psm, output='words')
                         evidence = _invoice_page_table_evidence(words, variant_path)
-                        candidate = parse_invoice_lines(words, doc.get('filename'))
+                        candidate = parse_invoice_lines(
+                            words, doc.get('filename'), inherited_header_centers=tesseract_context)
                         candidate['page_analysis'] = evidence
                         # Do not merge adjacent description-only rows: without confirmed
                         # grid-row boundaries they may be distinct invoice items.
@@ -1338,6 +1361,17 @@ def _ocr_pages(project_dir, doc, status, progress=None):
                 candidates.sort(key=lambda x: x[0], reverse=True)
                 parsed = candidates[0][2] if candidates else parse_invoice_lines([], doc.get('filename'))
                 evidence = parsed.get('page_analysis') or {'is_table': False, 'header_hits': [], 'numeric_words': 0}
+                selected_source = candidates[0][1] if candidates else ''
+                inherited = native_context if selected_source == 'pdf-native-text' else tesseract_context
+                evidence = _invoice_mark_continuation_page(parsed, evidence, inherited)
+                parsed['page_analysis'] = evidence
+                # Carry forward a verified column map only within the same coordinate system.
+                centers = parsed.get('header_centers') or {}
+                if evidence.get('is_table') and all(k in centers for k in ('qty', 'unit_price', 'total')):
+                    if selected_source == 'pdf-native-text':
+                        native_context = dict(centers)
+                    else:
+                        tesseract_context = dict(centers)
                 if not evidence.get('is_table') and not _invoice_rows_should_be_retained(parsed, evidence):
                     parsed['rows'] = []
                     parsed['flags'] = list(parsed.get('flags') or []) + ['invoice_page_not_classified_as_table']
