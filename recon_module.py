@@ -1295,7 +1295,8 @@ def _invoice_vision_pages(project_dir, doc, status):
             math_valid = qty is not None and unit_price is not None and line_total is not None and abs(float(qty) * float(unit_price) - float(line_total)) <= max(1.0, abs(float(line_total)) * 0.02)
             if not math_valid:
                 flags.append('line_math_review_required')
-            rows.append({'description': description.strip(), 'unit': unit, 'qty': qty, 'unit_price': unit_price,
+            rows.append({'description': description.strip(), 'part_numbers': list(line.get('part_numbers') or []),
+                         'unit': unit, 'qty': qty, 'unit_price': unit_price,
                          'total': line_total, 'conf': conf, 'math_valid': bool(math_valid),
                          'source_cells': [], 'row_flags': flags})
         if not rows:
@@ -1493,6 +1494,7 @@ def _apply_ocr(st, doc, results, user):
                                                          total=row.get('total'), unit_price=row.get('unit_price'), conf=row.get('conf'), invoice_no=row.get('invoice_no'),
                                                          alts=row.get('alts'), extra_text=row.get('extra') or None,
                                                          raw_text=row_raw_text, source_cells=row_cells,
+                                                         part_numbers=list(row.get('part_numbers') or []),
                                                          row_flags=list(row.get('row_flags') or [])), list(dict.fromkeys(fl)))
             st['records'].append(rec); n_new += 1
     doc.update({'ocr_status': 'done', 'ocr_backend': ('PDF-native text + Tesseract table-page detection (Arabic if installed)' if doc.get('kind') == 'invoice' else 'tesseract (layout reader + 3-variant vote)'), 'ocr_at': _now(), 'ocr_error': None, 'ocr_progress': None})
@@ -1690,11 +1692,13 @@ def _kind(text):
 def _score_candidates(st, rec):
     items = (st.get('boq') or {}).get('items', [])
     desc = eff(rec, 'description') or ''
+    part_numbers = (rec.get('ocr') or {}).get('part_numbers') or []
+    match_text = ' '.join([desc] + [str(x) for x in part_numbers if str(x).strip()])
     mir_unit = canon_unit(eff(rec, 'unit'))
     mir_brand = eff(rec, 'brand') or (rec.get('ocr') or {}).get('supplier') or ''
-    d_alnum = norm_alnum(desc)
-    d_tok = tokens(desc)
-    d_models = model_tokens(desc)
+    d_alnum = norm_alnum(match_text)
+    d_tok = tokens(match_text)
+    d_models = model_tokens(match_text)
     rejected = set((rec.get('match') or {}).get('rejected_ids', []))
     out = []
     for it in items:
