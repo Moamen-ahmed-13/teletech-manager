@@ -475,7 +475,11 @@ def extract_invoice_with_vision(pdf_path: str | Path, provider: Optional[str] = 
     digest = _sha256_file(pdf_path)
     # Cache by provider and model as well as source PDF; changing providers must rerun extraction.
     safe_model = re.sub(r"[^A-Za-z0-9_.-]+", "_", model_name)
-    cache_path = _invoice_cache_dir() / f"{digest}.{provider}.{safe_model}.json"
+    cache_root = _invoice_cache_dir()
+    cache_stem = f"{digest}.{provider}.{safe_model}"
+    # Version the final aggregate cache when merge/validation logic changes, while
+    # reusing the existing per-page checkpoints to avoid repeat API calls.
+    cache_path = cache_root / f"{cache_stem}.v2.json"
     cached = _read_json_cache(cache_path)
     if cached:
         return normalize_invoice_llm_output(cached)
@@ -484,7 +488,7 @@ def extract_invoice_with_vision(pdf_path: str | Path, provider: Optional[str] = 
     payload: Dict[str, Any] = {"document": {"invoice_no": None, "supply_order_no": None, "customer": None, "supplier": None, "date": None, "printed_grand_total": None}, "pages": [], "document_sources": []}
     # Per-page checkpoints allow a failed/interrupted invoice to resume without
     # sending already completed pages to the provider again.
-    page_cache_dir = cache_path.parent / (cache_path.stem + ".pages")
+    page_cache_dir = cache_root / (cache_stem + ".pages")
     page_cache_dir.mkdir(parents=True, exist_ok=True)
     document_fields = ("invoice_no", "supply_order_no", "customer", "supplier", "date", "printed_grand_total")
 
