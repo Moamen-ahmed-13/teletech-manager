@@ -993,9 +993,12 @@ def _invoice_mark_continuation_page(parsed, evidence, inherited_centers):
     """Recognize a headerless continuation only when inherited columns validate item math."""
     evidence = dict(evidence or {})
     rows = parsed.get('rows') or []
+    has_item_evidence = any(
+        row.get('math_valid') and
+        (len(tokens(row.get('description') or '')) >= 2 or bool(row.get('unit')))
+        for row in rows)
     if (not evidence.get('is_table') and inherited_centers and
-            parsed.get('used_inherited_header_centers') and
-            any(row.get('math_valid') for row in rows)):
+            parsed.get('used_inherited_header_centers') and has_item_evidence):
         evidence['is_table'] = True
         evidence['continuation'] = True
         evidence['header_hits'] = list(evidence.get('header_hits') or []) + ['inherited_numeric_columns']
