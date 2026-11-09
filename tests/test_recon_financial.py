@@ -208,6 +208,33 @@ class FinancialCalculationTests(unittest.TestCase):
         self.assertEqual(invoice['match']['state'], 'exact')
         self.assertEqual(invoice['match']['boq_id'], 'BOQ!R2')
 
+    def test_invoice_vision_selects_glm_when_glm_key_is_configured(self):
+        import os
+        from unittest.mock import patch
+        import invoice_llm as L
+        with patch.dict(os.environ, {
+            'TELETECH_INVOICE_VISION_PROVIDER': '',
+            'GLM_API_KEY': 'test-glm-key',
+            'ZAI_API_KEY': '',
+            'ZHIPU_API_KEY': '',
+            'GEMINI_API_KEY': 'test-gemini-key',
+            'OPENAI_API_KEY': 'test-openai-key',
+        }, clear=True):
+            self.assertEqual(L._select_invoice_vision_provider(), 'glm')
+            self.assertEqual(L._select_invoice_vision_model('glm'), 'glm-4.6v')
+            self.assertEqual(L._invoice_api_key('glm'), 'test-glm-key')
+
+    def test_invoice_vision_provider_can_be_explicitly_set_to_glm(self):
+        import os
+        from unittest.mock import patch
+        import invoice_llm as L
+        with patch.dict(os.environ, {
+            'TELETECH_INVOICE_VISION_PROVIDER': 'glm',
+            'GLM_API_KEY': 'explicit-glm-key',
+        }, clear=True):
+            self.assertEqual(L._select_invoice_vision_provider(), 'glm')
+            self.assertEqual(L._invoice_api_key('glm'), 'explicit-glm-key')
+
     def test_line_total_derives_rate_when_unit_price_is_blank(self):
         st = state([record('mir-1', 'mir', 'MIR-001', 2.0, None)])
         st['boq']['items'][0]['unit_price'] = None
