@@ -91,13 +91,15 @@ class FinancialCalculationTests(unittest.TestCase):
             print('[INVOICE FIXTURE] pages=%d table_pages=%d non_table_pages=%d draft_rows=%d' % (
                 doc['pages'], table_pages, doc['pages'] - table_pages, count))
             for page_info in doc.get('invoice_page_analysis') or []:
-                print('[INVOICE PAGE] page=%s table=%s rows=%s flags=%s' % (
+                print('[INVOICE PAGE] page=%s table=%s rows=%s headers=%s variants=%s flags=%s' % (
                     page_info.get('page'), page_info.get('is_table'), page_info.get('row_count'),
+                    ','.join(page_info.get('header_hits') or []), page_info.get('variant_row_counts') or {},
                     ','.join(page_info.get('flags') or [])))
             for rec in rows:
                 ocr = rec.get('ocr') or {}
-                print('[INVOICE LINE] page=%s desc=%r unit=%r qty=%r unit_price=%r total=%r conf=%r flags=%s' % (
-                    rec.get('page'), ocr.get('description'), ocr.get('unit'), ocr.get('qty'),
+                cell_text = ' '.join(str(cell.get('text') or '') for cell in (ocr.get('source_cells') or []))
+                print('[INVOICE LINE] page=%s desc=%r cells=%r unit=%r qty=%r unit_price=%r total=%r conf=%r flags=%s' % (
+                    rec.get('page'), ocr.get('description'), cell_text, ocr.get('unit'), ocr.get('qty'),
                     ocr.get('unit_price'), ocr.get('total'), ocr.get('conf'),
                     ','.join(rec.get('ocr_flags') or [])))
 
