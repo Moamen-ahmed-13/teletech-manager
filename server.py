@@ -9452,6 +9452,18 @@ details.advanced>summary::before{content:"›";display:inline-block;margin-right
 @media(max-width:1100px){.projStatus{display:none}}
 @media(max-width:900px){.app{grid-template-columns:1fr}.side{position:static;height:auto;flex-direction:row;align-items:center;gap:8px;padding:8px 10px;overflow-x:auto}.brandSub,.sideNote{display:none}.nav{flex-direction:row;gap:4px}.navItem{width:auto;white-space:nowrap}.top{padding:10px 16px;flex-wrap:wrap}.views{padding:18px 16px 56px}.steps{grid-template-columns:1fr}.kpis{grid-template-columns:1fr 1fr}.kpi:nth-child(3){border-left:0}.kpi:nth-child(n+3){border-top:1px solid var(--line)}#projectSelect{min-width:0;flex:1}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+#view-asbuilt{--ab-ink:#1f3347;--ab-line:#e5eaf0;--ab-accent:#285c62}
+#view-asbuilt .viewHead h2{font-size:20px;color:var(--ab-ink)}
+#view-asbuilt .viewHead p{color:#667085;font-size:13px;margin-top:2px}
+#view-asbuilt .step,#view-asbuilt .card{border-color:var(--ab-line);border-radius:12px;box-shadow:0 2px 8px rgba(30,50,70,.03)}
+#view-asbuilt .stepNo{background:var(--ab-accent)}
+#view-asbuilt .actionBig,#view-asbuilt button:not(.alt):not(.good){background:var(--ab-accent);border-color:var(--ab-accent);color:#fff;border-radius:8px}
+#view-asbuilt button.alt{background:#f3f6f8;border:1px solid #e2e8ee;color:#47586a;border-radius:8px}
+#view-asbuilt button.good{background:#e8f3ef;border:1px solid #d5e9e1;color:#24725d;border-radius:8px}
+#view-asbuilt input,#view-asbuilt select{border:1px solid #dce3eb;border-radius:8px;background:#fff}
+#view-asbuilt .summaryChip{background:#f3f6f8;border-radius:8px;color:#405267}
+#view-asbuilt .cardHead h3{font-size:15px;color:var(--ab-ink)}
 </style></head><body>
 <div class="app">
 <aside class="side">
@@ -9512,23 +9524,23 @@ details.advanced>summary::before{content:"›";display:inline-block;margin-right
 </section>
 
 <section class="view" id="view-asbuilt">
- <div class="viewHead"><h2>As-Built revisions</h2><p>Upload the technicians' scan. Colored markups are counted by code, and nothing changes in CAD until you approve it.</p></div>
+ <div class="viewHead"><h2>As-Built</h2><p>ارفع الاسكان، راجع العلامات، ثم أنشئ الملفات.</p></div>
  <div class="cardHead" style="margin-bottom:12px"><span id="asProjectBadge" class="badge neutral">Analyze CAD first</span></div>
  <div class="steps">
-  <div class="step"><div class="stepHead"><span class="stepNo">1</span>Upload the scan</div><input id="asChatFile" type="file" accept=".pdf,.png,.jpg,.jpeg" multiple><div id="asChatFileMeta" class="fileMeta">No file selected.</div><div class="stepHead" style="font-weight:600;font-size:13px;margin-top:4px">Legend reference (optional)</div><input id="asLegendFile" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp"><div id="asLegendMeta" class="fileMeta">A separate legend crop is excluded from counting.</div></div>
-  <div class="step"><div class="stepHead"><span class="stepNo">2</span>Analyze</div><div class="sub">Reads each page and counts colored markups. Blue ink is ignored.</div><input id="asChatModel" type="hidden" value=""><button id="asChatSend" class="actionBig" style="margin-top:auto">Analyze As-Built</button></div>
-  <div class="step"><div class="stepHead"><span class="stepNo">3</span>Approve &amp; generate</div><div id="asChatStatus" class="status info">Analyze the CAD project first, then upload the scan.</div><button id="asGenerate" class="actionBig" style="margin-top:auto">Generate new CAD package</button></div>
+  <div class="step"><div class="stepHead"><span class="stepNo">1</span>رفع الاسكان</div><input id="asChatFile" type="file" accept=".pdf,.png,.jpg,.jpeg" multiple><div id="asChatFileMeta" class="fileMeta">لم يتم اختيار ملف</div><div class="stepHead" style="font-weight:600;font-size:13px;margin-top:4px">مرجع الألوان (اختياري)</div><input id="asLegendFile" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp"><div id="asLegendMeta" class="fileMeta"></div></div>
+  <div class="step"><div class="stepHead"><span class="stepNo">2</span>التحليل</div><input id="asChatModel" type="hidden" value=""><button id="asChatSend" class="actionBig" style="margin-top:auto">تحليل الاسكان</button></div>
+  <div class="step"><div class="stepHead"><span class="stepNo">3</span>الاعتماد والإنشاء</div><div id="asChatStatus" class="status info">حلّل مشروع CAD أولًا ثم ارفع الاسكان.</div><button id="asGenerate" class="actionBig" style="margin-top:auto">إنشاء الملفات</button></div>
  </div>
- <div class="card" style="margin-top:16px"><div class="cardHead"><div><h3>Markup counts</h3><div class="sub">Detected by OpenCV from the scan, not CAD entities. Match each to a CAD endpoint to confirm it.</div></div><button id="asChatAdd" class="good" style="display:none">Add to revision list</button></div><div id="asCounts" class="summaryStrip"><div class="summaryChip">No analysis yet.</div></div><div id="asLegend" class="small sub"></div><div id="asChatReview" class="reviewWrap" style="display:none;margin-top:10px"></div></div>
- <div class="card"><div class="cardHead"><h3>Clarifications</h3><button id="asChatReset" class="alt">Reset</button></div><div id="asChatThread" class="thread"></div><div class="actions" style="margin-top:10px"><input id="asChatInput" dir="auto" placeholder="اكتب تصحيحًا أو ملاحظة عن علامة غير واضحة..." style="flex:1;min-width:200px"></div></div>
- <details class="advanced"><summary>Manual revision entry</summary><div class="advInner stack">
+ <div class="card" style="margin-top:16px"><div class="cardHead"><div><h3>العلامات المكتشفة</h3></div><button id="asChatAdd" class="good" style="display:none">إضافة للقائمة</button></div><div id="asCounts" class="summaryStrip"><div class="summaryChip">لا يوجد تحليل بعد</div></div><div id="asLegend" class="small sub"></div><div id="asChatReview" class="reviewWrap" style="display:none;margin-top:10px"></div></div>
+ <div class="card"><div class="cardHead"><h3>ملاحظات</h3><button id="asChatReset" class="alt">إعادة ضبط</button></div><div id="asChatThread" class="thread"></div><div class="actions" style="margin-top:10px"><input id="asChatInput" dir="auto" placeholder="اكتب تصحيحًا أو ملاحظة عن علامة غير واضحة..." style="flex:1;min-width:200px"></div></div>
+ <details class="advanced"><summary>إدخال يدوي</summary><div class="advInner stack">
   <div class="fields"><select id="asFloor"><option value="">Select floor</option></select><select id="asOp"><option value="SITE_REMOVE">Site remove / withdraw</option><option value="MOVE_ENDPOINT">Move endpoint</option><option value="DELETE_ENDPOINT">Delete endpoint</option><option value="ADD_BLOCK">Add block / symbol</option><option value="ADD_NOTE">Add note</option></select></div>
   <div id="asTargetWrap"><select id="asTarget" style="width:100%"><option value="">Select floor first</option></select></div>
   <div id="asSiteWrap" class="fields"><select id="asSiteStatus"><option value="">Site status...</option><option value="لم يتم السحب">لم يتم السحب</option><option value="تم رد الكابلات">تم رد الكابلات</option><option value="لا يوجد لها مسار">لا يوجد لها مسار</option><option value="تم نقل">تم نقل</option></select><select id="asPatchAction"><option value="">Patch action...</option><option value="SHIFT">SHIFT</option><option value="RESERVE">RESERVE</option></select></div>
   <div class="fields"><input id="asX" type="number" step="0.01" placeholder="New X"><input id="asY" type="number" step="0.01" placeholder="New Y"><input id="asBlock" placeholder="Block name"><input id="asRotation" type="number" value="0" placeholder="Rotation"><input id="asScale" type="number" value="1" placeholder="Scale"></div>
   <div class="fields"><input id="asText" placeholder="Note text"><input id="asTextHeight" type="number" value="150" placeholder="Text height"><input id="asNote" placeholder="Internal note"></div>
-  <div class="actions"><button id="asAdd">Add reviewed change</button><button id="asClear" class="alt">Clear list</button></div><div id="asStatus" class="status">No manual change added.</div></div></details>
- <div class="card"><div class="cardHead"><h3>Approved revision list</h3></div><div id="asChangeList"></div><div id="asDownloads" class="downloads" style="margin-top:10px"></div></div>
+  <div class="actions"><button id="asAdd">إضافة تعديل</button><button id="asClear" class="alt">مسح القائمة</button></div><div id="asStatus" class="status"></div></div></details>
+ <div class="card"><div class="cardHead"><h3>قائمة التعديلات المعتمدة</h3></div><div id="asChangeList"></div><div id="asDownloads" class="downloads" style="margin-top:10px"></div></div>
  <div class="callout"><b>Safety boundary:</b> only supported endpoint and site-removal changes are generated, packaged for AutoCAD Desktop. Cable route changes stay in review, because the system must not guess a cable path.</div>
 </section>
 
