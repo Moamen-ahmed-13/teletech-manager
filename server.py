@@ -6327,10 +6327,13 @@ CANDIDATE ENDPOINTS FOR {floor}:
     }
 
 
-def _asbuilt_project_candidate_catalog(label_pattern=None):
-    """Build one unique candidate catalog across every analyzed project floor."""
+def _asbuilt_project_candidate_catalog(label_pattern=None, floors=None):
+    """Build a candidate catalog only for floors represented by this upload when supplied."""
     floor_order=['Ground Floor','First Floor','Second Floor','Third Floor','Roof Floor']
     floor_order += [f for f in PROJECT_RESULTS if f not in floor_order]
+    wanted_floors={str(x) for x in (floors or []) if str(x).strip()}
+    if wanted_floors:
+        floor_order=[f for f in floor_order if f in wanted_floors]
     all_rows=[]; by_key={}; lines=[]; per_floor={}
     fidx=0
     for floor in floor_order:
@@ -7062,64 +7065,49 @@ def _asbuilt_cv_color_inventory(image_path, legend_path=None):
 
                     # The known legend order is:
                     # pink -> green -> yellow -> orange -> orange.
-                    # Search for a compact vertical cluster.  This is much
-                    # safer than suppressing an arbitrary rectangle.
+                    # The old five-deep Cartesian search multiplied every
+                    # color-component count together and could dominate scan
+                    # time on dense/high-resolution pages. Keep only the three
+                    # nearest vertically aligned candidates at each stage.
                     candidates=[]
+                    x_tol=max(220,0.18*w)
+                    max_gap=max(650,0.55*h)
+                    def _next_legend_components(color_name, anchor, x_origin, excluded=None):
+                        opts=[q for q in page_components[color_name]
+                              if q is not excluded and q['cy']>anchor['cy']
+                              and q['cy']-anchor['cy']<=max_gap
+                              and abs(q['cx']-x_origin)<=x_tol]
+                        opts.sort(key=lambda q:(q['cy']-anchor['cy'],abs(q['cx']-x_origin)))
+                        return opts[:3]
                     for p in page_components['pink']:
-                        for g in page_components['green']:
-                            if g['cy'] <= p['cy'] or abs(g['cx']-p['cx']) > max(220,0.18*w):
-                                continue
-                            for yel in page_components['yellow']:
-                                if yel['cy'] <= g['cy'] or abs(yel['cx']-p['cx']) > max(220,0.18*w):
-                                    continue
-                                for o1 in page_components['orange']:
-                                    if o1['cy'] <= yel['cy'] or abs(o1['cx']-p['cx']) > max(220,0.18*w):
-                                        continue
-                                    for o2 in page_components['orange']:
-                                        if o2 is o1 or o2['cy'] <= o1['cy'] or abs(o2['cx']-p['cx']) > max(220,0.18*w):
-                                            continue
-
+                        for g in _next_legend_components('green',p,p['cx']):
+                            for yel in _next_legend_components('yellow',g,p['cx']):
+                                for o1 in _next_legend_components('orange',yel,p['cx']):
+                                    for o2 in _next_legend_components('orange',o1,p['cx'],excluded=o1):
                                         pts=[p,g,yel,o1,o2]
                                         ys=[q['cy'] for q in pts]
                                         xs=[q['cx'] for q in pts]
                                         minx,maxx=min(q['x'] for q in pts),max(q['x']+q['w'] for q in pts)
                                         miny,maxy=min(q['y'] for q in pts),max(q['y']+q['h'] for q in pts)
                                         bw=maxx-minx; bh=maxy-miny
-                                        if bw<=0 or bh<=0:
+                                        if bw<=0 or bh<=0 or bw>max(320,0.30*w) or bh>max(650,0.55*h):
                                             continue
-
-                                        # Legend strokes are horizontally elongated
-                                        # and tightly aligned in x.
-                                        if bw > max(320,0.30*w) or bh > max(650,0.55*h):
+                                        if max(xs)-min(xs)>max(220,0.16*w):
                                             continue
-                                        xspread=max(xs)-min(xs)
-                                        if xspread > max(220,0.16*w):
-                                            continue
-
-                                        # Similarity to reference component shapes.
                                         shape_score=0.0; used=0
                                         for cname,q in [('pink',p),('green',g),('yellow',yel),('orange',o1)]:
                                             if cname not in ref_sig:
                                                 continue
-                                            ra,rw0,rh0=ref_sig[cname]
-                                            # Resolution/phone-camera scale can
-                                            # change absolute component size by
-                                            # a large factor.  Use the reference
-                                            # primarily for the stroke shape.
+                                            _ra,rw0,rh0=ref_sig[cname]
                                             ref_aspect=rw0/max(rh0,1)
                                             q_aspect=q['w']/max(q['h'],1)
                                             aspect_pen=abs(np.log((q_aspect+1e-6)/(ref_aspect+1e-6)))
-                                            local=max(0.0,1.0-0.75*aspect_pen)
-                                            shape_score += local
+                                            shape_score += max(0.0,1.0-0.75*aspect_pen)
                                             used += 1
                                         shape_score /= max(used,1)
-
-                                        # Normalize vertical spacing; legend rows
-                                        # are relatively regular.
                                         gaps=[ys[i+1]-ys[i] for i in range(4)]
                                         spacing_cv=(max(gaps)-min(gaps))/max(np.mean(gaps),1.0)
                                         spacing_score=max(0.0,1.0-0.8*spacing_cv)
-
                                         score=0.65*shape_score+0.35*spacing_score
                                         candidates.append((score,(minx,miny,bw,bh)))
 
@@ -7861,14 +7849,30 @@ def asbuilt_chat_start(path,filename,api_key='',model='',label_pattern=None,firs
         raise RuntimeError('Analyze the CAD project before starting the As-Built scan.')
 
     label_pattern,_=_validate_label_pattern(label_pattern)
-    catalog,by_key,per_floor,candidate_text=_asbuilt_project_candidate_catalog(label_pattern=label_pattern)
-    if not catalog:
-        raise RuntimeError('No endpoint targets exist in the analyzed project.')
-
     input_paths=list(paths or []) or [path]
     input_names=list(filenames or []) or [filename or Path(path).name]
     if len(input_names)<len(input_paths):
         input_names += [Path(x).name for x in input_paths[len(input_names):]]
+
+    # Determine the sheet-pair floors before building the CAD candidate catalog.
+    # A two-page Ground Floor test should not build candidates/labels for every
+    # other analyzed floor in the project.
+    expected_pages=0
+    for src,name in zip(input_paths,input_names):
+        ext=Path(name or src).suffix.lower()
+        if ext=='.pdf':
+            if fitz is None:
+                raise RuntimeError('PyMuPDF (fitz) is required to read As-Built PDF page counts.')
+            with fitz.open(str(src)) as _pdf_meta:
+                expected_pages+=len(_pdf_meta)
+        else:
+            expected_pages+=1
+    needed_floors={_asbuilt_sheet_floor(p,expected_pages) for p in range(1,expected_pages+1)}
+    needed_floors.discard('')
+    catalog,by_key,per_floor,candidate_text=_asbuilt_project_candidate_catalog(
+        label_pattern=label_pattern,floors=needed_floors)
+    if not catalog:
+        raise RuntimeError('No endpoint targets exist for the floors represented by this As-Built upload.')
 
     pages=[]
     page_number=1
