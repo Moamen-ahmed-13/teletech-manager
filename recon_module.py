@@ -858,6 +858,23 @@ def _clean_invoice_desc(value):
     return ' '.join(words).strip()
 
 
+def _dedupe_repeated_description(value):
+    """Remove only immediately repeated identical description phrases; preserve distinct text and P/Ns."""
+    words = str(value or '').split()
+    changed = True
+    while changed:
+        changed = False
+        for size in range(len(words) // 2, 2, -1):
+            for start in range(0, len(words) - 2 * size + 1):
+                norm = lambda part: ' '.join(re.sub(r'[^\w]', '', w, flags=re.UNICODE).casefold() for w in part)
+                if norm(words[start:start + size]) == norm(words[start + size:start + 2 * size]):
+                    del words[start + size:start + 2 * size]
+                    changed = True
+                    break
+            if changed:
+                break
+    return ' '.join(words).strip()
+
 def _invoice_word_rows(words):
     """Group TSV word boxes into visual rows using vertical overlap."""
     valid = []
@@ -1346,7 +1363,7 @@ def _invoice_vision_pages(project_dir, doc, status):
         for line in page.get('lines') or []:
             if not isinstance(line, dict):
                 continue
-            description = (line.get('description_en') or line.get('description_ar') or '').strip()
+            description = _dedupe_repeated_description((line.get('description_en') or line.get('description_ar') or '').strip())
             if not description:
                 description = ' '.join(str(x).strip() for x in (line.get('part_numbers') or []) if str(x).strip())
             qty = line.get('qty')
@@ -1764,8 +1781,11 @@ def delete_doc(project_dir, st, doc_id, user):
 # ----------------------------------------------------------------------------
 # matching
 # ----------------------------------------------------------------------------
-_KINDS = (('patch cord', r'patch|cord|jumper'), ('faceplate', r'face\s*plate|faceplate'), ('outlet', r'outlet|jack|keystone|socket'),
-          ('panel', r'panel'), ('organizer', r'organi[sz]er|manager'), ('cable', r'cables?\b|utp|ftp|stp'))
+_KINDS = (('patch cord', r'patch[\s-]*cord|cord|jumper'), ('faceplate', r'face[\s-]*plate|faceplate'), ('outlet', r'outlet|jack|keystone|socket'),
+          ('access point', r'\baccess[\s-]*point\b|\bwi[ -]?fi\b|wireless[\s-]*ap|\bAP\b'),
+          ('firewall', r'\bfirewall\b'), ('switch', r'\b(?:access|aggregation|agg)?[\s-]*switch\b|\bswitch\b'),
+          ('rack', r'\brack\b|\b\d{1,3}\s*u\b'), ('panel', r'panel'),
+          ('organizer', r'organi[sz]er|manager'), ('cable', r'cables?\b|utp|ftp|stp'))
 
 
 def _kind(text):
@@ -1803,6 +1823,19 @@ def _spec_conflict(mir_text, boq_text):
     mir_role, boq_role = _switch_family(mir_text), _switch_family(boq_text)
     if mir_role and boq_role and mir_role != boq_role:
         return 'switch_role_mismatch'
+    mir_kind, boq_kind = _kind(mir_text), _kind(boq_text)
+    hard_kinds = {'access point', 'firewall', 'switch', 'rack', 'patch cord', 'cable'}
+    if mir_kind in hard_kinds and boq_kind in hard_kinds and mir_kind != boq_kind:
+        return 'material_kind_mismatch'
+    if mir_kind == 'panel' and boq_kind == 'patch cord':
+        return 'material_kind_mismatch'
+    if mir_kind == 'patch cord' and boq_kind == 'panel':
+        return 'material_kind_mismatch'
+    if mir_kind == 'access point' and boq_kind == 'access point':
+        mir_env = 'indoor' if re.search(r'\bindoor\b', mir_text, re.I) else ('outdoor' if re.search(r'\boutdoor\b', mir_text, re.I) else None)
+        boq_env = 'indoor' if re.search(r'\bindoor\b', boq_text, re.I) else ('outdoor' if re.search(r'\boutdoor\b', boq_text, re.I) else None)
+        if mir_env and boq_env and mir_env != boq_env:
+            return 'access_point_environment_mismatch'
     rack_patterns = [r'\b(\d{1,3})\s*u\b', r'\brack\s*(\d{1,3})\s*u\b']
     mir_u, boq_u = _spec_value(mir_text, rack_patterns), _spec_value(boq_text, rack_patterns)
     if mir_u is not None and boq_u is not None and mir_u != boq_u:
@@ -1853,9 +1886,11 @@ def _score_candidates(st, rec):
         if label and d_tok:
             bov = _hits(label, d_tok) / len(label)
             score += 0.15 * bov
-        kind_it = _kind(it['item'] + ' ' + it['reference'])
-        kind_mir = _kind(desc)
-        if kind_it and kind_mir and kind_it != kind_mir:
+        kind_it = _kind(it['item'] + ' ' + it['reference'] + ' ' + it.get('part', ''))
+        kind_mir = _kind(match_text)
+        if kind_it and kind_mir and kind_it == kind_mir:
+            score += 0.18; reasons.append('same material category (%s)' % kind_mir)
+        elif kind_it and kind_mir:
             score -= 0.15; reasons.append('different kind of material (%s vs %s)' % (kind_mir, kind_it))
         ub, _src = boq_unit(st, it)
         ustate = 'boq_unit_unknown' if not ub else ('mir_unit_missing' if not mir_unit else ('ok' if ub == mir_unit else 'mismatch'))
