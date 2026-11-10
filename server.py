@@ -7540,7 +7540,7 @@ def _asbuilt_register_page_to_floor(page_image_path, floor):
                           'diagnostics': summary}, reg, geom
         affine = [float(cx[0]), float(cx[1]), float(cy[0]), float(cy[1]), float(cx[2]), float(cy[2])]
         if not all(math.isfinite(v) for v in affine) or abs(affine[0]*affine[3]-affine[1]*affine[2]) < 1e-12:
-            return None, {'ok': False, 'reason': 'Computed page-to-CAD transform is invalid.'}
+            return None, {'ok': False, 'reason': 'Computed page-to-CAD transform is invalid.'}, reg, geom
         return affine, {'ok': True, 'status': reg.status, 'confidence': reg.confidence, 'diagnostics': summary}, reg, geom
     except Exception as exc:
         return None, {'ok': False, 'reason': f'{type(exc).__name__}: {exc}'}, None, None
