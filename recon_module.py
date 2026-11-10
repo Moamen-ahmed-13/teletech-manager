@@ -1809,6 +1809,7 @@ def _spec_value(text, patterns):
 def _switch_family(text):
     t = (text or '').lower()
     if re.search(r'\baggregation\b|\bagg\.?\s*switch\b', t): return 'aggregation'
+    if re.search(r'\bcore\b', t): return 'core'
     if re.search(r'\baccess\b|\bedge\s*switch\b', t): return 'access'
     return None
 
@@ -1889,7 +1890,7 @@ def _score_candidates(st, rec):
         kind_it = _kind(it['item'] + ' ' + it['reference'] + ' ' + it.get('part', ''))
         kind_mir = _kind(match_text)
         if kind_it and kind_mir and kind_it == kind_mir:
-            score += 0.18; reasons.append('same material category (%s)' % kind_mir)
+            score += 0.25; reasons.append('same material category (%s)' % kind_mir)
         elif kind_it and kind_mir:
             score -= 0.15; reasons.append('different kind of material (%s vs %s)' % (kind_mir, kind_it))
         ub, _src = boq_unit(st, it)
