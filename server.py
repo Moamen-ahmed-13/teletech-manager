@@ -7577,8 +7577,29 @@ def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=No
         return []
     inv=[]
     arrow_by_orange=_asbuilt_detect_blue_arrow_tips(cv_info.get('source_image_path'),(cv_info.get('regions') or {}).get('orange') or [])
+    # The colour key printed in the page corner (stack of coloured bars) is not a markup.
+    legend_ids=set()
+    try:
+        import asbuilt_markups as _amk
+        _img=cv_info.get('image_size') or {}
+        _W=int(_img.get('width') or 0) or int(cv_info.get('width') or 0); _H=int(_img.get('height') or 0) or int(cv_info.get('height') or 0)
+        if not (_W and _H) and cv2 is not None and cv_info.get('source_image_path'):
+            _im=cv2.imread(str(cv_info['source_image_path']),cv2.IMREAD_COLOR)
+            if _im is not None: _H,_W=_im.shape[:2]
+        if _W and _H:
+            _marks=[]
+            for _c,_rs in (cv_info.get('regions') or {}).items():
+                for _i,_r in enumerate(_rs or []):
+                    _bb=_r.get('bbox') or [0,0,0,0]
+                    _marks.append({'color':_c,'bbox':_bb,'center':[_bb[0]+_bb[2]/2.0,_bb[1]+_bb[3]/2.0],'legend':False,'key':(_c,_i)})
+            _amk._flag_legend(_marks,_W,_H)
+            legend_ids={m['key'] for m in _marks if m['legend']}
+    except Exception as _e:
+        print(f'[AS-BUILT] legend exclusion skipped: {_e}')
     for color in ('pink','yellow','orange','green'):
         for idx,r in enumerate((cv_info.get('regions') or {}).get(color) or [],1):
+            if (color,idx-1) in legend_ids:
+                continue
             bbox=r.get('bbox') or [0,0,0,0]
             area=float(r.get('area') or 0)
             # Preserve the detector's shape/fill confidence. Do not replace it
