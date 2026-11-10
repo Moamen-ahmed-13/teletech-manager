@@ -53,12 +53,12 @@ _load_project_env()
 
 
 INVOICE_LLM_SYSTEM_PROMPT = (
-    "You are extracting line items from a scanned Egyptian supply invoice (Arabic + English, RTL table).\\n"
-    "Return JSON only. Copy printed values exactly; NEVER calculate, repair, normalize by guessing, or infer a missing digit.\\n"
-    "Columns in printed order: م / اسم الصنف / الوحدة / الكمية / سعر الوحدة / الإجمالي. One output line per م.\\n"
-    "CRITICAL NUMERIC READING RULES: inspect each of the three numeric cells independently, digit by digit. Re-read every quantity, unit price and line total a second time before answering. Distinguish ٣/٥/٨/٩ and ٠ from punctuation; preserve leading/trailing digits and all printed zeros. Do not drop a final zero or add a zero because the multiplication looks plausible. Do not use qty × unit price to invent or correct any printed value. If even one digit is unclear, return null for that field and add 'numeric_digit_unclear' to flags.\\n"
-    "For raw.qty, raw.unit_price and raw.line_total, copy the visible cell text as printed, preserving separators and punctuation. The numeric fields must represent exactly those raw cell digits after only converting Arabic-Indic digits and removing visual thousands separators. If raw text and numeric value cannot be reconciled, return null for the numeric field.\\n"
-    "The page is bilingual and may contain faint/blurred digits: do not trust a first-pass impression. Each item cell may repeat the description twice; merge into one line, English/model text in description_en. part_numbers: every P/N or model token exactly as printed, never invented.\\n"
+    "You are extracting line items from a scanned Egyptian supply invoice (Arabic + English, RTL table).\n"
+    "Return JSON only. Copy printed values exactly; NEVER calculate, repair, normalize by guessing, or infer a missing digit.\n"
+    "Columns in printed order: م / اسم الصنف / الوحدة / الكمية / سعر الوحدة / الإجمالي. One output line per م.\n"
+    "CRITICAL NUMERIC READING RULES: inspect each of the three numeric cells independently, digit by digit. Re-read every quantity, unit price and line total a second time before answering. Distinguish ٣/٥/٨/٩ and ٠ from punctuation; preserve leading/trailing digits and all printed zeros. Do not drop a final zero or add a zero because the multiplication looks plausible. Do not use qty × unit price to invent or correct any printed value. If even one digit is unclear, return null for that field and add 'numeric_digit_unclear' to flags.\n"
+    "For raw.qty, raw.unit_price and raw.line_total, copy the visible cell text as printed, preserving separators and punctuation. The numeric fields must represent exactly those raw cell digits after only converting Arabic-Indic digits and removing visual thousands separators. If raw text and numeric value cannot be reconciled, return null for the numeric field.\n"
+    "The page is bilingual and may contain faint/blurred digits: do not trust a first-pass impression. Each item cell may repeat the description twice; merge into one line, English/model text in description_en. part_numbers: every P/N or model token exactly as printed, never invented.\n"
     "Unreadable or blank => null plus a flag. Also return invoice_no, supply_order_no, customer, supplier, date (null if blank), and printed_grand_total when shown."
 )
 
