@@ -56,6 +56,7 @@ INVOICE_LLM_SYSTEM_PROMPT = (
     "You are extracting line items from a scanned Egyptian supply invoice (Arabic + English, RTL table).\n"
     "Return JSON only. Copy printed values exactly; NEVER calculate, repair, normalize by guessing, or infer a missing digit.\n"
     "Columns in printed order: م / اسم الصنف / الوحدة / الكمية / سعر الوحدة / الإجمالي. One output line per م.\n"
+    "CRITICAL MATCHING KEY: copy the printed value in the first column م exactly into contract_item_no for every line. This is the BOQ contract item number and is the primary reconciliation key. Preserve Arabic/Western digits and any printed numbering format; never substitute a page row index, invoice sequence, quantity, or a number found in the description. If the first-column number is missing or unreadable, return null and add 'contract_item_no_unclear'.\n"
     "CRITICAL NUMERIC READING RULES: inspect each of the three numeric cells independently, digit by digit. Re-read every quantity, unit price and line total a second time before answering. Distinguish ٣/٥/٨/٩ and ٠ from punctuation; preserve leading/trailing digits and all printed zeros. Do not drop a final zero or add a zero because the multiplication looks plausible. Do not use qty × unit price to invent or correct any printed value. If even one digit is unclear, return null for that field and add 'numeric_digit_unclear' to flags.\n"
     "For raw.qty, raw.unit_price and raw.line_total, copy the visible cell text as printed, preserving separators and punctuation. The numeric fields must represent exactly those raw cell digits after only converting Arabic-Indic digits and removing visual thousands separators. If raw text and numeric value cannot be reconciled, return null for the numeric field.\n"
     "The page is bilingual and may contain faint/blurred digits: do not trust a first-pass impression. Each item cell may repeat the description twice; merge into one line, English/model text in description_en. part_numbers: every P/N or model token exactly as printed, never invented.\n"
@@ -478,7 +479,7 @@ def extract_invoice_with_vision(pdf_path: str | Path, provider: Optional[str] = 
     cache_stem = f"{digest}.{provider}.{safe_model}"
     # Version the final aggregate cache when merge/validation logic changes, while
     # reusing the existing per-page checkpoints to avoid repeat API calls.
-    cache_path = cache_root / f"{cache_stem}.v3.json"
+    cache_path = cache_root / f"{cache_stem}.v4.json"
     cached = _read_json_cache(cache_path)
     if cached:
         return normalize_invoice_llm_output(cached)
@@ -487,7 +488,7 @@ def extract_invoice_with_vision(pdf_path: str | Path, provider: Optional[str] = 
     payload: Dict[str, Any] = {"document": {"invoice_no": None, "supply_order_no": None, "customer": None, "supplier": None, "date": None, "printed_grand_total": None}, "pages": [], "document_sources": []}
     # Per-page checkpoints allow a failed/interrupted invoice to resume without
     # sending already completed pages to the provider again.
-    page_cache_dir = cache_root / (cache_stem + ".pages.v3")
+    page_cache_dir = cache_root / (cache_stem + ".pages.v4")
     page_cache_dir.mkdir(parents=True, exist_ok=True)
     document_fields = ("invoice_no", "supply_order_no", "customer", "supplier", "date", "printed_grand_total")
 
