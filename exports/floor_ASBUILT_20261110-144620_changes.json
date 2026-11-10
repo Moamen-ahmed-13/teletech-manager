@@ -1,0 +1,170 @@
+{
+  "generated_at": "20261110-144620",
+  "floor": "Ground Floor",
+  "source_drawing": "/tmp/claude-0/-home-claude/74babd94-9170-556f-8e5f-d12a4db6cad0/scratchpad/e2e/in/floor.dxf",
+  "changes": [
+    {
+      "op": "MOVE_ENDPOINT",
+      "target": {
+        "target_id": "162|7249F",
+        "occurrence_id": 162,
+        "handle": "7249F",
+        "labels": [
+          "G1/DN03/D01",
+          "G1/DN05/V03"
+        ],
+        "label": "G1/DN03/D01 + G1/DN05/V03",
+        "service": "D-V (Data + Voice)",
+        "block": "D-V",
+        "rack": "IDF-G1",
+        "schedule_floor": "Ground Floor",
+        "port_slots": [
+          {
+            "prefix": "G1",
+            "network": "DN",
+            "panel": 3,
+            "port": 1,
+            "code": "D",
+            "desc": "DATA",
+            "label": "G1/DN03/D01"
+          },
+          {
+            "prefix": "G1",
+            "network": "DN",
+            "panel": 5,
+            "port": 3,
+            "code": "V",
+            "desc": "VOICE",
+            "label": "G1/DN05/V03"
+          }
+        ],
+        "x": 32207.99999999971,
+        "y": -41569.82756048136,
+        "root": true,
+        "depth": 0,
+        "ancestor_handles": [],
+        "ancestor_blocks": [],
+        "parent_transform": [
+          1,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        "insert_x": 32207.99999999971,
+        "insert_y": -41698.07978027144,
+        "entity_type": "INSERT",
+        "editable_direct": true
+      },
+      "note": "",
+      "floor": "Ground Floor",
+      "x": 33207.99999999971,
+      "y": -41069.82756048136
+    },
+    {
+      "op": "DELETE_ENDPOINT",
+      "target": {
+        "target_id": "143|8081F37",
+        "occurrence_id": 143,
+        "handle": "8081F37",
+        "labels": [
+          "G1/DN07/W06"
+        ],
+        "label": "G1/DN07/W06",
+        "service": "Indoor Wi-Fi",
+        "block": "D-W",
+        "rack": "IDF-G1",
+        "schedule_floor": "Ground Floor",
+        "port_slots": [
+          {
+            "prefix": "G1",
+            "network": "DN",
+            "panel": 7,
+            "port": 6,
+            "code": "W",
+            "desc": "WI-FI",
+            "label": "G1/DN07/W06"
+          }
+        ],
+        "x": 42499.999999999665,
+        "y": -57330.85148403719,
+        "root": false,
+        "depth": 1,
+        "ancestor_handles": [
+          "721BB"
+        ],
+        "ancestor_blocks": [
+          "access point wifi weather proof"
+        ],
+        "parent_transform": [
+          -1.8369701987210297e-13,
+          -1000.0,
+          1000.0,
+          -1.8369701987210297e-13,
+          133209.6629719305,
+          625876.1137365779
+        ],
+        "insert_x": 42499.999999999665,
+        "insert_y": -57458.07975956483,
+        "entity_type": "INSERT",
+        "editable_direct": false
+      },
+      "note": "",
+      "floor": "Ground Floor",
+      "nested_clone": true
+    },
+    {
+      "op": "DELETE_ENDPOINT",
+      "target": {
+        "target_id": "138|8081F37",
+        "occurrence_id": 138,
+        "handle": "8081F37",
+        "labels": [
+          "G1/DN07/W16"
+        ],
+        "label": "G1/DN07/W16",
+        "service": "Indoor Wi-Fi",
+        "block": "D-W",
+        "rack": "IDF-G1",
+        "schedule_floor": "Ground Floor",
+        "port_slots": [
+          {
+            "prefix": "G1",
+            "network": "DN",
+            "panel": 7,
+            "port": 16,
+            "code": "W",
+            "desc": "WI-FI",
+            "label": "G1/DN07/W16"
+          }
+        ],
+        "x": 50592.77170236393,
+        "y": -15825.0797698003,
+        "root": false,
+        "depth": 1,
+        "ancestor_handles": [
+          "721B6"
+        ],
+        "ancestor_blocks": [
+          "access point wifi weather proof"
+        ],
+        "parent_transform": [
+          1000.0,
+          0.0,
+          0.0,
+          1000.0,
+          -632614.1935182512,
+          74884.5832021304
+        ],
+        "insert_x": 50719.999977891566,
+        "insert_y": -15825.0797698003,
+        "entity_type": "INSERT",
+        "editable_direct": false
+      },
+      "note": "",
+      "floor": "Ground Floor",
+      "nested_clone": true
+    }
+  ]
+}
