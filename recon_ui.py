@@ -104,41 +104,103 @@ RECON_HTML = r'''
 #rcSummary .rc-summary-info b{display:block;font-size:17px;font-variant-numeric:tabular-nums}
 #rcSummary .rc-summary-info span{font-size:11px;color:var(--rc-muted)}
 @media(max-width:650px){#rcBrands .rc-brand-unit{align-items:flex-start}#rcBrands .rc-donut{width:92px;height:92px;flex-basis:92px}#rcBrands .rc-donut-hole{width:66px;height:66px}}
+
+/* Refined workspace: calm slate + teal, compact hierarchy, consistent controls */
+#reconPanel{--rc-ink:#172b4d;--rc-muted:#667085;--rc-line:#e5eaf0;--rc-soft:#f6f8fb;direction:rtl;text-align:right;color:#26364a;background:#fbfcfe;border:1px solid #e8edf3;border-radius:16px;box-shadow:0 8px 28px rgba(20,38,60,.045);padding:18px}
+#reconPanel .cardHead{padding:4px 2px 14px;border-bottom:1px solid #e9eef4}
+#reconPanel .cardHead h3{font-size:20px;font-weight:750;color:#1e344d;letter-spacing:0;margin:0 0 3px}
+#reconPanel .cardHead .sub{display:none}
+#reconPanel #rcBadge{font-size:11px;background:#edf5f4;color:#27766d;border:1px solid #dcebe8}
+#reconPanel .rc-tabs{top:68px;gap:5px;padding:4px;margin:13px 0 16px;background:#f3f6f9;border:1px solid #e8edf2;border-radius:11px;box-shadow:none}
+#reconPanel .rc-tabs button{font-size:12px;padding:8px 12px;color:#526174;border-radius:8px}
+#reconPanel .rc-tabs button.on{background:#285c62;border-color:#285c62;color:#fff;box-shadow:none}
+#reconPanel .rc-section-intro{margin:0 0 10px}
+#reconPanel .rc-section-intro h4,#reconPanel .rc-doc-heading h4{font-size:14px;font-weight:750;color:#263b52}
+#reconPanel .rc-section-intro p{display:none}
+#reconPanel .rc-upload-grid{gap:11px;margin:10px 0 14px}
+#reconPanel .rc-upload-card{border-color:#e6ebf1;border-radius:12px;padding:14px;background:#fff;box-shadow:0 2px 8px rgba(30,50,70,.025)}
+#reconPanel .rc-upload-icon{width:36px;height:36px;flex-basis:36px;border-radius:10px;background:#edf4f4;color:#326b70;font-size:12px}
+#reconPanel .rc-upload-top{margin-bottom:10px}
+#reconPanel .rc-upload-top h4{font-size:13px;color:#263b52}
+#reconPanel .rc-upload-top p{display:none}
+#reconPanel .rc-file-row input[type=file]{font-size:11px;background:#fafbfd;border-color:#dce3eb}
+#reconPanel .rc-bar{gap:7px;margin:9px 0}
+#reconPanel button{border-radius:8px;font-size:12px;padding:8px 12px;box-shadow:none}
+#reconPanel button:not(.alt):not(.good){background:#285c62;border-color:#285c62;color:white}
+#reconPanel button.alt{background:#f3f6f8;border:1px solid #e2e8ee;color:#47586a}
+#reconPanel button.good{background:#e8f3ef;border:1px solid #d5e9e1;color:#24725d}
+#reconPanel input,#reconPanel select,#reconPanel textarea{border-color:#dce3eb;border-radius:8px;padding:8px 10px;font-size:12px}
+#reconPanel input:focus,#reconPanel select:focus,#reconPanel textarea:focus{outline:2px solid #c5dddd;outline-offset:0;border-color:#75a6a5}
+#reconPanel .rc-source-list{gap:10px}
+#reconPanel .rc-source-card{border-color:#e6ebf1;border-radius:12px;padding:13px;background:#fff;box-shadow:0 2px 8px rgba(30,50,70,.025)}
+#reconPanel .rc-source-name{font-size:12px;color:#263b52}
+#reconPanel .rc-source-meta{font-size:10.5px;line-height:1.5}
+#reconPanel .rc-stat-pill{background:#f3f6f8;color:#526174;border-radius:6px}
+#reconPanel .rc-boq-summary{border:1px solid #e0e9ed;background:#f5f9f9;border-radius:11px;padding:13px}
+#reconPanel .rc-empty{border-color:#dfe6ed;background:#f8fafc;border-radius:11px;padding:20px}
+#reconPanel table.rc{font-size:11.5px}
+#reconPanel table.rc th{background:#f3f6f8;color:#405267;padding:9px 8px;border-bottom-color:#e2e8ee}
+#reconPanel table.rc td{padding:8px;border-bottom-color:#eef1f4}
+#reconPanel table.rc tbody tr:hover{background:#f7fafb}
+#reconPanel .rc-chip{font-size:10px;padding:3px 7px;border-radius:6px;font-weight:650}
+#reconPanel .c-ok{background:#e8f3ee;color:#28745d}
+#reconPanel .c-warn{background:#fbf2df;color:#89651c}
+#reconPanel .c-bad{background:#faeae8;color:#a94d45}
+#reconPanel .c-info{background:#eaf1f5;color:#456b80}
+#reconPanel .rc-card,#reconPanel .rc-rec{border-color:#e6ebf1;border-radius:12px;box-shadow:0 2px 8px rgba(30,50,70,.025)}
+#reconPanel .rc-rec{padding:13px;margin:10px 0;background:#fff}
+#reconPanel .rc-grid{gap:9px}
+#reconPanel .rc-grid label{font-size:11px;color:#5d6c7d}
+#reconPanel .rc-ocr{font-size:11px;line-height:1.6;background:#f6f8fa;color:#657487;border:1px solid #edf1f4;border-radius:8px;padding:8px 10px}
+#reconPanel .rc-scroll{border-color:#e5eaf0;border-radius:10px}
+#reconPanel #rcMsg{font-size:12px;min-height:0;padding:8px 10px}
+#reconPanel .advanced,#reconPanel .rc-advanced{border-color:#e6ebf1;border-radius:9px;background:#f8fafb}
+#reconPanel .advanced summary,#reconPanel .rc-advanced summary{font-size:11px;color:#596b7e}
+#reconPanel .rc-doc-heading{margin:18px 0 8px}
+#reconPanel .rc-doc-heading .small{font-size:10px}
+#reconPanel .num{font-variant-numeric:tabular-nums}
+#reconPanel .rc-source-actions{border-top-color:#edf1f4}
+#reconPanel a{color:#326b78}
+#reconPanel .rc-summary-ring{border-color:#e7edf1;border-radius:12px;background:#fff}
+#reconPanel .rc-summary-ring .rc-donut-hole b{color:#294b57}
+#reconPanel .rc-brand-card{border-color:#e6ebf1;border-radius:12px;box-shadow:0 2px 8px rgba(30,50,70,.025)}
+@media(max-width:720px){#reconPanel{padding:12px}#reconPanel .rc-tabs{top:58px}#reconPanel .rc-tabs button{font-size:11px;padding:8px 9px}}
+
 </style>
 <div class="card" id="reconPanel" style="margin-top:16px">
- <div class="cardHead"><div><h3>متابعة الخامات والتوريدات</h3><div class="sub">قارن أذونات فحص الخامات MIR بالعقد والمقايسة BOQ، وراجع نتائج القراءة قبل اعتماد الكميات.</div></div><span id="rcBadge" class="badge neutral">Loading</span></div>
+ <div class="cardHead"><div><h3>متابعة الخامات والتوريدات</h3></div><span id="rcBadge" class="badge neutral">Loading</span></div>
  <div class="rc-tabs" id="rcTabs"><button data-t="src" class="on">الملفات</button><button data-t="rev">مراجعة MIR</button><button data-t="rec">ملخص المقايسة</button><button data-t="brd">تقدم البراندات</button><button data-t="exp">التقارير وسجل المراجعة</button></div>
  <div id="rcMsg" class="status" role="status">&nbsp;</div>
  <div class="rc-pane on" id="rcP-src">
-  <div class="rc-section-intro"><div><h4>ملفات المشروع</h4><p>Start by uploading the contract BOQ, then add the MIR PDFs you want to reconcile. Original files stay in project Documents.</p></div><div id="rcOcr" class="sub"></div></div>
+  <div class="rc-section-intro"><div><h4>ملفات المشروع</h4></div><div id="rcOcr" class="sub"></div></div>
   <div class="rc-upload-grid">
-   <div class="rc-upload-card"><div class="rc-upload-top"><div class="rc-upload-icon">XLS</div><div><h4>ملف المقايسة BOQ</h4><p>Excel · .xlsx or .xlsm · source of truth</p></div></div><div class="rc-file-row"><input id="rcBoqFile" type="file" accept=".xlsx,.xlsm"><button id="rcBoqUp">Upload ملف المقايسة BOQ</button></div></div>
-   <div class="rc-upload-card"><div class="rc-upload-top"><div class="rc-upload-icon">PDF</div><div><h4>مستندات MIR</h4><p>Scanned PDFs · select multiple files</p></div></div><div class="rc-file-row"><input id="rcMirFiles" type="file" accept=".pdf" multiple><button id="rcMirUp">رفع ملفات MIR</button></div></div>
-   <div class="rc-upload-card"><div class="rc-upload-top"><div class="rc-upload-icon">INV</div><div><h4>فواتير التوريد</h4><p>PDF invoices · OCR draft + manual review</p></div></div><div class="rc-file-row"><input id="rcInvoiceFiles" type="file" accept=".pdf" multiple><button id="rcInvoiceUp">رفع الفواتير</button><button id="rcImportRepoInvoices" class="alt">استيراد فواتير الريبو</button><button id="rcImportRepoDocs" class="alt">استيراد كل ملفات الريبو</button></div></div>
+   <div class="rc-upload-card"><div class="rc-upload-top"><div class="rc-upload-icon">XLS</div><div><h4>ملف المقايسة BOQ</h4></div></div><div class="rc-file-row"><input id="rcBoqFile" type="file" accept=".xlsx,.xlsm"><button id="rcBoqUp">رفع المقايسة</button></div></div>
+   <div class="rc-upload-card"><div class="rc-upload-top"><div class="rc-upload-icon">PDF</div><div><h4>مستندات MIR</h4></div></div><div class="rc-file-row"><input id="rcMirFiles" type="file" accept=".pdf" multiple><button id="rcMirUp">رفع MIR</button></div></div>
+   <div class="rc-upload-card"><div class="rc-upload-top"><div class="rc-upload-icon">INV</div><div><h4>فواتير التوريد</h4></div></div><div class="rc-file-row"><input id="rcInvoiceFiles" type="file" accept=".pdf" multiple><button id="rcInvoiceUp">رفع الفواتير</button><button id="rcImportRepoInvoices" class="alt">استيراد فواتير المشروع</button><button id="rcImportRepoDocs" class="alt">استيراد ملفات المشروع</button></div></div>
   </div>
-  <details class="advanced"><summary>Import files already saved in project Documents</summary><div class="advInner"><div id="rcDocPick" class="sub">Loading...</div><div class="rc-bar"><button id="rcImport" class="alt">Import selected files</button></div></div></details>
+  <details class="advanced"><summary>ملفات محفوظة بالمشروع</summary><div class="advInner"><div id="rcDocPick" class="sub">Loading...</div><div class="rc-bar"><button id="rcImport" class="alt">Import selected files</button></div></div></details>
   <div class="rc-doc-heading"><h4>المقايسة الحالية</h4><span class="small sub">Excel reference</span></div><div id="rcBoqInfo" class="sub">No BOQ yet.</div>
   <div class="rc-doc-heading"><h4>ملفات MIR والفواتير</h4><span id="rcMirCount" class="small sub">0 documents</span></div><div id="rcDocs"></div>
  </div>
  <div class="rc-pane" id="rcP-rev">
-  <div class="rc-bar"><button id="rcMatch">تشغيل المطابقة</button><button id="rcApproveExact" class="good">اعتماد المطابقات المؤكدة</button>
-   <select id="rcRevFilter"><option value="all">All lines</option><option value="todo">Needs attention</option><option value="unreviewed">Not reviewed</option><option value="nomatch">No approved match</option><option value="amb">Ambiguous / unmatched</option><option value="dup">Duplicates</option></select>
-   <input id="rcRevSearch" placeholder="Search description / file" style="min-width:200px"></div>
-  <div class="sub">Edit the values to match the scanned page (open it with "View page"), set the MIR status, then <b>حفظ وتأكيد المراجعة</b>. Then confirm the BOQ row and press <b>اعتماد المطابقة</b>.</div>
+  <div class="rc-bar"><button id="rcMatch">مطابقة تلقائية</button><button id="rcApproveExact" class="good">اعتماد المطابقات الدقيقة</button>
+   <select id="rcRevFilter"><option value="all">كل السطور</option><option value="todo">تحتاج مراجعة</option><option value="unreviewed">غير مراجعة</option><option value="nomatch">بلا مطابقة معتمدة</option><option value="amb">مطابقة غير محسومة</option><option value="dup">مكرر</option></select>
+   <input id="rcRevSearch" placeholder="بحث بالوصف أو الملف" style="min-width:200px"></div>
+  
   <div id="rcRecs"></div>
  </div>
  <div class="rc-pane" id="rcP-rec">
   <div id="rcSummary"></div>
-  <div class="rc-bar"><input id="rcSearch" placeholder="ابحث بالكود أو الوصف أو رقم الصنف" style="min-width:220px"><select id="rcBrandF"><option value="">كل البراندات</option></select>
-   <select id="rcStatF"><option value="">كل الحالات</option><option value="complete">Complete</option><option value="partial">Partial</option><option value="pending_review">Pending review</option><option value="no_mir">No MIR</option><option value="over_boq">Over BOQ</option><option value="no_confirmed">No confirmed qty</option></select></div>
+  <div class="rc-bar"><input id="rcSearch" placeholder="بحث في المقايسة" style="min-width:220px"><select id="rcBrandF"><option value="">كل البراندات</option></select>
+   <select id="rcStatF"><option value="">كل الحالات</option><option value="complete">مكتمل</option><option value="partial">جزئي</option><option value="pending_review">قيد المراجعة</option><option value="no_mir">بدون MIR</option><option value="over_boq">تجاوز المقايسة</option><option value="no_confirmed">بلا كمية معتمدة</option></select></div>
   <div class="rc-scroll"><table class="rc" id="rcTable"></table></div>
   <div class="sub" id="rcNote" style="margin-top:8px"></div>
  </div>
  <div class="rc-pane" id="rcP-brd"><div id="rcBrands"></div></div>
  <div class="rc-pane" id="rcP-exp">
-  <div class="rc-bar"><button id="rcExport" class="good">إنشاء تقرير Excel</button><span id="rcExpMsg" class="sub"></span></div>
-  <h4 style="margin:12px 0 6px">الاستثناءات والتحذيرات</h4><div id="rcExc"></div>
-  <h4 style="margin:12px 0 6px">سجل المراجعة والاعتماد</h4><div id="rcAudit" class="small sub"></div>
+  <div class="rc-bar"><button id="rcExport" class="good">تصدير Excel</button><span id="rcExpMsg" class="sub"></span></div>
+  <h4 style="margin:12px 0 6px">الاستثناءات</h4><div id="rcExc"></div>
+  <h4 style="margin:12px 0 6px">سجل العمليات</h4><div id="rcAudit" class="small sub"></div>
  </div>
 </div>
 '''
@@ -188,7 +250,7 @@ function render(){
     const invoiceMeta=d.invoice_document_meta||{};
     const metaText=isInvoice?'<div class="rc-source-meta">رقم الفاتورة: '+esc(invoiceMeta.invoice_no||'?')+' · أمر التوريد: '+esc(invoiceMeta.supply_order_no||'?')+' · العميل: '+esc(invoiceMeta.customer||'?')+' · المورد: '+esc(invoiceMeta.supplier||'?')+' · التاريخ: '+esc(invoiceMeta.date||'?')+' · الإجمالي المطبوع: '+esc(invoiceMeta.printed_grand_total??'غير مؤكد')+'</div>':'';
     const qualityText=isInvoice&&invoiceRows.length?'<div class="rc-source-meta" style="color:'+(qualityBad?'#b42318':'#067647')+'">فحص الأرقام: '+(invoiceRows.length-qualityBad)+' سليم مبدئيًا · '+qualityBad+' يحتاج مراجعة (لا يتم التصحيح تلقائيًا)</div>':'';
-    return '<div class="rc-source-card"><div class="rc-source-head"><div class="rc-file-icon">'+(isInvoice?'INV':'PDF')+'</div><div style="min-width:0;flex:1"><div class="rc-source-name">'+esc(d.filename)+'</div><div class="rc-source-meta">'+(isInvoice?'Invoice document':'MIR document')+'</div><div class="rc-source-meta">Uploaded by '+esc(d.uploaded_by||'project user')+' · '+esc(d.sha256.slice(0,10))+'</div></div></div>'+metaText+qualityText+'<div class="rc-source-stats"><span class="rc-stat-pill">'+d.pages+' page(s)</span><span class="rc-stat-pill">'+n+' extracted line(s)</span>'+status+'</div><div class="rc-source-actions"><button data-ocr="'+d.id+'">'+(d.ocr_status==='running'?'OCR running…':'Run OCR')+'</button><button class="alt" data-addline="'+d.id+'">Add line</button><a class="alt" href="/api/recon/page?doc='+d.id+'&page=1" target="_blank">عرض الصفحة الأولى ↗</a><button class="alt" data-rmdoc="'+d.id+'">Remove</button></div></div>';
+    return '<div class="rc-source-card"><div class="rc-source-head"><div class="rc-file-icon">'+(isInvoice?'INV':'PDF')+'</div><div style="min-width:0;flex:1"><div class="rc-source-name">'+esc(d.filename)+'</div><div class="rc-source-meta">'+(isInvoice?'Invoice document':'MIR document')+'</div><div class="rc-source-meta">Uploaded by '+esc(d.uploaded_by||'project user')+' · '+esc(d.sha256.slice(0,10))+'</div></div></div>'+metaText+qualityText+'<div class="rc-source-stats"><span class="rc-stat-pill">'+d.pages+' page(s)</span><span class="rc-stat-pill">'+n+' extracted line(s)</span>'+status+'</div><div class="rc-source-actions"><button data-ocr="'+d.id+'">'+(d.ocr_status==='running'?'OCR running…':'Run OCR')+'</button><button class="alt" data-addline="'+d.id+'">إضافة سطر</button><a class="alt" href="/api/recon/page?doc='+d.id+'&page=1" target="_blank">عرض الصفحة الأولى ↗</a><button class="alt" data-rmdoc="'+d.id+'">حذف</button></div></div>';
    }).join('')+'</div>'
   : '<div class="rc-empty">No PDF documents yet.<br>Upload MIRs or supplier invoices above.</div>';
  renderRecs();renderRec();renderBrands();renderExp();
@@ -220,15 +282,15 @@ function renderRecs(){
   const qualityPanel=isInvoice?'<div class="rc-ocr"><b>فحص الأرقام:</b> '+(qualityLabels.length?'<span style="color:#b42318">يحتاج مراجعة بصرية/حسابية</span>':'<span style="color:#067647">تمت المراجعة</span>')+' · المحسوب: '+(mathExpected==null?'N/A':esc(mathExpected))+' · الفرق عن الإجمالي: '+(mathDelta==null?'N/A':esc(mathDelta))+'<br>النص الخام الذي أعاده النموذج: كمية '+esc(rawValues.qty??'—')+' · سعر '+esc(rawValues.unit_price??'—')+' · إجمالي '+esc(rawValues.line_total??'—')+'<br>التحذيرات: '+esc(qualityLabels.map(f=>qualityNames[f]||f).join('، ')||'لا توجد')+'</div>':'';
   const rawEvidence=(rawOcr||isInvoice)?'<details class="rc-advanced"><summary>'+(isInvoice?'دليل الفاتورة · صورة الصفحة الأصلية':'Original OCR evidence · '+sourceCells.length+' source cells')+'</summary>'+(isInvoice?'<div class="small sub">الصورة الكاملة للصفحة متاحة من زر «عرض الصورة» أعلى السطر؛ لا توجد مربعات OCR منفصلة لهذه القراءة المرئية.</div>':'')+(rawOcr?'<pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;margin:8px 0;font:12px/1.5 monospace">'+esc(rawOcr)+'</pre>':'')+(o.row_flags&&o.row_flags.length?'<div class="small sub">Extraction flags: '+esc(o.row_flags.join(', '))+'</div>':'')+'</details>':'';
   const gs=f=>(r.user&&f in r.user)?'':((o&&o[f]!=null)?' rc-guess':'');
-  return `<div class="rc-rec" data-id="${r.id}" data-doc="${r.doc_id}" data-page="${r.page}"><div class="rc-bar">${chip(isInvoice?'INVOICE':'MIR',isInvoice?'c-info':'c-mute')} <b>${esc(r.filename)}</b> p${r.page} <button class="alt" data-scan>عرض الصورة</button> <a href="/api/recon/page?doc=${r.doc_id}&page=${r.page}" target="_blank">open full ↗</a> ${r.review_status==='reviewed'?chip('reviewed','c-ok'):chip('not reviewed','c-warn')} ${chip('match: '+ms[0],ms[1])}${m.method==='manual'?chip('manual decision','c-info'):''} ${flags((()=>{const c=Number(o.conf);const pct=Number.isFinite(c)?(c>=0&&c<=1?c*100:c):null;let fs=r.flags||[];if(isInvoice){fs=fs.filter(f=>!invoiceQualitySet.has(f));fs.push(...qualityLabels)}return isInvoice&&pct!==null&&pct>=60?fs.filter(f=>String(f).trim()!=='low_ocr_confidence'):fs})())}</div>
+  return `<div class="rc-rec" data-id="${r.id}" data-doc="${r.doc_id}" data-page="${r.page}"><div class="rc-bar">${chip(isInvoice?'INVOICE':'MIR',isInvoice?'c-info':'c-mute')} <b>${esc(r.filename)}</b> p${r.page} <button class="alt" data-scan>عرض الصورة</button> <a href="/api/recon/page?doc=${r.doc_id}&page=${r.page}" target="_blank">فتح الصورة ↗</a> ${r.review_status==='reviewed'?chip('reviewed','c-ok'):chip('not reviewed','c-warn')} ${chip('match: '+ms[0],ms[1])}${m.method==='manual'?chip('manual decision','c-info'):''} ${flags((()=>{const c=Number(o.conf);const pct=Number.isFinite(c)?(c>=0&&c<=1?c*100:c):null;let fs=r.flags||[];if(isInvoice){fs=fs.filter(f=>!invoiceQualitySet.has(f));fs.push(...qualityLabels)}return isInvoice&&pct!==null&&pct>=60?fs.filter(f=>String(f).trim()!=='low_ocr_confidence'):fs})())}</div>
   <div class="rc-ocr">${ocrTxt}</div>${qualityPanel}${rawEvidence}<div class="rc-scan" hidden></div>
-  <div class="rc-grid"><div><label>${isInvoice?'Invoice number':'MIR ref no.'}</label><input data-f="ref_no" class="${gs('ref_no')}" value="${esc(e.ref_no||'')}"${dis}></div><div><label>Date (as written)</label><input data-f="date" class="${gs('date')}" value="${esc(e.date||'')}"${dis}></div>
-  <div style="grid-column:span 2"><label>Material description</label><textarea data-f="description" rows="2" class="${gs('description')}"${dis}>${esc(dedupeRepeatedWords(e.description||''))}</textarea></div>
+  <div class="rc-grid"><div><label>${isInvoice?'Invoice number':'MIR ref no.'}</label><input data-f="ref_no" class="${gs('ref_no')}" value="${esc(e.ref_no||'')}"${dis}></div><div><label>التاريخ</label><input data-f="date" class="${gs('date')}" value="${esc(e.date||'')}"${dis}></div>
+  <div style="grid-column:span 2"><label>وصف الصنف</label><textarea data-f="description" rows="2" class="${gs('description')}"${dis}>${esc(dedupeRepeatedWords(e.description||''))}</textarea></div>
   <div><label>الوحدة</label><input data-f="unit" class="${gs('unit')}" value="${esc(e.unit||'')}"${dis}></div><div><label>الكمية Q.T</label><input data-f="qty" class="${gs('qty')}" value="${e.qty??''}"${dis}></div>${isInvoice?`<div><label>سعر الوحدة</label><input data-f="unit_price" class="${gs('unit_price')}" value="${e.unit_price??''}"${dis}></div>`:''}<div><label>${isInvoice?'قيمة بند الفاتورة':'الإجمالي كما هو مكتوب'}</label><input data-f="total" class="${gs('total')}" value="${e.total??''}"${dis}></div>
   <div><label>${isInvoice?'تأكيد مراجعة الفاتورة':'حالة MIR (خانة الاختيار)'}</label><select data-f="mir_status"${dis}><option value="">— set —</option>${(isInvoice?['A']:['A','B','C','D']).map(s=>`<option value="${s}"${e.mir_status===s?' selected':''}>${isInvoice?'Reviewed / confirmed':s+' – '+({A:'Approved',B:'Approved with note',C:'Not approved',D:'Rejected'})[s]}</option>`).join('')}</select></div>
-  <div><label>البراند (اختياري)</label><input data-f="brand" value="${esc(e.brand||'')}"${dis}></div>
-  <div style="grid-column:span 2"><label>بند المقايسة المطابق</label><select data-boq${dis}>${boqOpts(r)}</select></div></div>
-  <div class="rc-bar"><button data-save${dis}>Save</button><button data-rev class="good"${dis}>حفظ وتأكيد المراجعة</button><button data-tot class="alt"${dis} title="Copy the TOTAL column value into Q.T after you checked the scan">Use TOTAL as Q.T</button><button data-appr class="good"${dis}>اعتماد المطابقة</button><button data-rej class="alt"${dis}>رفض المطابقة</button>${r.flags.includes('duplicate')?`<button data-notdup class="alt"${dis}>Not a duplicate</button>`:`<button data-isdup class="alt"${dis} title="Do not count this line (same material submitted twice)">Exclude as duplicate</button>`}${r.origin==='manual'?`<button data-del class="alt"${dis}>Delete line</button>`:''}</div></div>`}).join(''):'<div class="sub">No document lines match this filter. Check OCR status in Files, run OCR, or add a line manually.</div>';
+  <div><label>العلامة التجارية</label><input data-f="brand" value="${esc(e.brand||'')}"${dis}></div>
+  <div style="grid-column:span 2"><label>بند المقايسة</label><select data-boq${dis}>${boqOpts(r)}</select></div></div>
+  <div class="rc-bar"><button data-save${dis}>حفظ</button><button data-rev class="good"${dis}>حفظ وتأكيد المراجعة</button><button data-tot class="alt"${dis} title="نسخ الإجمالي إلى الكمية بعد مراجعة الصورة">نسخ الإجمالي للكمية</button><button data-appr class="good"${dis}>اعتماد المطابقة</button><button data-rej class="alt"${dis}>رفض المطابقة</button>${r.flags.includes('duplicate')?`<button data-notdup class="alt"${dis}>ليس مكررًا</button>`:`<button data-isdup class="alt"${dis} title="استبعاد السطر المكرر">استبعاد التكرار</button>`}${r.origin==='manual'?`<button data-del class="alt"${dis}>حذف السطر</button>`:''}</div></div>`}).join(''):'<div class="sub">No document lines match this filter. Check OCR status in Files, run OCR, or add a line manually.</div>';
  document.querySelectorAll('#rcRecs .rc-rec').forEach(box=>{const id=box.dataset.id;const get=()=>{const o={};box.querySelectorAll('[data-f]').forEach(i=>o[i.dataset.f]=i.value);return o};
   if(keep[id]){box.querySelectorAll('[data-f],[data-boq]').forEach(i=>{const k=i.dataset.f||'_boq';if(k in keep[id])i.value=keep[id][k]});box.dataset.dirty='1'}
   box.addEventListener('input',()=>box.dataset.dirty='1');box.addEventListener('change',()=>box.dataset.dirty='1');
