@@ -7501,15 +7501,15 @@ def _asbuilt_register_page_to_floor(page_image_path, floor):
     reason (-> manual review).  Never writes to the source DXF.
     """
     if cv2 is None or np is None or _ASBUILT_REGISTRATION is None:
-        return None, {'ok': False, 'reason': 'Registration dependencies are unavailable.'}
+        return None, {'ok': False, 'reason': 'Registration dependencies are unavailable.'}, None, None
     try:
         floor_result = PROJECT_RESULTS.get(str(floor)) or {}
         drawing_path = str(floor_result.get('drawing') or '').strip()
         if not drawing_path or not Path(drawing_path).is_file():
-            return None, {'ok': False, 'reason': f'Original CAD drawing for {floor} was not found.'}
+            return None, {'ok': False, 'reason': f'Original CAD drawing for {floor} was not found.'}, None, None
         page_image = cv2.imread(str(page_image_path), cv2.IMREAD_COLOR)
         if page_image is None:
-            return None, {'ok': False, 'reason': 'Could not read the rendered As-Built page image.'}
+            return None, {'ok': False, 'reason': 'Could not read the rendered As-Built page image.'}, None, None
         # CAD geometry is invariant across pages of the same floor. Cache it
         # by path + file stat so the second half-sheet does not reload/reparse it.
         stat=Path(drawing_path).stat()
@@ -7524,7 +7524,7 @@ def _asbuilt_register_page_to_floor(page_image_path, floor):
         summary = reg.summary()
         if not reg.ok:
             return None, {'ok': False, 'reason': '; '.join(reg.reasons) or 'Page-to-CAD registration rejected.',
-                          'status': reg.status, 'diagnostics': summary}
+                          'status': reg.status, 'diagnostics': summary}, reg, geom
         page_h, page_w = page_image.shape[:2]
         gu, gv = np.meshgrid(np.linspace(0, 1000, 7), np.linspace(0, 1000, 7))
         uv = np.stack([gu.ravel(), gv.ravel()], axis=1)
@@ -7537,7 +7537,7 @@ def _asbuilt_register_page_to_floor(page_image_path, floor):
         span = float(np.ptp(world, axis=0).max()) or 1.0
         if float(resid.max()) > 0.01 * span:
             return None, {'ok': False, 'reason': 'Registration is not affine-like across the page; manual review required.',
-                          'diagnostics': summary}
+                          'diagnostics': summary}, reg, geom
         affine = [float(cx[0]), float(cx[1]), float(cy[0]), float(cy[1]), float(cx[2]), float(cy[2])]
         if not all(math.isfinite(v) for v in affine) or abs(affine[0]*affine[3]-affine[1]*affine[2]) < 1e-12:
             return None, {'ok': False, 'reason': 'Computed page-to-CAD transform is invalid.'}
