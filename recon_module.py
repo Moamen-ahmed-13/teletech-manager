@@ -2297,7 +2297,7 @@ def compute(st):
             bucket = b['invoice_qty_by_unit'].setdefault(unit_name, 0.0)
             b['invoice_qty_by_unit'][unit_name] = bucket + invoice_qty
         if row['boq_value'] is not None and row['financial_value'] is not None:
-            b['items_valued'] += 1; b['boq_value'] += row['boq_value']; b['mir_value'] += row['financial_value']; b['remaining_value'] += max(row['remaining_value'], 0.0)
+            b['items_valued'] += 1; b['boq_value'] += row['boq_value']; b['mir_value'] += row['financial_value']; b['remaining_value'] += row['remaining_value']
         else:
             b['items_unvalued'] += 1
         # Brand progress: one bucket PER UNIT (never one total across rolls + pieces + ...). boq_qty_total /
@@ -2343,7 +2343,7 @@ def compute(st):
     states = {}
     for rv in recs:
         states[rv['match'].get('state') or 'not_matched'] = states.get(rv['match'].get('state') or 'not_matched', 0) + 1
-    summary = {'boq_total_value': _r(tot_boq, 2), 'mir_value': _r(tot_mir, 2), 'remaining_value': _r(sum(max(x['remaining_value'], 0.0) for x in valued), 2),
+    summary = {'boq_total_value': _r(tot_boq, 2), 'mir_value': _r(tot_mir, 2), 'remaining_value': _r(tot_boq - tot_mir, 2),
                'fin_pct': _r(tot_mir / tot_boq * 100, 2) if tot_boq > 0 else None, 'items_valued': len(valued), 'items_unvalued': len(rows) - len(valued),
                'boq_items': len(rows), 'items_with_confirmed': sum(1 for x in rows if (x['confirmed_qty'] or 0) > 0),
                'items_pending_review': sum(1 for x in rows if x['status'] == 'pending_review'),
