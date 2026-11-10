@@ -10815,7 +10815,7 @@ if globals().get('_TT_PATCHED') and not globals().get('_TT_ADDON'):
                 _LA_CACHE=None
         return f
     asbuilt_chat_start=_tt_scope_any(asbuilt_chat_start)
-    for _n in ('_split_asbuilt_pdf_to_images','_asbuilt_cv_color_inventory','_asbuilt_project_candidate_catalog','_asbuilt_code_markup_inventory','asbuilt_chat_start'):
+    for _n in ('_split_asbuilt_pdf_to_images','_asbuilt_cv_color_inventory','_asbuilt_project_candidate_catalog','_asbuilt_median_nearest_spacing','_asbuilt_register_page_to_floor','_asbuilt_code_markup_inventory','_asbuilt_blob_overlay','asbuilt_chat_start'):
         globals()[_n]=_tt_timed(globals()[_n])
 
 
