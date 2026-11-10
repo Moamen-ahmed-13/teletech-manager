@@ -9361,9 +9361,10 @@ h2,h3,h4{margin:0;line-height:1.25}a{text-decoration:none}code{font-family:var(-
 .brandRow{display:flex;gap:10px;align-items:center;padding:4px 8px}.brandRow svg{width:30px;height:30px;flex:none}
 .brandName{font-weight:700;color:#fff;font-size:15px;letter-spacing:.02em}.brandSub{font-size:12px;color:#7f9a8f}
 .nav{display:flex;flex-direction:column;gap:2px}
-.navItem{display:flex;align-items:center;gap:10px;width:100%;justify-content:flex-start;background:none;border:0;color:#cfe0d8;padding:0 10px;border-radius:8px;min-height:40px;font-weight:550}
+.navItem{display:flex;align-items:center;gap:10px;width:100%;justify-content:flex-start;background:none;border:0;color:#cfe0d8;padding:0 10px;border-radius:8px;min-height:40px;font-weight:550;transition:background-color .15s ease,color .15s ease,box-shadow .15s ease;}
 .navItem svg{width:18px;height:18px;flex:none;opacity:.75}.navItem:hover:not(:disabled){background:rgba(255,255,255,.07)}
-.navItem.on{background:rgba(255,255,255,.13);color:#fff}.navItem.on svg{opacity:1}
+.navItem:focus-visible{outline:none;background:rgba(255,255,255,.09);box-shadow:0 0 0 2px rgba(167,200,255,.95),inset 0 0 0 1px rgba(167,200,255,.5);color:#fff}
+.navItem.on,.navItem.on:hover,.navItem.on:focus-visible{background:linear-gradient(180deg,rgba(74,168,163,.28),rgba(51,119,117,.18));border:1px solid rgba(144,203,196,.45);color:#fff;box-shadow:0 0 0 2px rgba(160,225,220,.8),inset 0 0 0 1px rgba(255,255,255,.1)}.navItem.on svg{opacity:1}
 .navBadge{margin-left:auto;min-width:20px;padding:0 7px;border-radius:999px;background:#f5c04a;color:#3b2800;font-size:12px;font-weight:700;text-align:center}
 .navItem.fresh::after{content:"";width:8px;height:8px;border-radius:50%;background:#5fd3a2;margin-left:auto}
 .sideNote{margin-top:auto;padding:0 8px;font-size:12px;color:#7f9a8f}
@@ -9787,8 +9788,8 @@ async function loadProjectStatus(){
 })();</script><script>(function(){
 const q=id=>document.getElementById(id);
 const views=['project','results','outputs','asbuilt','docs'];
-function show(v){if(!views.includes(v))v='project';views.forEach(n=>q('view-'+n).classList.toggle('on',n===v));document.querySelectorAll('.navItem').forEach(b=>{const on=b.dataset.view===v;b.classList.toggle('on',on);if(on){b.setAttribute('aria-current','page');b.classList.remove('fresh')}else b.removeAttribute('aria-current')});if(location.hash!=='#'+v)history.replaceState(null,'','#'+v);window.scrollTo(0,0)}
-document.querySelectorAll('.navItem').forEach(b=>b.onclick=()=>show(b.dataset.view));
+function show(v){if(!views.includes(v))v='project';views.forEach(n=>q('view-'+n).classList.toggle('on',n===v));document.querySelectorAll('.navItem').forEach(b=>{const on=b.dataset.view===v;b.classList.toggle('on',on);b.setAttribute('aria-pressed', on ? 'true' : 'false');b.setAttribute('data-active', on ? '1' : '0');if(on){b.setAttribute('aria-current','page');b.classList.remove('fresh')}else b.removeAttribute('aria-current')});if(location.hash!=='#'+v)history.replaceState(null,'','#'+v);window.scrollTo(0,0)}
+document.querySelectorAll('.navItem').forEach(b=>{b.onclick=()=>show(b.dataset.view);b.setAttribute('aria-pressed', b.classList.contains('on') ? 'true' : 'false');});
 q('goProject').onclick=()=>show('project');show((location.hash||'').slice(1));
 // project menu closes after an action or an outside click
 const menu=q('projectMenu');document.addEventListener('click',e=>{if(menu.open&&!menu.contains(e.target))menu.open=false});

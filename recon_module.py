@@ -1864,9 +1864,9 @@ def _item_no_key(value):
         return None
     raw = str(value).translate(_AR_DIGITS).strip()
     # Excel numeric cells may arrive as '36.0'; accept only an integer representation.
-    if re.fullmatch(r"\\d+\\.0+", raw):
+    if re.fullmatch(r"\d+\.0+", raw):
         raw = raw.split(".", 1)[0]
-    if not re.fullmatch(r"\\d+", raw):
+    if not re.fullmatch(r"\d+", raw):
         return None
     return raw.lstrip("0") or "0"
 
