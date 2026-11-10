@@ -8375,6 +8375,33 @@ def export_project_asbuilt(results_by_floor, site_changes, label_pattern=None):
     return {'port_map':pm.name,'quantity_summary':sm.name,'cable_schedule':cs.name}
 
 
+def _asbuilt_write_dxf(src, changes, out_path):
+    """Write a separate, independently verified As-Built DXF (original untouched)."""
+    try:
+        import dxfedit as _dx
+        d=_dx.Dxf(src); ed=_dx.Editor(d)
+        dels=[]; moves=[]
+        for ch in changes:
+            if ch.get('op') not in {'MOVE_ENDPOINT','DELETE_ENDPOINT','SITE_REMOVE'}: continue
+            t=ch['target']
+            handles=[str(h) for h in (t.get('ancestor_handles') or [])]+[str(t.get('handle'))]
+            tgt=d.resolve(handles)
+            if ch['op']=='MOVE_ENDPOINT':
+                ed.move(tgt,(ch['x'],ch['y']))
+                moves.append({'path':handles,'delta':[ch['x']-tgt['world'][0],ch['y']-tgt['world'][1]]})
+            else:
+                ed.delete(tgt); dels.append({'path':handles})
+        if not dels and not moves:
+            return {'file':None,'verification':None,'error':'No CAD endpoint edits in this batch.'}
+        out_path=Path(out_path); ed.write(out_path)
+        ver=_dx.verify_output(str(src),str(out_path),dels,moves)
+        if not ver.get('ok'):
+            return {'file':out_path.name,'verification':ver,'error':'Verification FAILED: '+'; '.join(ver.get('problems') or [])[:300]}
+        return {'file':out_path.name,'verification':ver,'error':None}
+    except Exception as exc:
+        return {'file':None,'verification':None,'error':f'{type(exc).__name__}: {exc}'}
+
+
 def generate_asbuilt_package(floor,changes,label_pattern=None):
     """Generate a Desktop AutoCAD As-Built change script for one analyzed drawing.
 
@@ -8471,23 +8498,23 @@ def generate_asbuilt_package(floor,changes,label_pattern=None):
     # Do not allow two nested edits to the same root INSERT in one script: the
     # second clone would otherwise start from the original definition and could
     # overwrite the first edit. Fail before producing a misleading package.
-    nested_root_changes={}
+    # The separate DXF below handles any number of edits per root.  The legacy
+    # AutoCAD script cannot, so conflicting nested edits are left out of the
+    # script only (and reported) instead of aborting the whole package.
+    all_normalized=list(normalized)
+    dxf_info=_asbuilt_write_dxf(src,all_normalized,EXPORTS/f'{stem}_ASBUILT.dxf')
+    nested_root_changes={}; lsp_skipped=[]; keep=[]
     for ch in normalized:
-        if not ch.get('nested_clone'):
-            continue
-        t=ch.get('target') or {}
-        roots=list(t.get('ancestor_handles') or [])
-        if not roots:
-            raise RuntimeError('Nested edit is missing its root INSERT handle.')
-        root_handle=str(roots[0])
-        if root_handle in nested_root_changes:
-            raise RuntimeError(f'Cannot safely combine multiple nested edits under root INSERT {root_handle} in one package. Review/export them separately.')
-        nested_root_changes[root_handle]=ch
-    for ch in normalized:
-        if ch.get('op') in {'MOVE_ENDPOINT','DELETE_ENDPOINT','SITE_REMOVE'} and not ch.get('nested_clone'):
-            h=str((ch.get('target') or {}).get('handle') or '')
-            if h in nested_root_changes:
-                raise RuntimeError(f'Root INSERT {h} also has a direct edit; split the root and nested changes into separate packages.')
+        if ch.get('nested_clone'):
+            roots=list((ch.get('target') or {}).get('ancestor_handles') or [])
+            rh=str(roots[0]) if roots else ''
+            if not rh or rh in nested_root_changes:
+                lsp_skipped.append(ch); continue
+            nested_root_changes[rh]=ch
+        keep.append(ch)
+    keep=[c for c in keep if c.get('nested_clone') or str((c.get('target') or {}).get('handle') or '') not in nested_root_changes or c.get('op') not in {'MOVE_ENDPOINT','DELETE_ENDPOINT','SITE_REMOVE'}]
+    lsp_skipped+= [c for c in normalized if c not in keep and c not in lsp_skipped]
+    normalized=keep
 
     lines=[
       '(vl-load-com)',
@@ -8665,10 +8692,13 @@ def generate_asbuilt_package(floor,changes,label_pattern=None):
     zpath=EXPORTS/f'{stem}_PACKAGE.zip'
     with zipfile.ZipFile(zpath,'w',zipfile.ZIP_DEFLATED) as z:
         for fp in (lsp,scr,readme,manifest): z.write(fp,arcname=fp.name)
+        if dxf_info.get('file') and (EXPORTS/dxf_info['file']).exists(): z.write(EXPORTS/dxf_info['file'],arcname=dxf_info['file'])
         for name in adjusted_files.values():
             fp=EXPORTS/name
             if fp.exists(): z.write(fp,arcname=fp.name)
-    return {'zip':zpath.name,'scr':scr.name,'lsp':lsp.name,'readme':readme.name,'manifest':manifest.name,'changes':len(normalized),'floor':floor,**adjusted_files}
+    return {'zip':zpath.name,'scr':scr.name,'lsp':lsp.name,'readme':readme.name,'manifest':manifest.name,'changes':len(all_normalized),'floor':floor,
+            'dxf':dxf_info.get('file'),'dxf_verification':dxf_info.get('verification'),'dxf_error':dxf_info.get('error'),
+            'lsp_skipped':len(lsp_skipped),**adjusted_files}
 
 def generate_asbuilt_project_package(changes,label_pattern=None):
     """Generate a full-project As-Built package from reviewed changes across floors.
