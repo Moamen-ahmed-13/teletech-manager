@@ -53,14 +53,13 @@ _load_project_env()
 
 
 INVOICE_LLM_SYSTEM_PROMPT = (
-    "You are extracting line items from a scanned Egyptian supply invoice (Arabic + English, RTL table).\n"
-    "Return JSON only. Copy printed values; never fix or compute numbers. Columns read right-to-left:\n"
-    "م / اسم الصنف / الوحدة / الكمية / سعر الوحدة / الإجمالي. One output line per م. Each item cell repeats the\n"
-    "description twice: merge into one line, English/model text in description_en. part_numbers: every P/N or model token\n"
-    "exactly as printed (digits converted), never invented. Convert Arabic-Indic digits to 0-9 (the zero looks like a dot),\n"
-    "remove thousands separators, and keep the raw printed strings in raw.qty / raw.unit_price / raw.line_total.\n"
-    "Unreadable or blank => null plus a flag. Also return invoice_no, supply_order_no, customer, supplier,\n"
-    "date (null if blank), printed_grand_total when shown."
+    "You are extracting line items from a scanned Egyptian supply invoice (Arabic + English, RTL table).\\n"
+    "Return JSON only. Copy printed values exactly; NEVER calculate, repair, normalize by guessing, or infer a missing digit.\\n"
+    "Columns in printed order: م / اسم الصنف / الوحدة / الكمية / سعر الوحدة / الإجمالي. One output line per م.\\n"
+    "CRITICAL NUMERIC READING RULES: inspect each of the three numeric cells independently, digit by digit. Re-read every quantity, unit price and line total a second time before answering. Distinguish ٣/٥/٨/٩ and ٠ from punctuation; preserve leading/trailing digits and all printed zeros. Do not drop a final zero or add a zero because the multiplication looks plausible. Do not use qty × unit price to invent or correct any printed value. If even one digit is unclear, return null for that field and add 'numeric_digit_unclear' to flags.\\n"
+    "For raw.qty, raw.unit_price and raw.line_total, copy the visible cell text as printed, preserving separators and punctuation. The numeric fields must represent exactly those raw cell digits after only converting Arabic-Indic digits and removing visual thousands separators. If raw text and numeric value cannot be reconciled, return null for the numeric field.\\n"
+    "The page is bilingual and may contain faint/blurred digits: do not trust a first-pass impression. Each item cell may repeat the description twice; merge into one line, English/model text in description_en. part_numbers: every P/N or model token exactly as printed, never invented.\\n"
+    "Unreadable or blank => null plus a flag. Also return invoice_no, supply_order_no, customer, supplier, date (null if blank), and printed_grand_total when shown."
 )
 
 INVOICE_LLM_PAGE_SCHEMA = {
@@ -356,7 +355,7 @@ def _call_invoice_page_vision(page_png: str, page_no: int, provider: str, model:
     raise RuntimeError(f"Unsupported invoice vision provider: {provider!r}")
 
 
-def _render_invoice_pages_to_png(pdf_path: str | Path, dpi: int = 220) -> List[Tuple[int, str]]:
+def _render_invoice_pages_to_png(pdf_path: str | Path, dpi: int = 320) -> List[Tuple[int, str]]:
     if fitz is None:
         raise RuntimeError("PyMuPDF (fitz) is required for invoice LLM extraction.")
     pdf_path = Path(pdf_path)
@@ -479,7 +478,7 @@ def extract_invoice_with_vision(pdf_path: str | Path, provider: Optional[str] = 
     cache_stem = f"{digest}.{provider}.{safe_model}"
     # Version the final aggregate cache when merge/validation logic changes, while
     # reusing the existing per-page checkpoints to avoid repeat API calls.
-    cache_path = cache_root / f"{cache_stem}.v2.json"
+    cache_path = cache_root / f"{cache_stem}.v3.json"
     cached = _read_json_cache(cache_path)
     if cached:
         return normalize_invoice_llm_output(cached)
@@ -488,7 +487,7 @@ def extract_invoice_with_vision(pdf_path: str | Path, provider: Optional[str] = 
     payload: Dict[str, Any] = {"document": {"invoice_no": None, "supply_order_no": None, "customer": None, "supplier": None, "date": None, "printed_grand_total": None}, "pages": [], "document_sources": []}
     # Per-page checkpoints allow a failed/interrupted invoice to resume without
     # sending already completed pages to the provider again.
-    page_cache_dir = cache_root / (cache_stem + ".pages")
+    page_cache_dir = cache_root / (cache_stem + ".pages.v3")
     page_cache_dir.mkdir(parents=True, exist_ok=True)
     document_fields = ("invoice_no", "supply_order_no", "customer", "supplier", "date", "printed_grand_total")
 
