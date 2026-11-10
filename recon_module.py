@@ -1986,9 +1986,11 @@ def run_matching(st, user):
         if m.get('state') == 'approved':
             n['kept'] += 1
             continue
-        if not eff(r, 'description'):
+        has_invoice_item_no = (r.get('doc_kind') == 'invoice' and
+                               (r.get('ocr') or {}).get('contract_item_no') not in (None, ''))
+        if not eff(r, 'description') and not has_invoice_item_no:
             r['match'] = {'state': 'unmatched', 'boq_id': None, 'candidates': [], 'method': 'auto', 'rejected_ids': m.get('rejected_ids', []),
-                          'note': 'No description to match - enter it in review.'}
+                          'note': 'No description or invoice item number to match - enter it in review.'}
             n['unmatched'] += 1
             continue
         cands = _score_candidates(st, r)
