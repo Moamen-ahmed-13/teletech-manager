@@ -1781,7 +1781,7 @@ def delete_doc(project_dir, st, doc_id, user):
 # ----------------------------------------------------------------------------
 # matching
 # ----------------------------------------------------------------------------
-_KINDS = (('organizer', r'organi[sz]er|manager'), ('patch cord', r'patch[\s-]*cord|cord|jumper'), ('faceplate', r'face[\s-]*plate|faceplate'), ('outlet', r'outlet|jack|keystone|socket'),
+_KINDS = (('organizer', r'organi[sz]er|manag(?:er|ement)|cable[\s-]*management'), ('patch cord', r'patch[\s-]*cord|cord|jumper'), ('faceplate', r'face[\s-]*plate|faceplate'), ('outlet', r'outlet|jack|keystone|socket'),
           ('access point', r'\baccess[\s-]*point\b|\bwi[ -]?fi\b|wireless[\s-]*ap|\bAP\b'),
           ('firewall', r'\bfirewall\b'), ('switch', r'\b(?:access|aggregation|agg)?[\s-]*switch\b|\bswitch\b'),
           ('rack', r'\brack\b|\b\d{1,3}\s*u\b'), ('panel', r'panel'),
@@ -1814,6 +1814,18 @@ def _switch_family(text):
     return None
 
 
+def _length_m(text):
+    """Extract an explicitly stated cable/cord length in metres; no inferred units."""
+    t = (text or '').lower().replace(',', '.')
+    m = re.search(r'(?<![a-z0-9])(\d+(?:\.\d+)?)\s*(?:ft|feet|foot)\b', t)
+    if m:
+        return float(m.group(1)) * 0.3048
+    m = re.search(r'(?<![a-z0-9])(\d+(?:\.\d+)?)\s*(?:m|met(?:er|re)s?)\b', t)
+    if m:
+        return float(m.group(1))
+    return None
+
+
 def _spec_conflict(mir_text, boq_text):
     # Hard constraints prevent technically different products from being suggested.
     port_patterns = [r'\b(\d{1,3})\s*-?\s*ports?\b', r'\bports?\s*(\d{1,3})\b']
@@ -1821,6 +1833,9 @@ def _spec_conflict(mir_text, boq_text):
     boq_ports = _spec_value(boq_text, port_patterns)
     if mir_ports is not None and boq_ports is not None and mir_ports != boq_ports:
         return 'port_count_mismatch'
+    mir_length, boq_length = _length_m(mir_text), _length_m(boq_text)
+    if mir_length is not None and boq_length is not None and abs(mir_length - boq_length) > max(0.15, boq_length * 0.20):
+        return 'cable_length_mismatch'
     mir_role, boq_role = _switch_family(mir_text), _switch_family(boq_text)
     if mir_role and boq_role and mir_role != boq_role:
         return 'switch_role_mismatch'
@@ -1887,6 +1902,14 @@ def _score_candidates(st, rec):
         if label and d_tok:
             bov = _hits(label, d_tok) / len(label)
             score += 0.15 * bov
+        # Explicit technical agreement improves ranking for short descriptions.
+        mir_ports = _spec_value(match_text, [r'\b(\d{1,3})\s*-?\s*ports?\b', r'\bports?\s*(\d{1,3})\b'])
+        boq_ports = _spec_value(boq_text, [r'\b(\d{1,3})\s*-?\s*ports?\b', r'\bports?\s*(\d{1,3})\b'])
+        if mir_ports is not None and boq_ports is not None and mir_ports == boq_ports:
+            score += 0.18; reasons.append('matching port count (%d)' % mir_ports)
+        mir_role, boq_role = _switch_family(match_text), _switch_family(boq_text)
+        if mir_role and boq_role and mir_role == boq_role:
+            score += 0.12; reasons.append('matching switch family (%s)' % mir_role)
         kind_it = _kind(it['item'] + ' ' + it['reference'] + ' ' + it.get('part', ''))
         kind_mir = _kind(match_text)
         if kind_it and kind_mir and kind_it == kind_mir:
