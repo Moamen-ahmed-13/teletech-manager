@@ -1844,7 +1844,7 @@ def _spec_conflict(mir_text, boq_text):
 
 def _score_candidates(st, rec):
     items = (st.get('boq') or {}).get('items', [])
-    desc = eff(rec, 'description') or ''
+    desc = _dedupe_repeated_description(eff(rec, 'description') or '')
     part_numbers = (rec.get('ocr') or {}).get('part_numbers') or []
     match_text = ' '.join([desc] + [str(x) for x in part_numbers if str(x).strip()])
     mir_unit = canon_unit(eff(rec, 'unit'))
