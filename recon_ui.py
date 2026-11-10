@@ -178,7 +178,7 @@ RECON_HTML = r'''
   <div class="rc-upload-grid">
    <div class="rc-upload-card"><div class="rc-upload-top"><div class="rc-upload-icon">XLS</div><div><h4>ملف المقايسة BOQ</h4></div></div><div class="rc-file-row"><input id="rcBoqFile" type="file" accept=".xlsx,.xlsm"><button id="rcBoqUp">رفع المقايسة</button></div></div>
    <div class="rc-upload-card"><div class="rc-upload-top"><div class="rc-upload-icon">PDF</div><div><h4>مستندات MIR</h4></div></div><div class="rc-file-row"><input id="rcMirFiles" type="file" accept=".pdf" multiple><button id="rcMirUp">رفع MIR</button></div></div>
-   <div class="rc-upload-card"><div class="rc-upload-top"><div class="rc-upload-icon">INV</div><div><h4>فواتير التوريد</h4></div></div><div class="rc-file-row"><input id="rcInvoiceFiles" type="file" accept=".pdf" multiple><button id="rcInvoiceUp">رفع الفواتير</button><button id="rcImportRepoInvoices" class="alt">استيراد فواتير المشروع</button><button id="rcImportRepoDocs" class="alt">استيراد ملفات المشروع</button></div></div>
+   <div class="rc-upload-card"><div class="rc-upload-top"><div class="rc-upload-icon">INV</div><div><h4>فواتير التوريد</h4></div></div><div class="rc-file-row"><input id="rcInvoiceFiles" type="file" accept=".pdf" multiple><button id="rcInvoiceUp">رفع الفواتير</button></div></div>
   </div>
   <details class="advanced"><summary>ملفات محفوظة بالمشروع</summary><div class="advInner"><div id="rcDocPick" class="sub">Loading...</div><div class="rc-bar"><button id="rcImport" class="alt">Import selected files</button></div></div></details>
   <div class="rc-doc-heading"><h4>المقايسة الحالية</h4><span class="small sub">Excel reference</span></div><div id="rcBoqInfo" class="sub">No BOQ yet.</div>
