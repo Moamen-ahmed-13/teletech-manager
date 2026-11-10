@@ -7363,6 +7363,35 @@ def _asbuilt_sheet_floor(page_number, total_pages):
     return pair_floor.get(idx,'')
 
 
+def _asbuilt_median_nearest_spacing(coords):
+    """Compute a floor's median nearest-endpoint spacing once, not per markup."""
+    if np is None or len(coords)<2:
+        return 1.0
+    try:
+        arr=np.asarray(coords,dtype=np.float64)
+        if arr.ndim!=2 or arr.shape[1]!=2 or len(arr)<2:
+            return 1.0
+        try:
+            from scipy.spatial import cKDTree
+            distances,_=cKDTree(arr).query(arr,k=2)
+            nearest=np.asarray(distances[:,1],dtype=np.float64)
+        except Exception:
+            # Bounded-memory vectorized fallback; still O(N^2), but in NumPy/C
+            # and performed once per floor rather than once per colored markup.
+            nearest=np.full((len(arr),),np.inf,dtype=np.float64)
+            for start in range(0,len(arr),64):
+                end=min(len(arr),start+64)
+                dx=arr[start:end,0,None]-arr[None,:,0]
+                dy=arr[start:end,1,None]-arr[None,:,1]
+                d2=dx*dx+dy*dy
+                d2[np.arange(end-start),np.arange(start,end)]=np.inf
+                nearest[start:end]=np.sqrt(np.min(d2,axis=1))
+        nearest=nearest[np.isfinite(nearest)&(nearest>1e-8)]
+        return float(np.median(nearest)) if len(nearest) else 1.0
+    except Exception:
+        return 1.0
+
+
 def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',page_to_cad_affine=None,registration_diagnostics=None,max_results=8):
     """Rank endpoint candidates using registered CAD distance, endpoint density,
     semantic hints (when present), and nearest-vs-runner-up separation.
@@ -7376,24 +7405,23 @@ def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',
     except Exception:
         sx=sy=500.0
     mapped_xy=_asbuilt_norm_to_cad_xy(sx,sy,catalog,floor_hint=floor_hint,page_to_cad_affine=page_to_cad_affine)
-    floor_rows=[t for t in (catalog or []) if isinstance(t,dict) and
-                (not floor_hint or str(t.get('floor') or '')==str(floor_hint))]
+    # Reuse the already-normalized floor list. The previous implementation
+    # filtered the full project catalog and recomputed every endpoint's nearest
+    # neighbour (O(N^2)) for EVERY markup candidate, multiplying the cost by
+    # pages x markups. Spacing is now calculated once per floor during scan setup.
+    floor_rows=(per_floor or {}).get(str(floor_hint)) if floor_hint else None
+    if floor_rows is None:
+        floor_rows=[t for t in (catalog or []) if isinstance(t,dict) and
+                    (not floor_hint or str(t.get('floor') or '')==str(floor_hint))]
     if not floor_rows:
         return []
-    # Typical nearest-neighbour spacing provides a drawing-scale-independent
-    # distance unit; fixed world-unit thresholds were unreliable across floors.
     coords=[]
     for t in floor_rows:
         try: coords.append((float(t.get('x') or 0),float(t.get('y') or 0)))
         except Exception: coords.append((0.0,0.0))
-    nearest=[]
-    for i,(x,y) in enumerate(coords):
-        ds=[math.hypot(x-x2,y-y2) for j,(x2,y2) in enumerate(coords) if i!=j]
-        if ds:
-            v=min(ds)
-            if math.isfinite(v) and v>1e-8: nearest.append(v)
-    nearest.sort()
-    spacing=nearest[len(nearest)//2] if nearest else 1.0
+    spacing=float(floor_rows[0].get('_asbuilt_spacing') or 0.0)
+    if not math.isfinite(spacing) or spacing<=1e-6:
+        spacing=_asbuilt_median_nearest_spacing(coords)
     spacing=max(float(spacing),1e-6)
     norm=lambda v: re.sub(r'[^A-Z0-9\u0600-\u06FF]+',' ',str(v or '').upper()).strip()
     hint=norm(' '.join(str(markup.get(k) or '') for k in ('ocr_text','service_hint','nearby_text')))
@@ -7482,7 +7510,16 @@ def _asbuilt_register_page_to_floor(page_image_path, floor):
         page_image = cv2.imread(str(page_image_path), cv2.IMREAD_COLOR)
         if page_image is None:
             return None, {'ok': False, 'reason': 'Could not read the rendered As-Built page image.'}
-        geom = _ASBUILT_REGISTRATION.load_cad_geometry(drawing_path)
+        # CAD geometry is invariant across pages of the same floor. Cache it
+        # by path + file stat so the second half-sheet does not reload/reparse it.
+        stat=Path(drawing_path).stat()
+        cache_key=(str(Path(drawing_path).resolve()),int(getattr(stat,'st_mtime_ns',int(stat.st_mtime*1e9))),int(stat.st_size))
+        geom=_ASBUILT_REGISTRATION_CACHE.get(cache_key)
+        if geom is None:
+            geom=_ASBUILT_REGISTRATION.load_cad_geometry(drawing_path)
+            if len(_ASBUILT_REGISTRATION_CACHE)>=5:
+                _ASBUILT_REGISTRATION_CACHE.clear()
+            _ASBUILT_REGISTRATION_CACHE[cache_key]=geom
         reg = _ASBUILT_REGISTRATION.register_page_to_dxf(page_image, geom)
         summary = reg.summary()
         if not reg.ok:
@@ -7504,9 +7541,9 @@ def _asbuilt_register_page_to_floor(page_image_path, floor):
         affine = [float(cx[0]), float(cx[1]), float(cy[0]), float(cy[1]), float(cx[2]), float(cy[2])]
         if not all(math.isfinite(v) for v in affine) or abs(affine[0]*affine[3]-affine[1]*affine[2]) < 1e-12:
             return None, {'ok': False, 'reason': 'Computed page-to-CAD transform is invalid.'}
-        return affine, {'ok': True, 'status': reg.status, 'confidence': reg.confidence, 'diagnostics': summary}
+        return affine, {'ok': True, 'status': reg.status, 'confidence': reg.confidence, 'diagnostics': summary}, reg, geom
     except Exception as exc:
-        return None, {'ok': False, 'reason': f'{type(exc).__name__}: {exc}'}
+        return None, {'ok': False, 'reason': f'{type(exc).__name__}: {exc}'}, None, None
 
 
 def _asbuilt_norm_to_cad_xy(x_norm,y_norm,catalog,floor_hint='',page_to_cad_affine=None):
@@ -7566,7 +7603,7 @@ def _asbuilt_detect_blue_arrow_tips(image_path, orange_regions):
     except Exception as e:
         return {'_error':{'status':'ERROR','reason':'Arrow detector failed: '+str(e)}}
 
-def _asbuilt_blob_overlay(rows, page_image_path, floor, catalog):
+def _asbuilt_blob_overlay(rows, page_image_path, floor, catalog, registration=None, geom=None):
     """Re-decide each markup's source endpoint by highlighter-blob coverage of the
     symbol footprint (asbuilt_pipeline).  Confirmed -> becomes the suggestion;
     ambiguous / nothing under the markup -> the distance-based guess is withdrawn
@@ -7583,8 +7620,11 @@ def _asbuilt_blob_overlay(rows, page_image_path, floor, catalog):
         eps=PL.endpoints_from_targets([t for t in catalog if str(t.get('floor') or '')==str(floor)])
         if not eps: return
         PL.attach_footprints(eps,_dx.Dxf(dwg))
-        geom=_ASBUILT_REGISTRATION.load_cad_geometry(dwg)
-        res=PL.analyze_page(img,geom,eps,page_number=int(rows[0].get('page_number') or 1))
+        if geom is None:
+            geom=_ASBUILT_REGISTRATION.load_cad_geometry(dwg)
+        # Reuse the page registration already computed for CAD matching. Without
+        # this, each page ran the expensive SIFT/MAGSAC registration twice.
+        res=PL.analyze_page(img,geom,eps,registration=registration,page_number=int(rows[0].get('page_number') or 1))
         marks=[m for m in res['markups'] if m['color'] in ('pink','yellow','orange')]
         used=set()
         for row in rows:
@@ -7883,6 +7923,10 @@ def asbuilt_chat_start(path,filename,api_key='',model='',label_pattern=None,firs
             rec=dict(t); rec['candidate_key']=rec.get('candidate_key') or f'{floor_name}-T{i:04d}'
             rec['nx']=int(round((float(t.get('x') or 0)-minx)*1000/dx)); rec['ny']=int(round((maxy-float(t.get('y') or 0))*1000/dy))
             norm_rows.append(rec); match_catalog.append(rec)
+        # Cache scale normalization once. All markups on this floor share it.
+        floor_coords=[(float(t.get('x') or 0.0),float(t.get('y') or 0.0)) for t in norm_rows]
+        if norm_rows:
+            norm_rows[0]['_asbuilt_spacing']=_asbuilt_median_nearest_spacing(floor_coords)
         match_per_floor[floor_name]=norm_rows
 
     total_pages=len(pages)
@@ -7930,7 +7974,7 @@ def asbuilt_chat_start(path,filename,api_key='',model='',label_pattern=None,firs
             })
 
         floor_hint=sheet_floor
-        page_affine, registration_info = _asbuilt_register_page_to_floor(pg.get('path'), floor_hint)
+        page_affine, registration_info, page_registration, page_geometry = _asbuilt_register_page_to_floor(pg.get('path'), floor_hint)
         row['cad_registration_ok']=bool(registration_info.get('ok'))
         row['cad_registration_reason']=str(registration_info.get('reason') or '')
         row['cad_registration_diagnostics']=registration_info.get('diagnostics') or {}
@@ -7940,7 +7984,8 @@ def asbuilt_chat_start(path,filename,api_key='',model='',label_pattern=None,firs
             floor_hint=floor_hint,page_to_cad_affine=page_affine,
             registration_diagnostics=registration_info.get('diagnostics') or {}
         )
-        _asbuilt_blob_overlay(_page_rows,pg.get('path'),floor_hint,match_catalog)
+        _asbuilt_blob_overlay(_page_rows,pg.get('path'),floor_hint,match_catalog,
+                              registration=page_registration,geom=page_geometry)
         inventory.extend(_page_rows)
 
     chat_id=uuid.uuid4().hex
