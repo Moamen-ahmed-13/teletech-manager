@@ -1781,11 +1781,11 @@ def delete_doc(project_dir, st, doc_id, user):
 # ----------------------------------------------------------------------------
 # matching
 # ----------------------------------------------------------------------------
-_KINDS = (('patch cord', r'patch[\s-]*cord|cord|jumper'), ('faceplate', r'face[\s-]*plate|faceplate'), ('outlet', r'outlet|jack|keystone|socket'),
+_KINDS = (('organizer', r'organi[sz]er|manager'), ('patch cord', r'patch[\s-]*cord|cord|jumper'), ('faceplate', r'face[\s-]*plate|faceplate'), ('outlet', r'outlet|jack|keystone|socket'),
           ('access point', r'\baccess[\s-]*point\b|\bwi[ -]?fi\b|wireless[\s-]*ap|\bAP\b'),
           ('firewall', r'\bfirewall\b'), ('switch', r'\b(?:access|aggregation|agg)?[\s-]*switch\b|\bswitch\b'),
           ('rack', r'\brack\b|\b\d{1,3}\s*u\b'), ('panel', r'panel'),
-          ('organizer', r'organi[sz]er|manager'), ('cable', r'cables?\b|utp|ftp|stp'))
+          ('cable', r'cables?\b|utp|ftp|stp'))
 
 
 def _kind(text):
