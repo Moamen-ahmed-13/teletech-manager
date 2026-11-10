@@ -7566,6 +7566,55 @@ def _asbuilt_detect_blue_arrow_tips(image_path, orange_regions):
     except Exception as e:
         return {'_error':{'status':'ERROR','reason':'Arrow detector failed: '+str(e)}}
 
+def _asbuilt_blob_overlay(rows, page_image_path, floor, catalog):
+    """Re-decide each markup's source endpoint by highlighter-blob coverage of the
+    symbol footprint (asbuilt_pipeline).  Confirmed -> becomes the suggestion;
+    ambiguous / nothing under the markup -> the distance-based guess is withdrawn
+    and the row is flagged for review with a reason (never silently skipped)."""
+    if not rows or cv2 is None or np is None or not catalog or _ASBUILT_REGISTRATION is None:
+        return
+    try:
+        import asbuilt_pipeline as PL, dxfedit as _dx
+        floor_result=PROJECT_RESULTS.get(str(floor)) or {}
+        dwg=str(floor_result.get('drawing') or '').strip()
+        if not dwg or not Path(dwg).is_file(): return
+        img=cv2.imread(str(page_image_path),cv2.IMREAD_COLOR)
+        if img is None: return
+        eps=PL.endpoints_from_targets([t for t in catalog if str(t.get('floor') or '')==str(floor)])
+        if not eps: return
+        PL.attach_footprints(eps,_dx.Dxf(dwg))
+        geom=_ASBUILT_REGISTRATION.load_cad_geometry(dwg)
+        res=PL.analyze_page(img,geom,eps,page_number=int(rows[0].get('page_number') or 1))
+        marks=[m for m in res['markups'] if m['color'] in ('pink','yellow','orange')]
+        used=set()
+        for row in rows:
+            if row.get('color') not in ('pink','yellow','orange'): continue
+            bx,by,bw,bh=row.get('bbox_px') or [0,0,0,0]; cx,cy=bx+bw/2.0,by+bh/2.0
+            best=None
+            for i,m in enumerate(marks):
+                if i in used or m['color']!=row['color']: continue
+                d=math.hypot(m['center_px'][0]-cx,m['center_px'][1]-cy)
+                if d<=max(12.0,0.5*max(bw,bh)) and (best is None or d<best[0]): best=(d,i,m)
+            if not best: continue
+            used.add(best[1]); m=best[2]
+            row['blob_match_state']=m['state']; row['blob_match_reason']=m.get('reason','')
+            if m['state']=='CONFIRMED':
+                tid=str(m.get('target_id') or '')
+                opts=[o for o in (row.get('candidate_options') or []) if str(o.get('target_id'))==tid]
+                rest=[o for o in (row.get('candidate_options') or []) if str(o.get('target_id'))!=tid]
+                row['candidate_options']=opts+rest
+                row['suggested_target_id']=tid; row['suggested_target_label']=m.get('label') or tid
+                row['match_confidence']=float(m.get('confidence') or 0.0)
+                row['match_status']='BLOB_CONFIRMED'
+            elif m['state'] in ('AMBIGUOUS','NOT_DETECTED','REGISTRATION_FAILED'):
+                row['suggested_target_id']=''; row['suggested_target_label']=''
+                row['match_confidence']=0.0
+                row['match_status']={'AMBIGUOUS':'AMBIGUOUS_REVIEW','NOT_DETECTED':'NOT_DETECTED_REVIEW','REGISTRATION_FAILED':'REGISTRATION_FAILED'}[m['state']]
+                row['human_review_required']=True
+    except Exception as exc:
+        print(f'[AS-BUILT] blob overlay skipped: {type(exc).__name__}: {exc}')
+
+
 def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=None, per_floor=None, floor_hint='',page_to_cad_affine=None,registration_diagnostics=None):
     """Deterministic code-only markup inventory from OpenCV regions.
 
@@ -7886,11 +7935,13 @@ def asbuilt_chat_start(path,filename,api_key='',model='',label_pattern=None,firs
         row['cad_registration_reason']=str(registration_info.get('reason') or '')
         row['cad_registration_diagnostics']=registration_info.get('diagnostics') or {}
         rows.append(row)
-        inventory.extend(_asbuilt_code_markup_inventory(
+        _page_rows=_asbuilt_code_markup_inventory(
             cv,pno,'',catalog=match_catalog,per_floor=match_per_floor,
             floor_hint=floor_hint,page_to_cad_affine=page_affine,
             registration_diagnostics=registration_info.get('diagnostics') or {}
-        ))
+        )
+        _asbuilt_blob_overlay(_page_rows,pg.get('path'),floor_hint,match_catalog)
+        inventory.extend(_page_rows)
 
     chat_id=uuid.uuid4().hex
     result={
