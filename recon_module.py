@@ -1858,8 +1858,44 @@ def _spec_conflict(mir_text, boq_text):
         return 'rack_height_mismatch'
     return None
 
+def _item_no_key(value):
+    """Normalize a printed invoice/BOQ item number without fuzzy digit guessing."""
+    if value is None or isinstance(value, bool):
+        return None
+    raw = str(value).translate(_AR_DIGITS).strip()
+    # Excel numeric cells may arrive as '36.0'; accept only an integer representation.
+    if re.fullmatch(r"\d+\.0+", raw):
+        raw = raw.split(".", 1)[0]
+    if not re.fullmatch(r"\d+", raw):
+        return None
+    return raw.lstrip("0") or "0"
+
+
 def _score_candidates(st, rec):
     items = (st.get('boq') or {}).get('items', [])
+
+    # Invoice line numbers are the contractual BOQ item numbers. This is the
+    # primary key: do not let text similarity redirect an explicitly numbered
+    # invoice line to a different BOQ row.
+    if rec.get('doc_kind') == 'invoice':
+        invoice_no = _item_no_key((rec.get('ocr') or {}).get('contract_item_no'))
+        if invoice_no is not None:
+            numbered = [it for it in items if _item_no_key(it.get('sn')) == invoice_no]
+            if numbered:
+                return [{
+                    'boq_id': it['id'], 'score': 1.0,
+                    'reasons': ['invoice item no. %s exactly matches BOQ item no. %s' % (
+                        (rec.get('ocr') or {}).get('contract_item_no'), it.get('sn'))],
+                    'unit_state': 'boq_unit_unknown' if not boq_unit(st, it)[0] else (
+                        'mir_unit_missing' if not canon_unit(eff(rec, 'unit')) else (
+                            'ok' if boq_unit(st, it)[0] == canon_unit(eff(rec, 'unit')) else 'mismatch')),
+                    'strong': ['sn', invoice_no], 'exact_ev': True,
+                    'match_basis': 'invoice_item_number'
+                } for it in numbered]
+            # An explicit but unrecognized number is safer as unmatched than
+            # silently selecting a different BOQ item by description.
+            return []
+
     desc = _dedupe_repeated_description(eff(rec, 'description') or '')
     part_numbers = (rec.get('ocr') or {}).get('part_numbers') or []
     match_text = ' '.join([desc] + [str(x) for x in part_numbers if str(x).strip()])
@@ -1950,15 +1986,25 @@ def run_matching(st, user):
         if m.get('state') == 'approved':
             n['kept'] += 1
             continue
-        if not eff(r, 'description'):
+        has_invoice_item_no = (r.get('doc_kind') == 'invoice' and
+                               (r.get('ocr') or {}).get('contract_item_no') not in (None, ''))
+        if not eff(r, 'description') and not has_invoice_item_no:
             r['match'] = {'state': 'unmatched', 'boq_id': None, 'candidates': [], 'method': 'auto', 'rejected_ids': m.get('rejected_ids', []),
-                          'note': 'No description to match - enter it in review.'}
+                          'note': 'No description or invoice item number to match - enter it in review.'}
             n['unmatched'] += 1
             continue
         cands = _score_candidates(st, r)
         state, bid = classify_candidates(cands)
-        r['match'] = {'state': state, 'boq_id': bid, 'candidates': cands[:6], 'method': 'auto',
+        match_note = None
+        if r.get('doc_kind') == 'invoice':
+            invoice_no = (r.get('ocr') or {}).get('contract_item_no')
+            if invoice_no not in (None, '') and not cands:
+                state = 'unmatched'
+                match_note = 'Invoice item no. %s was not found as a BOQ item number; verify the printed number or BOQ numbering.' % invoice_no
+        r['match'] = {'state': state, 'boq_id': bid, 'candidates': cands[:6], 'method': 'invoice_item_number' if cands and cands[0].get('match_basis') == 'invoice_item_number' else 'auto',
                       'rejected_ids': m.get('rejected_ids', []), 'decided_by': None, 'decided_at': None}
+        if match_note:
+            r['match']['note'] = match_note
         n[state] += 1
     _audit(st, user, 'MATCH_RUN', json.dumps(n))
     return n

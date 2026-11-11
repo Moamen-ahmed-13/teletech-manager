@@ -6338,10 +6338,13 @@ CANDIDATE ENDPOINTS FOR {floor}:
     }
 
 
-def _asbuilt_project_candidate_catalog(label_pattern=None):
-    """Build one unique candidate catalog across every analyzed project floor."""
+def _asbuilt_project_candidate_catalog(label_pattern=None, floors=None):
+    """Build a candidate catalog only for floors represented by this upload when supplied."""
     floor_order=['Ground Floor','First Floor','Second Floor','Third Floor','Roof Floor']
     floor_order += [f for f in PROJECT_RESULTS if f not in floor_order]
+    wanted_floors={str(x) for x in (floors or []) if str(x).strip()}
+    if wanted_floors:
+        floor_order=[f for f in floor_order if f in wanted_floors]
     all_rows=[]; by_key={}; lines=[]; per_floor={}
     fidx=0
     for floor in floor_order:
@@ -7073,64 +7076,49 @@ def _asbuilt_cv_color_inventory(image_path, legend_path=None):
 
                     # The known legend order is:
                     # pink -> green -> yellow -> orange -> orange.
-                    # Search for a compact vertical cluster.  This is much
-                    # safer than suppressing an arbitrary rectangle.
+                    # The old five-deep Cartesian search multiplied every
+                    # color-component count together and could dominate scan
+                    # time on dense/high-resolution pages. Keep only the three
+                    # nearest vertically aligned candidates at each stage.
                     candidates=[]
+                    x_tol=max(220,0.18*w)
+                    max_gap=max(650,0.55*h)
+                    def _next_legend_components(color_name, anchor, x_origin, excluded=None):
+                        opts=[q for q in page_components[color_name]
+                              if q is not excluded and q['cy']>anchor['cy']
+                              and q['cy']-anchor['cy']<=max_gap
+                              and abs(q['cx']-x_origin)<=x_tol]
+                        opts.sort(key=lambda q:(q['cy']-anchor['cy'],abs(q['cx']-x_origin)))
+                        return opts[:3]
                     for p in page_components['pink']:
-                        for g in page_components['green']:
-                            if g['cy'] <= p['cy'] or abs(g['cx']-p['cx']) > max(220,0.18*w):
-                                continue
-                            for yel in page_components['yellow']:
-                                if yel['cy'] <= g['cy'] or abs(yel['cx']-p['cx']) > max(220,0.18*w):
-                                    continue
-                                for o1 in page_components['orange']:
-                                    if o1['cy'] <= yel['cy'] or abs(o1['cx']-p['cx']) > max(220,0.18*w):
-                                        continue
-                                    for o2 in page_components['orange']:
-                                        if o2 is o1 or o2['cy'] <= o1['cy'] or abs(o2['cx']-p['cx']) > max(220,0.18*w):
-                                            continue
-
+                        for g in _next_legend_components('green',p,p['cx']):
+                            for yel in _next_legend_components('yellow',g,p['cx']):
+                                for o1 in _next_legend_components('orange',yel,p['cx']):
+                                    for o2 in _next_legend_components('orange',o1,p['cx'],excluded=o1):
                                         pts=[p,g,yel,o1,o2]
                                         ys=[q['cy'] for q in pts]
                                         xs=[q['cx'] for q in pts]
                                         minx,maxx=min(q['x'] for q in pts),max(q['x']+q['w'] for q in pts)
                                         miny,maxy=min(q['y'] for q in pts),max(q['y']+q['h'] for q in pts)
                                         bw=maxx-minx; bh=maxy-miny
-                                        if bw<=0 or bh<=0:
+                                        if bw<=0 or bh<=0 or bw>max(320,0.30*w) or bh>max(650,0.55*h):
                                             continue
-
-                                        # Legend strokes are horizontally elongated
-                                        # and tightly aligned in x.
-                                        if bw > max(320,0.30*w) or bh > max(650,0.55*h):
+                                        if max(xs)-min(xs)>max(220,0.16*w):
                                             continue
-                                        xspread=max(xs)-min(xs)
-                                        if xspread > max(220,0.16*w):
-                                            continue
-
-                                        # Similarity to reference component shapes.
                                         shape_score=0.0; used=0
                                         for cname,q in [('pink',p),('green',g),('yellow',yel),('orange',o1)]:
                                             if cname not in ref_sig:
                                                 continue
-                                            ra,rw0,rh0=ref_sig[cname]
-                                            # Resolution/phone-camera scale can
-                                            # change absolute component size by
-                                            # a large factor.  Use the reference
-                                            # primarily for the stroke shape.
+                                            _ra,rw0,rh0=ref_sig[cname]
                                             ref_aspect=rw0/max(rh0,1)
                                             q_aspect=q['w']/max(q['h'],1)
                                             aspect_pen=abs(np.log((q_aspect+1e-6)/(ref_aspect+1e-6)))
-                                            local=max(0.0,1.0-0.75*aspect_pen)
-                                            shape_score += local
+                                            shape_score += max(0.0,1.0-0.75*aspect_pen)
                                             used += 1
                                         shape_score /= max(used,1)
-
-                                        # Normalize vertical spacing; legend rows
-                                        # are relatively regular.
                                         gaps=[ys[i+1]-ys[i] for i in range(4)]
                                         spacing_cv=(max(gaps)-min(gaps))/max(np.mean(gaps),1.0)
                                         spacing_score=max(0.0,1.0-0.8*spacing_cv)
-
                                         score=0.65*shape_score+0.35*spacing_score
                                         candidates.append((score,(minx,miny,bw,bh)))
 
@@ -7374,6 +7362,35 @@ def _asbuilt_sheet_floor(page_number, total_pages):
     return pair_floor.get(idx,'')
 
 
+def _asbuilt_median_nearest_spacing(coords):
+    """Compute a floor's median nearest-endpoint spacing once, not per markup."""
+    if np is None or len(coords)<2:
+        return 1.0
+    try:
+        arr=np.asarray(coords,dtype=np.float64)
+        if arr.ndim!=2 or arr.shape[1]!=2 or len(arr)<2:
+            return 1.0
+        try:
+            from scipy.spatial import cKDTree
+            distances,_=cKDTree(arr).query(arr,k=2)
+            nearest=np.asarray(distances[:,1],dtype=np.float64)
+        except Exception:
+            # Bounded-memory vectorized fallback; still O(N^2), but in NumPy/C
+            # and performed once per floor rather than once per colored markup.
+            nearest=np.full((len(arr),),np.inf,dtype=np.float64)
+            for start in range(0,len(arr),64):
+                end=min(len(arr),start+64)
+                dx=arr[start:end,0,None]-arr[None,:,0]
+                dy=arr[start:end,1,None]-arr[None,:,1]
+                d2=dx*dx+dy*dy
+                d2[np.arange(end-start),np.arange(start,end)]=np.inf
+                nearest[start:end]=np.sqrt(np.min(d2,axis=1))
+        nearest=nearest[np.isfinite(nearest)&(nearest>1e-8)]
+        return float(np.median(nearest)) if len(nearest) else 1.0
+    except Exception:
+        return 1.0
+
+
 def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',page_to_cad_affine=None,registration_diagnostics=None,max_results=8):
     """Rank endpoint candidates using registered CAD distance, endpoint density,
     semantic hints (when present), and nearest-vs-runner-up separation.
@@ -7387,24 +7404,23 @@ def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',
     except Exception:
         sx=sy=500.0
     mapped_xy=_asbuilt_norm_to_cad_xy(sx,sy,catalog,floor_hint=floor_hint,page_to_cad_affine=page_to_cad_affine)
-    floor_rows=[t for t in (catalog or []) if isinstance(t,dict) and
-                (not floor_hint or str(t.get('floor') or '')==str(floor_hint))]
+    # Reuse the already-normalized floor list. The previous implementation
+    # filtered the full project catalog and recomputed every endpoint's nearest
+    # neighbour (O(N^2)) for EVERY markup candidate, multiplying the cost by
+    # pages x markups. Spacing is now calculated once per floor during scan setup.
+    floor_rows=(per_floor or {}).get(str(floor_hint)) if floor_hint else None
+    if floor_rows is None:
+        floor_rows=[t for t in (catalog or []) if isinstance(t,dict) and
+                    (not floor_hint or str(t.get('floor') or '')==str(floor_hint))]
     if not floor_rows:
         return []
-    # Typical nearest-neighbour spacing provides a drawing-scale-independent
-    # distance unit; fixed world-unit thresholds were unreliable across floors.
     coords=[]
     for t in floor_rows:
         try: coords.append((float(t.get('x') or 0),float(t.get('y') or 0)))
         except Exception: coords.append((0.0,0.0))
-    nearest=[]
-    for i,(x,y) in enumerate(coords):
-        ds=[math.hypot(x-x2,y-y2) for j,(x2,y2) in enumerate(coords) if i!=j]
-        if ds:
-            v=min(ds)
-            if math.isfinite(v) and v>1e-8: nearest.append(v)
-    nearest.sort()
-    spacing=nearest[len(nearest)//2] if nearest else 1.0
+    spacing=float(floor_rows[0].get('_asbuilt_spacing') or 0.0)
+    if not math.isfinite(spacing) or spacing<=1e-6:
+        spacing=_asbuilt_median_nearest_spacing(coords)
     spacing=max(float(spacing),1e-6)
     norm=lambda v: re.sub(r'[^A-Z0-9\u0600-\u06FF]+',' ',str(v or '').upper()).strip()
     hint=norm(' '.join(str(markup.get(k) or '') for k in ('ocr_text','service_hint','nearby_text')))
@@ -7487,25 +7503,30 @@ def _asbuilt_register_page_to_floor(page_image_path, floor):
     reason (-> manual review).  Never writes to the source DXF.
     """
     if cv2 is None or np is None or _ASBUILT_REGISTRATION is None:
-        return None, {'ok': False, 'reason': 'Registration dependencies are unavailable.'}
+        return None, {'ok': False, 'reason': 'Registration dependencies are unavailable.'}, None, None
     try:
         floor_result = PROJECT_RESULTS.get(str(floor)) or {}
         drawing_path = str(floor_result.get('drawing') or '').strip()
         if not drawing_path or not Path(drawing_path).is_file():
-            return None, {'ok': False, 'reason': f'Original CAD drawing for {floor} was not found.'}
+            return None, {'ok': False, 'reason': f'Original CAD drawing for {floor} was not found.'}, None, None
         page_image = cv2.imread(str(page_image_path), cv2.IMREAD_COLOR)
         if page_image is None:
-            return None, {'ok': False, 'reason': 'Could not read the rendered As-Built page image.'}
-        geom = _ASBUILT_REGISTRATION.load_cad_geometry(drawing_path)
-        _ck=(str(page_image_path),str(drawing_path))
-        reg = _ASB_REG_CACHE.get(_ck)
-        if reg is None:
-            reg = _ASBUILT_REGISTRATION.register_page_to_dxf(page_image, geom)
-            _ASB_REG_CACHE[_ck]=reg
+            return None, {'ok': False, 'reason': 'Could not read the rendered As-Built page image.'}, None, None
+        # CAD geometry is invariant across pages of the same floor. Cache it
+        # by path + file stat so the second half-sheet does not reload/reparse it.
+        stat=Path(drawing_path).stat()
+        cache_key=(str(Path(drawing_path).resolve()),int(getattr(stat,'st_mtime_ns',int(stat.st_mtime*1e9))),int(stat.st_size))
+        geom=_ASBUILT_REGISTRATION_CACHE.get(cache_key)
+        if geom is None:
+            geom=_ASBUILT_REGISTRATION.load_cad_geometry(drawing_path)
+            if len(_ASBUILT_REGISTRATION_CACHE)>=5:
+                _ASBUILT_REGISTRATION_CACHE.clear()
+            _ASBUILT_REGISTRATION_CACHE[cache_key]=geom
+        reg = _ASBUILT_REGISTRATION.register_page_to_dxf(page_image, geom)
         summary = reg.summary()
         if not reg.ok:
             return None, {'ok': False, 'reason': '; '.join(reg.reasons) or 'Page-to-CAD registration rejected.',
-                          'status': reg.status, 'diagnostics': summary}
+                          'status': reg.status, 'diagnostics': summary}, reg, geom
         page_h, page_w = page_image.shape[:2]
         gu, gv = np.meshgrid(np.linspace(0, 1000, 7), np.linspace(0, 1000, 7))
         uv = np.stack([gu.ravel(), gv.ravel()], axis=1)
@@ -7518,13 +7539,13 @@ def _asbuilt_register_page_to_floor(page_image_path, floor):
         span = float(np.ptp(world, axis=0).max()) or 1.0
         if float(resid.max()) > 0.01 * span:
             return None, {'ok': False, 'reason': 'Registration is not affine-like across the page; manual review required.',
-                          'diagnostics': summary}
+                          'diagnostics': summary}, reg, geom
         affine = [float(cx[0]), float(cx[1]), float(cy[0]), float(cy[1]), float(cx[2]), float(cy[2])]
         if not all(math.isfinite(v) for v in affine) or abs(affine[0]*affine[3]-affine[1]*affine[2]) < 1e-12:
-            return None, {'ok': False, 'reason': 'Computed page-to-CAD transform is invalid.'}
-        return affine, {'ok': True, 'status': reg.status, 'confidence': reg.confidence, 'diagnostics': summary}
+            return None, {'ok': False, 'reason': 'Computed page-to-CAD transform is invalid.'}, reg, geom
+        return affine, {'ok': True, 'status': reg.status, 'confidence': reg.confidence, 'diagnostics': summary}, reg, geom
     except Exception as exc:
-        return None, {'ok': False, 'reason': f'{type(exc).__name__}: {exc}'}
+        return None, {'ok': False, 'reason': f'{type(exc).__name__}: {exc}'}, None, None
 
 
 def _asbuilt_norm_to_cad_xy(x_norm,y_norm,catalog,floor_hint='',page_to_cad_affine=None):
@@ -7584,7 +7605,7 @@ def _asbuilt_detect_blue_arrow_tips(image_path, orange_regions):
     except Exception as e:
         return {'_error':{'status':'ERROR','reason':'Arrow detector failed: '+str(e)}}
 
-def _asbuilt_blob_overlay(rows, page_image_path, floor, catalog):
+def _asbuilt_blob_overlay(rows, page_image_path, floor, catalog, registration=None, geom=None):
     """Re-decide each markup's source endpoint by highlighter-blob coverage of the
     symbol footprint (asbuilt_pipeline).  Confirmed -> becomes the suggestion;
     ambiguous / nothing under the markup -> the distance-based guess is withdrawn
@@ -7601,8 +7622,11 @@ def _asbuilt_blob_overlay(rows, page_image_path, floor, catalog):
         eps=PL.endpoints_from_targets([t for t in catalog if str(t.get('floor') or '')==str(floor)])
         if not eps: return
         PL.attach_footprints(eps,_dx.Dxf(dwg))
-        geom=_ASBUILT_REGISTRATION.load_cad_geometry(dwg)
-        res=PL.analyze_page(img,geom,eps,registration=_ASB_REG_CACHE.get((str(page_image_path),str(dwg))),page_number=int(rows[0].get('page_number') or 1))
+        if geom is None:
+            geom=_ASBUILT_REGISTRATION.load_cad_geometry(dwg)
+        # Reuse the page registration already computed for CAD matching. Without
+        # this, each page ran the expensive SIFT/MAGSAC registration twice.
+        res=PL.analyze_page(img,geom,eps,registration=registration,page_number=int(rows[0].get('page_number') or 1))
         marks=[m for m in res['markups'] if m['color'] in ('pink','yellow','orange')]
         used=set()
         for row in rows:
@@ -7855,14 +7879,30 @@ def asbuilt_chat_start(path,filename,api_key='',model='',label_pattern=None,firs
         raise RuntimeError('Analyze the CAD project before starting the As-Built scan.')
 
     label_pattern,_=_validate_label_pattern(label_pattern)
-    catalog,by_key,per_floor,candidate_text=_asbuilt_project_candidate_catalog(label_pattern=label_pattern)
-    if not catalog:
-        raise RuntimeError('No endpoint targets exist in the analyzed project.')
-
     input_paths=list(paths or []) or [path]
     input_names=list(filenames or []) or [filename or Path(path).name]
     if len(input_names)<len(input_paths):
         input_names += [Path(x).name for x in input_paths[len(input_names):]]
+
+    # Determine the sheet-pair floors before building the CAD candidate catalog.
+    # A two-page Ground Floor test should not build candidates/labels for every
+    # other analyzed floor in the project.
+    expected_pages=0
+    for src,name in zip(input_paths,input_names):
+        ext=Path(name or src).suffix.lower()
+        if ext=='.pdf':
+            if fitz is None:
+                raise RuntimeError('PyMuPDF (fitz) is required to read As-Built PDF page counts.')
+            with fitz.open(str(src)) as _pdf_meta:
+                expected_pages+=len(_pdf_meta)
+        else:
+            expected_pages+=1
+    needed_floors={_asbuilt_sheet_floor(p,expected_pages) for p in range(1,expected_pages+1)}
+    needed_floors.discard('')
+    catalog,by_key,per_floor,candidate_text=_asbuilt_project_candidate_catalog(
+        label_pattern=label_pattern,floors=needed_floors)
+    if not catalog:
+        raise RuntimeError('No endpoint targets exist for the floors represented by this As-Built upload.')
 
     pages=[]
     page_number=1
@@ -7917,6 +7957,10 @@ def asbuilt_chat_start(path,filename,api_key='',model='',label_pattern=None,firs
             rec=dict(t); rec['candidate_key']=rec.get('candidate_key') or f'{floor_name}-T{i:04d}'
             rec['nx']=int(round((float(t.get('x') or 0)-minx)*1000/dx)); rec['ny']=int(round((maxy-float(t.get('y') or 0))*1000/dy))
             norm_rows.append(rec); match_catalog.append(rec)
+        # Cache scale normalization once. All markups on this floor share it.
+        floor_coords=[(float(t.get('x') or 0.0),float(t.get('y') or 0.0)) for t in norm_rows]
+        if norm_rows:
+            norm_rows[0]['_asbuilt_spacing']=_asbuilt_median_nearest_spacing(floor_coords)
         match_per_floor[floor_name]=norm_rows
 
     total_pages=len(pages)
@@ -7964,7 +8008,7 @@ def asbuilt_chat_start(path,filename,api_key='',model='',label_pattern=None,firs
             })
 
         floor_hint=sheet_floor
-        page_affine, registration_info = _asbuilt_register_page_to_floor(pg.get('path'), floor_hint)
+        page_affine, registration_info, page_registration, page_geometry = _asbuilt_register_page_to_floor(pg.get('path'), floor_hint)
         row['cad_registration_ok']=bool(registration_info.get('ok'))
         row['cad_registration_reason']=str(registration_info.get('reason') or '')
         row['cad_registration_diagnostics']=registration_info.get('diagnostics') or {}
@@ -7974,7 +8018,8 @@ def asbuilt_chat_start(path,filename,api_key='',model='',label_pattern=None,firs
             floor_hint=floor_hint,page_to_cad_affine=page_affine,
             registration_diagnostics=registration_info.get('diagnostics') or {}
         )
-        _asbuilt_blob_overlay(_page_rows,pg.get('path'),floor_hint,match_catalog)
+        _asbuilt_blob_overlay(_page_rows,pg.get('path'),floor_hint,match_catalog,
+                              registration=page_registration,geom=page_geometry)
         inventory.extend(_page_rows)
 
     chat_id=uuid.uuid4().hex
@@ -9395,9 +9440,10 @@ h2,h3,h4{margin:0;line-height:1.25}a{text-decoration:none}code{font-family:var(-
 .brandRow{display:flex;gap:10px;align-items:center;padding:4px 8px}.brandRow svg{width:30px;height:30px;flex:none}
 .brandName{font-weight:700;color:#fff;font-size:15px;letter-spacing:.02em}.brandSub{font-size:12px;color:#7f9a8f}
 .nav{display:flex;flex-direction:column;gap:2px}
-.navItem{display:flex;align-items:center;gap:10px;width:100%;justify-content:flex-start;background:none;border:0;color:#cfe0d8;padding:0 10px;border-radius:8px;min-height:40px;font-weight:550}
+.navItem{display:flex;align-items:center;gap:10px;width:100%;justify-content:flex-start;background:none;border:0;color:#cfe0d8;padding:0 10px;border-radius:8px;min-height:40px;font-weight:550;transition:background-color .15s ease,color .15s ease,box-shadow .15s ease;}
 .navItem svg{width:18px;height:18px;flex:none;opacity:.75}.navItem:hover:not(:disabled){background:rgba(255,255,255,.07)}
-.navItem.on{background:rgba(255,255,255,.13);color:#fff}.navItem.on svg{opacity:1}
+.navItem:focus-visible{outline:none;background:rgba(255,255,255,.09);box-shadow:0 0 0 2px rgba(167,200,255,.95),inset 0 0 0 1px rgba(167,200,255,.5);color:#fff}
+.navItem.on,.navItem.on:hover,.navItem.on:focus-visible{background:linear-gradient(180deg,rgba(74,168,163,.28),rgba(51,119,117,.18));border:1px solid rgba(144,203,196,.45);color:#fff;box-shadow:0 0 0 2px rgba(160,225,220,.8),inset 0 0 0 1px rgba(255,255,255,.1)}.navItem.on svg{opacity:1}
 .navBadge{margin-left:auto;min-width:20px;padding:0 7px;border-radius:999px;background:#f5c04a;color:#3b2800;font-size:12px;font-weight:700;text-align:center}
 .navItem.fresh::after{content:"";width:8px;height:8px;border-radius:50%;background:#5fd3a2;margin-left:auto}
 .sideNote{margin-top:auto;padding:0 8px;font-size:12px;color:#7f9a8f}
@@ -9821,8 +9867,8 @@ async function loadProjectStatus(){
 })();</script><script>(function(){
 const q=id=>document.getElementById(id);
 const views=['project','results','outputs','asbuilt','docs'];
-function show(v){if(!views.includes(v))v='project';views.forEach(n=>q('view-'+n).classList.toggle('on',n===v));document.querySelectorAll('.navItem').forEach(b=>{const on=b.dataset.view===v;b.classList.toggle('on',on);if(on){b.setAttribute('aria-current','page');b.classList.remove('fresh')}else b.removeAttribute('aria-current')});if(location.hash!=='#'+v)history.replaceState(null,'','#'+v);window.scrollTo(0,0)}
-document.querySelectorAll('.navItem').forEach(b=>b.onclick=()=>show(b.dataset.view));
+function show(v){if(!views.includes(v))v='project';views.forEach(n=>q('view-'+n).classList.toggle('on',n===v));document.querySelectorAll('.navItem').forEach(b=>{const on=b.dataset.view===v;b.classList.toggle('on',on);b.setAttribute('aria-pressed', on ? 'true' : 'false');b.setAttribute('data-active', on ? '1' : '0');if(on){b.setAttribute('aria-current','page');b.classList.remove('fresh')}else b.removeAttribute('aria-current')});if(location.hash!=='#'+v)history.replaceState(null,'','#'+v);window.scrollTo(0,0)}
+document.querySelectorAll('.navItem').forEach(b=>{b.onclick=()=>show(b.dataset.view);b.setAttribute('aria-pressed', b.classList.contains('on') ? 'true' : 'false');});
 q('goProject').onclick=()=>show('project');show((location.hash||'').slice(1));
 // project menu closes after an action or an outside click
 const menu=q('projectMenu');document.addEventListener('click',e=>{if(menu.open&&!menu.contains(e.target))menu.open=false});
@@ -10803,7 +10849,7 @@ if globals().get('_TT_PATCHED') and not globals().get('_TT_ADDON'):
                 _LA_CACHE=None
         return f
     asbuilt_chat_start=_tt_scope_any(asbuilt_chat_start)
-    for _n in ('_split_asbuilt_pdf_to_images','_asbuilt_cv_color_inventory','_asbuilt_project_candidate_catalog','_asbuilt_code_markup_inventory','asbuilt_chat_start'):
+    for _n in ('_split_asbuilt_pdf_to_images','_asbuilt_cv_color_inventory','_asbuilt_project_candidate_catalog','_asbuilt_median_nearest_spacing','_asbuilt_register_page_to_floor','_asbuilt_code_markup_inventory','_asbuilt_blob_overlay','asbuilt_chat_start'):
         globals()[_n]=_tt_timed(globals()[_n])
 
 

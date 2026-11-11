@@ -9,9 +9,10 @@ RECON_HTML = r'''
 #reconPanel .cardHead .sub{max-width:760px;line-height:1.55}
 #reconPanel #rcBadge{white-space:nowrap;border-radius:999px;padding:7px 11px}
 #reconPanel .rc-tabs{display:flex;gap:7px;flex-wrap:wrap;margin:18px 0 14px;padding:5px;background:rgba(247,249,252,.97);border:1px solid var(--rc-line);border-radius:13px;position:sticky;top:76px;z-index:120;box-shadow:0 6px 18px rgba(16,24,40,.09);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);scroll-margin-top:12px}
-#reconPanel .rc-tabs button{background:transparent;color:#475467;border:1px solid transparent;border-radius:9px;padding:9px 13px;font-weight:650}
-#reconPanel .rc-tabs button:hover{background:#edf2f8}
-#reconPanel .rc-tabs button.on{background:#203c65;color:#fff;border-color:#203c65;box-shadow:0 2px 5px #203c651c}
+#reconPanel .rc-tabs button{background:#f5f7fa;color:#475467;border:1px solid #dfe6ef;border-radius:9px;padding:9px 13px;font-weight:650;transition:background-color .15s ease,color .15s ease,border-color .15s ease,box-shadow .15s ease}
+#reconPanel .rc-tabs button:hover{background:#edf2f8;border-color:#d6deeb}
+#reconPanel .rc-tabs button:focus-visible{outline:none;border-color:#7da3d7;background:#edf5ff;box-shadow:0 0 0 3px rgba(123,166,234,.35);color:#1f3652}
+#reconPanel .rc-tabs button.on,#reconPanel .rc-tabs button.on:hover,#reconPanel .rc-tabs button.on:focus-visible{background:linear-gradient(180deg,rgba(79,154,149,.22),rgba(79,154,149,.12));border:1px solid rgba(144,203,196,.42);color:#fff;box-shadow:0 0 0 2px rgba(153,205,255,.8),inset 0 0 0 1px rgba(255,255,255,.08)}
 #reconPanel .rc-pane{display:none}#reconPanel .rc-pane.on{display:block}
 #reconPanel .rc-section-intro{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin:4px 0 16px}
 #reconPanel .rc-section-intro h4{font-size:16px;margin:0 0 5px}
@@ -26,8 +27,9 @@ RECON_HTML = r'''
 #reconPanel .rc-file-row input[type=file]{width:100%;max-width:100%;box-sizing:border-box;font-size:12px;padding:9px;border:1px dashed #cbd5e1;border-radius:9px;background:#fff}
 #reconPanel .rc-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0}
 #reconPanel .rc-bar input:not([type=file]),#reconPanel .rc-bar select{min-height:38px}
-#reconPanel button{border-radius:9px;font-weight:600;transition:filter .15s ease}
+#reconPanel button{border-radius:9px;font-weight:600;transition:filter .15s ease,box-shadow .15s ease,border-color .15s ease,background-color .15s ease}
 #reconPanel button:hover{filter:brightness(.97)}
+#reconPanel button:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(123,166,234,.32)}
 #reconPanel button:disabled{opacity:.55;cursor:not-allowed}
 #reconPanel input,#reconPanel select,#reconPanel textarea{border:1px solid #d0d7e2;border-radius:8px;padding:8px 9px;background:var(--input-bg,#fff);color:inherit}
 #reconPanel input:focus,#reconPanel select:focus,#reconPanel textarea:focus{outline:2px solid #9ab8f7;outline-offset:1px;border-color:#6389d7}
@@ -113,7 +115,8 @@ RECON_HTML = r'''
 #reconPanel #rcBadge{font-size:11px;background:#edf5f4;color:#27766d;border:1px solid #dcebe8}
 #reconPanel .rc-tabs{top:68px;gap:5px;padding:4px;margin:13px 0 16px;background:#f3f6f9;border:1px solid #e8edf2;border-radius:11px;box-shadow:none}
 #reconPanel .rc-tabs button{font-size:12px;padding:8px 12px;color:#526174;border-radius:8px}
-#reconPanel .rc-tabs button.on{background:#285c62;border-color:#285c62;color:#fff;box-shadow:none}
+#reconPanel .rc-tabs button:hover:not(.on){background:#e7f2f1;border-color:#cfe6e5;color:#234f53}
+#reconPanel .rc-tabs button.on,#reconPanel .rc-tabs button.on:hover,#reconPanel .rc-tabs button.on:focus-visible{background:linear-gradient(180deg,rgba(74,168,163,.28),rgba(51,119,117,.18));border:1px solid rgba(144,203,196,.45);color:#fff;box-shadow:0 0 0 4px rgba(160,225,220,.8),inset 0 0 0 2px rgba(255,255,255,.1)}
 #reconPanel .rc-section-intro{margin:0 0 10px}
 #reconPanel .rc-section-intro h4,#reconPanel .rc-doc-heading h4{font-size:14px;font-weight:750;color:#263b52}
 #reconPanel .rc-section-intro p{display:none}
@@ -171,14 +174,14 @@ RECON_HTML = r'''
 </style>
 <div class="card" id="reconPanel" style="margin-top:16px">
  <div class="cardHead"><div><h3>متابعة الخامات والتوريدات</h3></div><span id="rcBadge" class="badge neutral">Loading</span></div>
- <div class="rc-tabs" id="rcTabs"><button data-t="src" class="on">الملفات</button><button data-t="rev">مراجعة MIR</button><button data-t="rec">ملخص المقايسة</button><button data-t="brd">تقدم البراندات</button><button data-t="exp">التقارير وسجل المراجعة</button></div>
+ <div class="rc-tabs" id="rcTabs"><button data-t="src" class="on">الملفات</button><button data-t="rev">مراجعة الملفات</button><button data-t="rec">ملخص المقايسة</button><button data-t="brd">تقدم البراندات</button><button data-t="exp">التقارير وسجل المراجعة</button></div>
  <div id="rcMsg" class="status" role="status">&nbsp;</div>
  <div class="rc-pane on" id="rcP-src">
   <div class="rc-section-intro"><div><h4>ملفات المشروع</h4></div><div id="rcOcr" class="sub"></div></div>
   <div class="rc-upload-grid">
    <div class="rc-upload-card"><div class="rc-upload-top"><div class="rc-upload-icon">XLS</div><div><h4>ملف المقايسة BOQ</h4></div></div><div class="rc-file-row"><input id="rcBoqFile" type="file" accept=".xlsx,.xlsm"><button id="rcBoqUp">رفع المقايسة</button></div></div>
    <div class="rc-upload-card"><div class="rc-upload-top"><div class="rc-upload-icon">PDF</div><div><h4>مستندات MIR</h4></div></div><div class="rc-file-row"><input id="rcMirFiles" type="file" accept=".pdf" multiple><button id="rcMirUp">رفع MIR</button></div></div>
-   <div class="rc-upload-card"><div class="rc-upload-top"><div class="rc-upload-icon">INV</div><div><h4>فواتير التوريد</h4></div></div><div class="rc-file-row"><input id="rcInvoiceFiles" type="file" accept=".pdf" multiple><button id="rcInvoiceUp">رفع الفواتير</button><button id="rcImportRepoInvoices" class="alt">استيراد فواتير المشروع</button><button id="rcImportRepoDocs" class="alt">استيراد ملفات المشروع</button></div></div>
+   <div class="rc-upload-card"><div class="rc-upload-top"><div class="rc-upload-icon">INV</div><div><h4>فواتير التوريد</h4></div></div><div class="rc-file-row"><input id="rcInvoiceFiles" type="file" accept=".pdf" multiple><button id="rcInvoiceUp">رفع الفواتير</button></div></div>
   </div>
   <details class="advanced"><summary>ملفات محفوظة بالمشروع</summary><div class="advInner"><div id="rcDocPick" class="sub">Loading...</div><div class="rc-bar"><button id="rcImport" class="alt">Import selected files</button></div></div></details>
   <div class="rc-doc-heading"><h4>المقايسة الحالية</h4><span class="small sub">Excel reference</span></div><div id="rcBoqInfo" class="sub">No BOQ yet.</div>
@@ -353,8 +356,17 @@ function renderBrands(){
 function renderExp(){
  q('rcExc').innerHTML=D.comp.exceptions.length?'<div class="rc-scroll" style="max-height:300px"><table class="rc"><thead><tr><th>الخطورة</th><th>النوع</th><th>التفاصيل</th></tr></thead><tbody>'+D.comp.exceptions.slice(0,300).map(e=>`<tr><td>${chip(e.severity,e.severity==='error'?'c-bad':e.severity==='warning'?'c-warn':'c-info')}</td><td>${esc(e.type)}</td><td>${esc(e.message)}</td></tr>`).join('')+'</tbody></table></div>':'<div class="sub">لا توجد استثناءات.</div>';
  q('rcAudit').innerHTML=D.audit.length?D.audit.map(a=>`${esc(a.ts)} · <b>${esc(a.user)}</b> · ${esc(a.action)} · ${esc(a.detail)}`).join('<br>'):'لا توجد عمليات بعد.'}
-function tab(t){document.querySelectorAll('#rcTabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));document.querySelectorAll('#reconPanel .rc-pane').forEach(p=>p.classList.toggle('on',p.id==='rcP-'+t))}
-q('rcTabs').onclick=e=>{const b=e.target.closest('button');if(b)tab(b.dataset.t)};
+function tab(t){
+  document.querySelectorAll('#rcTabs button').forEach(b=>{
+    const active = b.dataset.t === t;
+    b.classList.toggle('on', active);
+    b.setAttribute('aria-pressed', active ? 'true' : 'false');
+    b.setAttribute('data-active', active ? '1' : '0');
+  });
+  document.querySelectorAll('#reconPanel .rc-pane').forEach(p=>p.classList.toggle('on',p.id==='rcP-'+t));
+}
+q('rcTabs').onclick=e=>{const b=e.target.closest('button');if(!b||!b.dataset.t)return;tab(b.dataset.t);q('rcTabs').dataset.active=b.dataset.t};
+document.querySelectorAll('#rcTabs button').forEach(b=>b.setAttribute('aria-pressed', b.classList.contains('on') ? 'true' : 'false'));
 ['rcRevFilter','rcRevSearch'].forEach(i=>q(i).oninput=()=>D&&renderRecs());['rcSearch','rcBrandF','rcStatF'].forEach(i=>q(i).oninput=()=>D&&renderRec());
 async function upload(kind,file){const fd=new FormData();fd.append('kind',kind);fd.append('file',file);return api('/api/recon/upload',{method:'POST',body:fd})}
 q('rcBoqUp').onclick=async()=>{const f=q('rcBoqFile').files[0];if(!f)return msg('Choose the BOQ .xlsx first.','error');try{msg('Reading workbook...','info');const j=await upload('boq',f);msg('BOQ loaded: '+j.items+' items from sheet “'+j.sheet+'”.','success');q('rcBoqFile').value='';await load()}catch(e){msg(e.message,'error')}};
