@@ -193,11 +193,12 @@ def analyze_page(page_bgr, geom, endpoints, registration=None, page_number=1, lo
             near = rows[0]['centroid_dist_mm'] if rows else None
             rec.update(state='NOT_DETECTED', reason='No endpoint symbol lies under this markup'
                        + (f' (nearest is {near:.0f} mm from its centre).' if near is not None else '.'))
-        elif len(rows) > 1 and rows[1]['score'] >= MIN_MATCH_SCORE and (rows[0]['score'] - rows[1]['score']) < AMBIGUITY_MARGIN:
+        elif (len(rows) > 1 and rows[1]['score'] >= MIN_MATCH_SCORE and (rows[0]['score'] - rows[1]['score']) < AMBIGUITY_MARGIN
+              and not _clear_centre_winner(rows)):
             rec.update(state='AMBIGUOUS', reason='Two endpoints are equally covered by this markup '
                        f"({rows[0]['score']:.2f} vs {rows[1]['score']:.2f}).")
         else:
-            best = rows[0]
+            best = _clear_centre_winner(rows) or rows[0]
             e = endpoints[best['index']]
             rec.update(state='CONFIRMED', target_index=best['index'], target_id=e['id'], block=e['block'],
                        label=e['label'], match_score=best['score'],
@@ -209,6 +210,21 @@ def analyze_page(page_bgr, geom, endpoints, registration=None, page_number=1, lo
             _resolve_relocation(rec, arrow, reg, geom, endpoints)
     _dedupe(result['markups'])
     return result
+
+
+def _clear_centre_winner(rows):
+    """Tie-break for near-equal coverage scores: the symbol whose centre is
+    clearly (>=1.8x) closest to the highlighter blob wins.  Returns the row or None."""
+    close = [r for r in rows if rows[0]['score'] - r['score'] < AMBIGUITY_MARGIN and r['score'] >= MIN_MATCH_SCORE]
+    if len(close) < 2:
+        return None
+    close.sort(key=lambda r: r.get('centroid_dist_mm', 1e9))
+    a, b = close[0], close[1]
+    if a.get('centroid_dist_mm') is None or b.get('centroid_dist_mm') is None:
+        return None
+    if b['centroid_dist_mm'] >= 1.8 * max(a['centroid_dist_mm'], 50.0):
+        return a
+    return None
 
 
 def _resolve_relocation(rec, arrow, reg, geom, endpoints):

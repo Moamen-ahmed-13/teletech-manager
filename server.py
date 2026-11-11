@@ -6204,17 +6204,28 @@ def _split_asbuilt_pdf_to_images(pdf_path):
         return [{'path':str(pdf_path),'filename':pdf_path.name,'mime_type':'image/png' if pdf_path.suffix.lower()=='.png' else 'image/jpeg'}]
     if fitz is None:
         raise RuntimeError('PyMuPDF (fitz) is required to split scanned As-Built PDFs into page images.')
-    out_dir=pdf_path.parent/('ab_'+hashlib.md5(pdf_path.stem.encode('utf-8')).hexdigest()[:10])
+    out_dir=pdf_path.parent/('abn_'+hashlib.md5((pdf_path.stem+str(pdf_path.stat().st_size)).encode('utf-8')).hexdigest()[:10])
     out_dir.mkdir(parents=True,exist_ok=True)
     doc=fitz.open(str(pdf_path))
     try:
         if len(doc)>ASBUILT_SPLIT_MAX_PAGES:
             raise RuntimeError(f'As-Built PDF has {len(doc)} pages; safety limit is {ASBUILT_SPLIT_MAX_PAGES}.')
-        scale=ASBUILT_SPLIT_DPI/72.0
-        mat=fitz.Matrix(scale,scale)
         pages=[]
         for idx,page in enumerate(doc,1):
-            out=out_dir/f'p{idx:03d}.png'
+            # Render at the resolution of the embedded scan (ink annotations included),
+            # capped; a fixed 220 DPI render of a 2-3 MP scan is 72 MP of interpolated pixels.
+            scale=ASBUILT_SPLIT_DPI/72.0
+            try:
+                imgs=page.get_images(full=True)
+                if imgs:
+                    info=doc.extract_image(imgs[0][0])
+                    scale=max(info['width']/page.rect.width,info['height']/page.rect.height)
+            except Exception:
+                pass
+            long_side=max(page.rect.width,page.rect.height)*scale
+            if long_side>4200: scale*=4200.0/long_side
+            mat=fitz.Matrix(scale,scale)
+            out=out_dir/f'n{idx:03d}.png'
             if not out.exists():
                 pix=page.get_pixmap(matrix=mat,alpha=False)
                 pix.save(str(out))
@@ -7465,6 +7476,9 @@ def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',
                     'editable_direct':bool(t.get('editable_direct'))})
     return out
 
+_ASB_REG_CACHE={}
+
+
 def _asbuilt_register_page_to_floor(page_image_path, floor):
     """Register one uploaded As-Built page to the original DXF of its floor.
 
@@ -7483,7 +7497,11 @@ def _asbuilt_register_page_to_floor(page_image_path, floor):
         if page_image is None:
             return None, {'ok': False, 'reason': 'Could not read the rendered As-Built page image.'}
         geom = _ASBUILT_REGISTRATION.load_cad_geometry(drawing_path)
-        reg = _ASBUILT_REGISTRATION.register_page_to_dxf(page_image, geom)
+        _ck=(str(page_image_path),str(drawing_path))
+        reg = _ASB_REG_CACHE.get(_ck)
+        if reg is None:
+            reg = _ASBUILT_REGISTRATION.register_page_to_dxf(page_image, geom)
+            _ASB_REG_CACHE[_ck]=reg
         summary = reg.summary()
         if not reg.ok:
             return None, {'ok': False, 'reason': '; '.join(reg.reasons) or 'Page-to-CAD registration rejected.',
@@ -7584,7 +7602,7 @@ def _asbuilt_blob_overlay(rows, page_image_path, floor, catalog):
         if not eps: return
         PL.attach_footprints(eps,_dx.Dxf(dwg))
         geom=_ASBUILT_REGISTRATION.load_cad_geometry(dwg)
-        res=PL.analyze_page(img,geom,eps,page_number=int(rows[0].get('page_number') or 1))
+        res=PL.analyze_page(img,geom,eps,registration=_ASB_REG_CACHE.get((str(page_image_path),str(dwg))),page_number=int(rows[0].get('page_number') or 1))
         marks=[m for m in res['markups'] if m['color'] in ('pink','yellow','orange')]
         used=set()
         for row in rows:
@@ -7606,6 +7624,22 @@ def _asbuilt_blob_overlay(rows, page_image_path, floor, catalog):
                 row['suggested_target_id']=tid; row['suggested_target_label']=m.get('label') or tid
                 row['match_confidence']=float(m.get('confidence') or 0.0)
                 row['match_status']='BLOB_CONFIRMED'
+                if row['color']=='orange':
+                    rs=m.get('relocation_state')
+                    src=next((t for t in catalog if str(t.get('target_id'))==tid),None)
+                    if rs=='CONFIRMED' and m.get('arrow_destination_xy') and src is not None:
+                        dx,dy=m['arrow_destination_xy']
+                        # land the symbol's drawn position (not its block insert point) on the arrow tip
+                        ox=float(src.get('x',0))-float(src.get('insert_x',src.get('x',0)))
+                        oy=float(src.get('y',0))-float(src.get('insert_y',src.get('y',0)))
+                        row['arrow_destination_xy']=[dx-ox,dy-oy]
+                        row['destination_match_status']='CONFIRMED'
+                        row['destination_match_confidence']=max(0.78,float((m.get('arrow') or {}).get('confidence') or 0.78))
+                        row['relocation_state']='CONFIRMED'; row['relocation_block_reason']=''
+                    else:
+                        row['destination_match_status']='REVIEW_REQUIRED'
+                        row['relocation_state']=rs or 'NOT_DETECTED'
+                        row['relocation_block_reason']=m.get('relocation_reason') or 'السهم غير مؤكد'
             elif m['state'] in ('AMBIGUOUS','NOT_DETECTED','REGISTRATION_FAILED'):
                 row['suggested_target_id']=''; row['suggested_target_label']=''
                 row['match_confidence']=0.0
@@ -9835,7 +9869,7 @@ window.renderVisionReview=function(j){
  h+='</div><div class="actions" style="display:flex;flex-direction:row;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:8px;margin-top:8px"><button id="bulkAdd" style="width:auto;min-width:0;flex:0 0 auto">Add selected to revision list</button><button id="bulkAll" class="alt" style="width:auto;min-width:0;flex:0 0 auto">Select all matched</button><button id="bulkNone" class="alt" style="width:auto;min-width:0;flex:0 0 auto">Clear</button><span id="bulkMsg" class="miniNote"></span></div></div>';
  h+='<div style="max-height:420px;overflow:auto"><table><thead><tr><th>Use</th><th>Page</th><th>Floor</th><th>Color</th><th>CAD endpoint</th><th>Match</th><th>Action</th></tr></thead><tbody>';
  inv.forEach((m,i)=>{const o=m.candidate_options||[],d=m.arrow_destination_options||[],pct=Math.round(Number((o[0]||{}).match_confidence||0)*100),dpct=Math.round(Number((d[0]||{}).match_confidence||0)*100),arrow=m.blue_arrow_detection||{},rule=RULES[m.color],moveReady=rule&&rule.kind==='move'&&o.length>0&&d.length>0,blocked=!rule||!o.length||(rule.kind==='move'&&!moveReady);
-  const tip=m.arrow_destination_xy||[],dconf=Number(m.destination_match_confidence||0),dstatus=m.destination_match_status||'NOT_EVALUATED',tipReady=dstatus==='CONFIRMED'&&dconf>=0.78,destLabel=tip.length?'Registered arrow tip (CAD) X='+Number(tip[0]).toFixed(2)+', Y='+Number(tip[1]).toFixed(2):(m.relocation_state==='REGISTRATION_FAILED'?'Registration failed / no CAD coordinate':(m.relocation_block_reason||'No confirmed arrow destination'));const destHtml=rule&&rule.kind==='move'?'<div class="miniNote" style="margin-top:5px">Blue pen arrow: '+esc(arrow.status||'NOT_FOUND')+' · detection '+Math.round(Number(arrow.detection_confidence||arrow.confidence||0)*100)+'% · arrowhead '+(arrow.arrowhead_detected?'detected':'not confirmed')+(Array.isArray(arrow.tail_px)&&Array.isArray(arrow.tip_px)?'<br>Stroke px: '+arrow.tail_px.join(', ')+' → '+arrow.tip_px.join(', '):'')+(arrow.head_ratio!==undefined?'<br>Head ratio: '+Number(arrow.head_ratio).toFixed(2)+' · spread/shaft: '+Number(arrow.head_spread||0).toFixed(2)+' · gap: '+Number(arrow.orange_to_stroke_gap_px||0).toFixed(1)+' px (limit '+Number(arrow.max_allowed_gap_px||0).toFixed(1)+')':'')+'<br>Destination match: '+Math.round(dconf*100)+'% · '+esc(dstatus)+'<br>'+esc(destLabel)+(dstatus==='REVIEW_REQUIRED'||!tip.length?'<div class="miniNote">Search and select any endpoint on this floor. Manual selection does not depend on arrow detection; automatic movement remains blocked.</div>':'')+'</div><input class="bdestSearch" type="search" placeholder="Search all floor endpoints by label, service, rack..." style="width:100%;min-width:260px;margin-top:4px"><select class="bdest" size="5" style="min-width:260px;width:100%;margin-top:4px" '+(!d.length?'disabled':'')+'>'+(d.length?'<option value="">Choose destination endpoint...</option>'+(tipReady?'<option value="__ARROW_TIP__">Confirm registered arrow tip coordinates</option>':'')+d.map(x=>'<option value="'+esc(x.target_id||'')+'">'+esc((x.label||x.block||x.target_id||'')+' | '+(x.service||'')+' | '+(x.rack||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No floor endpoints available</option>')+'</select>':'<span>'+esc(rule?rule.patch:'REVIEW')+'</span>';
+  const tip=m.arrow_destination_xy||[],dconf=Number(m.destination_match_confidence||0),dstatus=m.destination_match_status||'NOT_EVALUATED',tipReady=dstatus==='CONFIRMED'&&dconf>=0.78,destLabel=tip.length?'Registered arrow tip (CAD) X='+Number(tip[0]).toFixed(2)+', Y='+Number(tip[1]).toFixed(2):(m.relocation_state==='REGISTRATION_FAILED'?'Registration failed / no CAD coordinate':(m.relocation_block_reason||'No confirmed arrow destination'));const destHtml=rule&&rule.kind==='move'?'<div class="miniNote" style="margin-top:5px">Blue pen arrow: '+esc(arrow.status||'NOT_FOUND')+' · detection '+Math.round(Number(arrow.detection_confidence||arrow.confidence||0)*100)+'% · arrowhead '+(arrow.arrowhead_detected?'detected':'not confirmed')+(Array.isArray(arrow.tail_px)&&Array.isArray(arrow.tip_px)?'<br>Stroke px: '+arrow.tail_px.join(', ')+' → '+arrow.tip_px.join(', '):'')+(arrow.head_ratio!==undefined?'<br>Head ratio: '+Number(arrow.head_ratio).toFixed(2)+' · spread/shaft: '+Number(arrow.head_spread||0).toFixed(2)+' · gap: '+Number(arrow.orange_to_stroke_gap_px||0).toFixed(1)+' px (limit '+Number(arrow.max_allowed_gap_px||0).toFixed(1)+')':'')+'<br>Destination match: '+Math.round(dconf*100)+'% · '+esc(dstatus)+'<br>'+esc(destLabel)+(dstatus==='REVIEW_REQUIRED'||!tip.length?'<div class="miniNote">Search and select any endpoint on this floor. Manual selection does not depend on arrow detection; automatic movement remains blocked.</div>':'')+'</div><input class="bdestSearch" type="search" placeholder="Search all floor endpoints by label, service, rack..." style="width:100%;min-width:260px;margin-top:4px"><select class="bdest" size="5" style="min-width:260px;width:100%;margin-top:4px" '+(!d.length?'disabled':'')+'>'+(d.length?'<option value="">Choose destination endpoint...</option>'+(tipReady?'<option value="__ARROW_TIP__" selected>موضع رأس السهم</option>':'')+d.map(x=>'<option value="'+esc(x.target_id||'')+'">'+esc((x.label||x.block||x.target_id||'')+' | '+(x.service||'')+' | '+(x.rack||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No floor endpoints available</option>')+'</select>':'<span>'+esc(rule?rule.patch:'REVIEW')+'</span>';
   h+='<tr data-b="'+i+'"><td><input type="checkbox" class="bu" '+''+(blocked?' disabled':'')+'></td><td>'+Number(m.page_number||0)+'</td><td>'+esc(m.floor_hint||'')+'</td><td>'+colorDot(m.color)+'</td><td><input class="bsourceSearch" type="search" placeholder="Search source endpoint..." style="width:100%;min-width:240px"><select class="bt" size="5" style="min-width:260px;width:100%" '+(!o.length?'disabled':'')+'>'+(o.length?'<option value="">Review source endpoint...</option>'+o.map((x,xi)=>'<option value="'+esc(x.target_id||'')+'"'+(xi===0&&pct>=78?' selected':'')+'>'+esc((x.label||x.block||x.target_id||'')+' | '+(x.service||'')+' | '+(x.rack||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No CAD candidate</option>')+'</select></td><td class="'+(pct>=78?'confHigh':pct>=60?'confMid':'confLow')+'">Source '+pct+'%'+(pct<78&&o.length?'<div class="miniNote">choose the endpoint manually</div>':'')+(rule&&rule.kind==='move'?'<div class="miniNote">Destination '+dpct+'%</div>':'')+'</td><td>'+(rule&&rule.kind==='move'?'<span class="miniNote">MOVE_ENDPOINT · blue pen arrow</span>'+destHtml:destHtml)+'</td></tr>';
  });
  box.innerHTML=h+'</tbody></table></div>';
