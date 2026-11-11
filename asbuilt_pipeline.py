@@ -26,9 +26,10 @@ import dxfedit
 from asbuilt_markups import detect_markups
 
 # scoring / gating
-# Destructive source matching must be evidence-led. A centroid merely falling
-# inside a broad highlighter blob is not sufficient to delete an endpoint.
-MIN_MATCH_SCORE = 0.48
+# Keep the established Orange relocation matcher unchanged. Pink/Yellow are
+# destructive deletions and use the stricter footprint-evidence gate below.
+MIN_MATCH_SCORE = 0.35
+MIN_DELETE_MATCH_SCORE = 0.48
 AMBIGUITY_MARGIN = 0.12
 MIN_FOOTPRINT_POINTS = 8
 MIN_DELETE_COVERAGE = 0.16
@@ -148,9 +149,13 @@ def _score_endpoints(reg, mark, endpoints, P):
         if dc > CENTROID_REACH_MM * 2.2 and not inside and cov == 0:
             continue
         prox = max(0.0, 1.0 - dc / CENTROID_REACH_MM)
-        # Footprint coverage carries most of the weight. The centre-in-blob
-        # signal is secondary because wide marker strokes can cross neighbours.
-        score = 0.62 * cov + 0.28 * (1.0 if inside else 0.0) + 0.10 * prox
+        if mark['color'] in ('pink', 'yellow'):
+            # Footprint coverage carries most of the weight. The centre-in-blob
+            # signal is secondary because wide marker strokes can cross neighbours.
+            score = 0.62 * cov + 0.28 * (1.0 if inside else 0.0) + 0.10 * prox
+        else:
+            # Preserve the already validated Orange source/relocation scoring.
+            score = 0.5 * cov + 0.3 * (1.0 if inside else 0.0) + 0.2 * prox
         rows.append({'index': i, 'score': round(score, 3), 'coverage': round(cov, 3),
                      'footprint_points': foot_n, 'anchor_inside': inside,
                      'centroid_dist_mm': round(dc, 1), 'blob_dist_px': None if d_blob == float('inf') else round(d_blob, 1)})
@@ -198,13 +203,18 @@ def analyze_page(page_bgr, geom, endpoints, registration=None, page_number=1, lo
         rows, _ = _score_endpoints(reg, m, endpoints, P) if endpoints else ([], (wx, wy))
         rec['candidates'] = [dict(r, target_id=endpoints[r['index']]['id'], block=endpoints[r['index']]['block'],
                                   label=endpoints[r['index']]['label']) for r in rows[:4]]
-        # Pink/Yellow delete a physical CAD endpoint; Orange moves one. Never
-        # auto-confirm any of these from centroid proximity alone. Require a
-        # real sampled symbol footprint and visible overlap with the markup.
-        eligible = [r for r in rows if r.get('footprint_points', 0) >= MIN_FOOTPRINT_POINTS
-                    and ((r.get('anchor_inside') and r.get('coverage', 0.0) >= MIN_DELETE_COVERAGE)
-                         or r.get('coverage', 0.0) >= STRONG_DELETE_COVERAGE)]
-        if not eligible or eligible[0]['score'] < MIN_MATCH_SCORE:
+        # Pink/Yellow are destructive removals: require a real sampled CAD
+        # footprint and visible overlap. Orange retains its established matcher
+        # because its source/destination relocation was already validated.
+        if c in ('pink', 'yellow'):
+            eligible = [r for r in rows if r.get('footprint_points', 0) >= MIN_FOOTPRINT_POINTS
+                        and ((r.get('anchor_inside') and r.get('coverage', 0.0) >= MIN_DELETE_COVERAGE)
+                             or r.get('coverage', 0.0) >= STRONG_DELETE_COVERAGE)]
+            required_score = MIN_DELETE_MATCH_SCORE
+        else:
+            eligible = rows
+            required_score = MIN_MATCH_SCORE
+        if not eligible or eligible[0]['score'] < required_score:
             near = rows[0]['centroid_dist_mm'] if rows else None
             rec.update(state='NOT_DETECTED',
                        reason='No CAD symbol has sufficient footprint overlap with this markup; manual review required'
