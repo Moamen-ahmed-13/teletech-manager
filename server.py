@@ -1,4 +1,6 @@
+# pyright: reportMissingImports=false, reportUnusedImport=false, reportUnusedClass=false, reportUnusedFunction=false, reportUnusedVariable=false, reportPrivateUsage=false, reportOptionalMemberAccess=false, reportAttributeAccessIssue=false, reportGeneralTypeIssues=false, reportArgumentType=false, reportAssignmentType=false, reportCallIssue=false, reportIndexIssue=false, reportOperatorIssue=false
 import json, math, os, re, shutil, socket, threading, time, uuid, webbrowser, zipfile, subprocess, base64, random, hashlib, hmac, secrets, smtplib, email.message, http.cookies, sqlite3, datetime
+from typing import Any
 
 try:
     from dotenv import load_dotenv
@@ -18,11 +20,14 @@ try:
 except Exception as _recon_err:
     RECON=None; RECON_UI=None; print(f'[RECON] reconciliation module unavailable: {_recon_err}')
 
+fitz: Any = None
 try:
     import fitz  # PyMuPDF - used to render scanned As-Built PDF pages to images
 except ImportError:
     fitz = None
 
+cv2: Any = None
+np: Any = None
 try:
     import cv2
     import numpy as np
@@ -30,9 +35,23 @@ except ImportError:
     cv2 = None
     np = None
 
+# Reuse the same deterministic page-to-DXF registration used by asbuilt_apply.py.
+try:
+    import dxfmini as _ASBUILT_DXFMINI
+    from render import render as _asbuilt_render_cad
+    import asbuilt_registration as _ASBUILT_REGISTRATION
+except Exception as _asbuilt_registration_import_error:
+    _ASBUILT_DXFMINI = None
+    _asbuilt_render_cad = None
+    _ASBUILT_REGISTRATION = None
+    print(f'[AS-BUILT] page registration unavailable: {_asbuilt_registration_import_error}')
+
+_ASBUILT_REGISTRATION_CACHE = {}
+
 # As-Built is intentionally CODE-ONLY in this build.
 # No GLM/Qwen/vision-agent is called by the As-Built workflow.
 # Optional OCR is kept disabled by default and is never required for scanning.
+Image: Any = None
 try:
     from PIL import Image
 except ImportError:
@@ -51,13 +70,68 @@ _ASBUILT_HF_OCR_MODEL_OBJ = None
 _ASBUILT_HF_OCR_PROCESSOR = None
 _ASBUILT_HF_OCR_LOCK = threading.Lock()
 
+# Legacy / optional vision back-ends. As-Built scanning is code-only, but these functions still exist
+# in this file, so every name they use must be defined (they used to raise NameError when called).
+ASBUILT_GEMINI_BASE_URL = os.getenv('TELETECH_GEMINI_BASE_URL', 'https://generativelanguage.googleapis.com').rstrip('/')
+ASBUILT_GEMINI_DEFAULT_MODEL = os.getenv('TELETECH_GEMINI_MODEL', 'gemini-3.8-flash').strip() or 'gemini-3.8-flash'
+ASBUILT_GLM_BASE_URL = os.getenv('TELETECH_GLM_BASE_URL', 'https://api.z.ai/api/paas/v4').rstrip('/')
+ASBUILT_GLM_DEFAULT_MODEL = os.getenv('TELETECH_GLM_MODEL', 'glm-4.5v').strip() or 'glm-4.5v'
+ASBUILT_QWEN_ENABLED = os.getenv('TELETECH_QWEN_ENABLED', '0').strip().lower() in {'1','true','yes','on'}
+ASBUILT_QWEN_MODEL = os.getenv('TELETECH_QWEN_MODEL', 'Qwen/Qwen2.5-VL-7B-Instruct').strip()
+ASBUILT_QWEN_MAX_IMAGE_DIM = int(os.getenv('TELETECH_QWEN_MAX_IMAGE_DIM', '1600') or 1600)
+ASBUILT_QWEN_MAX_NEW_TOKENS = int(os.getenv('TELETECH_QWEN_MAX_NEW_TOKENS', '1024') or 1024)
+_ASBUILT_QWEN_MODEL_OBJ = None
+_ASBUILT_QWEN_PROCESSOR = None
+_ASBUILT_QWEN_LOCK = threading.Lock()
+
+
+def _load_env_file(env_path, *, override=False):
+    path = Path(env_path)
+    if not path.exists():
+        return False
+    loaded = False
+    for raw_line in path.read_text(encoding='utf-8').splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith('#') or line.startswith(';'):
+            continue
+        if line.startswith('export '):
+            line = line[len('export '):].lstrip()
+        if '=' not in line:
+            continue
+        key, value = line.split('=', 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+        if value and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+        if not override and key in os.environ and str(os.environ[key]).strip():
+            continue
+        value = re.sub(r'\s+#.*$', '', value)
+        os.environ[key] = value
+        loaded = True
+    return loaded
+
+torch: Any = None
+AutoProcessor: Any = None
+AutoModelForImageTextToText: Any = None
+if ASBUILT_HF_OCR_ENABLED or ASBUILT_QWEN_ENABLED:
+    # torch/transformers are optional and only required when local OCR is explicitly enabled.
+    try:
+        import torch  # type: ignore[import-not-found]
+        from transformers import AutoProcessor, AutoModelForImageTextToText  # type: ignore[import-not-found]
+    except Exception as _hf_import_error:
+        torch = None; AutoProcessor = None; AutoModelForImageTextToText = None
+        print(f'[AS-BUILT] local OCR/vision dependencies unavailable: {_hf_import_error}')
+
 ROOT = Path(__file__).resolve().parent
 ENV_FILE = ROOT / '.env'
 if load_dotenv:
-    load_dotenv(ENV_FILE, override=False)
-    print(f'[ENV] .env loaded: {ENV_FILE.exists()}')
+    loaded = bool(load_dotenv(ENV_FILE, override=False))
+    print(f'[ENV] .env loaded via python-dotenv: {loaded} ({ENV_FILE})')
 else:
-    print('[ENV] python-dotenv not installed; .env not loaded')
+    loaded = _load_env_file(ENV_FILE, override=False)
+    print(f'[ENV] python-dotenv not installed; fallback loader used: {loaded} ({ENV_FILE})')
 
 # ----------------------------- Authentication -----------------------------
 AUTH_SESSION_TTL = int(os.getenv('TELETECH_AUTH_SESSION_TTL', '28800') or 28800)
@@ -1616,7 +1690,7 @@ def _parse_visible_dxf(path, with_rooms=False):
     occurrences=[]
     room_markers=[]
     text_items=[]
-    def walk(entities, parent=(1,0,0,1,0,0), ancestors=(), depth=0):
+    def walk(entities, parent=(1,0,0,1,0,0), ancestors=(), depth=0, ancestor_handles=()):
         if depth>16: return
         amap=attributes_by_insert(entities)
         for e in entities:
@@ -1624,14 +1698,14 @@ def _parse_visible_dxf(path, with_rooms=False):
                 txt=str(_dxf_first(e,1,'') or '').strip()
                 rx,ry=transform_point(parent,_dxf_num(e,10),_dxf_num(e,20))
                 text_items.append({'text':txt,'x':rx,'y':ry,'layer':_dxf_first(e,8,'0'),
-                                   'ancestors':list(ancestors),'depth':depth,'type':e['type']})
+                                   'ancestors':list(ancestors),'ancestor_handles':list(ancestor_handles),'depth':depth,'type':e['type']})
                 if _is_room_marker_text(txt):
                     room_markers.append({'name':txt.upper(),'x':rx,'y':ry,'layer':_dxf_first(e,8,'0'),
-                                         'ancestors':list(ancestors),'depth':depth})
+                                         'ancestors':list(ancestors),'ancestor_handles':list(ancestor_handles),'depth':depth})
                 if 'ROOF' in txt.upper():
                     occurrences.append({'handle':_dxf_first(e,5,''),'block':'__ROOF_TEXT__','layer':_dxf_first(e,8,'0'),
                                         'x':rx,'y':ry,'text':txt,'rotation':0.0,'attributes':{},
-                                        'ancestors':list(ancestors),'depth':depth,'legend_branch':False,'root':depth==0})
+                                        'ancestors':list(ancestors),'ancestor_handles':list(ancestor_handles),'depth':depth,'legend_branch':False,'root':depth==0,'entity_type':'INSERT'})
                 ridx=_rack_index_from_text(txt)
                 if ridx in {1,2}:
                     occurrences.append({'handle':_dxf_first(e,5,''),'block':'__RACK_TEXT__','layer':_dxf_first(e,8,'0'),
@@ -1653,11 +1727,11 @@ def _parse_visible_dxf(path, with_rooms=False):
             legend_branch=any(('legend' in str(a).lower() or 'legent' in str(a).lower()) for a in (*ancestors,name))
             occurrences.append({'handle':handle,'block':name,'layer':layer,'x':x,'y':y,'insert_x':ix,'insert_y':iy,
                                 'rotation':_dxf_num(e,50,0),'attributes':amap.get(handle,{}),
-                                'ancestors':list(ancestors),'depth':depth,'legend_branch':legend_branch,
-                                'root':depth==0})
+                                'ancestors':list(ancestors),'ancestor_handles':list(ancestor_handles),'parent_transform':list(parent),'depth':depth,'legend_branch':legend_branch,
+                                'root':depth==0,'entity_type':'INSERT'})
             if name in blocks and not legend_branch:
                 if m is None: m=insert_matrix(e,blocks[name]['base'])
-                walk(blocks[name]['entities'],mat_mul(parent,m),ancestors+(name,),depth+1)
+                walk(blocks[name]['entities'],mat_mul(parent,m),ancestors+(name,),depth+1,ancestor_handles+(handle,))
     walk(model)
 
     # ROUTE_ROOM_LOCK_FIX2: many architectural blocks split room numbers into two
@@ -5984,19 +6058,13 @@ def _gemini_generate(model, contents, api_key, response_schema=None):
     payload={'contents':contents}
     if response_schema is not None:
         payload['generationConfig']={'responseMimeType':'application/json','responseSchema':response_schema}
-    req=Request(f'{base}/v1beta/models/{model}:generateContent?key={key}',
-        data=json.dumps(payload,ensure_ascii=False).encode('utf-8'), method='POST',
-        headers={'Content-Type':'application/json'})
-    # Gemini can temporarily return 503 when the selected model is overloaded.
-    # Retry with exponential backoff, then try a current stable Flash fallback.
-    # This is especially useful for large scanned As-Built requests.
+    # Retry transient overloads, but never burn requests on exhausted daily quota.
+    # A fallback model is opt-in; it is not silently called after quota/rate-limit errors.
+    fallback=os.getenv('TELETECH_GEMINI_FALLBACK_MODEL','').strip()
     models_to_try=[model]
-    fallback=os.getenv('TELETECH_GEMINI_FALLBACK_MODEL','gemini-3.8-flash').strip()
-    if fallback and fallback not in models_to_try:
-        models_to_try.append(fallback)
     last_error=None
     raw=None
-    for try_model in models_to_try:
+    for model_index, try_model in enumerate(models_to_try):
         req=Request(f'{base}/v1beta/models/{try_model}:generateContent?key={key}',
             data=json.dumps(payload,ensure_ascii=False).encode('utf-8'), method='POST',
             headers={'Content-Type':'application/json'})
@@ -6007,15 +6075,42 @@ def _gemini_generate(model, contents, api_key, response_schema=None):
                 break
             except HTTPError as e:
                 try:
-                    detail=e.read().decode('utf-8','replace'); j=json.loads(detail); msg=((j.get('error') or {}).get('message') or detail)
+                    detail=e.read().decode('utf-8','replace')
+                    j=json.loads(detail)
+                    err=j.get('error') or {}
+                    msg=err.get('message') or detail
+                    status=str(err.get('status') or '').upper()
                 except Exception:
                     msg=str(e)
+                    status=''
                 code=getattr(e,'code',None)
                 last_error=RuntimeError(f'Gemini API HTTP {code}: {msg}')
-                if code in (408,429,500,502,503,504):
+                msg_lower=str(msg).lower()
+                daily_quota = (
+                    code == 429 and (
+                        'requests per day' in msg_lower
+                        or 'per_day' in msg_lower
+                        or 'free_tier_requests' in msg_lower
+                        or 'daily' in msg_lower
+                        or ('quota exceeded' in msg_lower and ('day' in msg_lower or 'limit:' in msg_lower))
+                    )
+                )
+                if daily_quota:
+                    raise last_error
+                # 429 can be RPM/TPM throttling or a spend/rate limit; do not
+                # switch models automatically. Retry only the same model.
+                if code == 429:
                     if attempt < 3:
                         time.sleep((2 ** attempt) + random.random())
                         continue
+                    raise last_error
+                if code in (408,500,502,503,504):
+                    if attempt < 3:
+                        time.sleep((2 ** attempt) + random.random())
+                        continue
+                    # Only a 503 overload may use an explicitly configured fallback.
+                    if code == 503 and fallback and fallback not in models_to_try:
+                        models_to_try.append(fallback)
                     break
                 raise last_error
             except URLError as e:
@@ -6109,17 +6204,28 @@ def _split_asbuilt_pdf_to_images(pdf_path):
         return [{'path':str(pdf_path),'filename':pdf_path.name,'mime_type':'image/png' if pdf_path.suffix.lower()=='.png' else 'image/jpeg'}]
     if fitz is None:
         raise RuntimeError('PyMuPDF (fitz) is required to split scanned As-Built PDFs into page images.')
-    out_dir=pdf_path.parent/('ab_'+hashlib.md5(pdf_path.stem.encode('utf-8')).hexdigest()[:10])
+    out_dir=pdf_path.parent/('abn_'+hashlib.md5((pdf_path.stem+str(pdf_path.stat().st_size)).encode('utf-8')).hexdigest()[:10])
     out_dir.mkdir(parents=True,exist_ok=True)
     doc=fitz.open(str(pdf_path))
     try:
         if len(doc)>ASBUILT_SPLIT_MAX_PAGES:
             raise RuntimeError(f'As-Built PDF has {len(doc)} pages; safety limit is {ASBUILT_SPLIT_MAX_PAGES}.')
-        scale=ASBUILT_SPLIT_DPI/72.0
-        mat=fitz.Matrix(scale,scale)
         pages=[]
         for idx,page in enumerate(doc,1):
-            out=out_dir/f'p{idx:03d}.png'
+            # Render at the resolution of the embedded scan (ink annotations included),
+            # capped; a fixed 220 DPI render of a 2-3 MP scan is 72 MP of interpolated pixels.
+            scale=ASBUILT_SPLIT_DPI/72.0
+            try:
+                imgs=page.get_images(full=True)
+                if imgs:
+                    info=doc.extract_image(imgs[0][0])
+                    scale=max(info['width']/page.rect.width,info['height']/page.rect.height)
+            except Exception:
+                pass
+            long_side=max(page.rect.width,page.rect.height)*scale
+            if long_side>4200: scale*=4200.0/long_side
+            mat=fitz.Matrix(scale,scale)
+            out=out_dir/f'n{idx:03d}.png'
             if not out.exists():
                 pix=page.get_pixmap(matrix=mat,alpha=False)
                 pix.save(str(out))
@@ -6232,10 +6338,13 @@ CANDIDATE ENDPOINTS FOR {floor}:
     }
 
 
-def _asbuilt_project_candidate_catalog(label_pattern=None):
-    """Build one unique candidate catalog across every analyzed project floor."""
+def _asbuilt_project_candidate_catalog(label_pattern=None, floors=None):
+    """Build a candidate catalog only for floors represented by this upload when supplied."""
     floor_order=['Ground Floor','First Floor','Second Floor','Third Floor','Roof Floor']
     floor_order += [f for f in PROJECT_RESULTS if f not in floor_order]
+    wanted_floors={str(x) for x in (floors or []) if str(x).strip()}
+    if wanted_floors:
+        floor_order=[f for f in floor_order if f in wanted_floors]
     all_rows=[]; by_key={}; lines=[]; per_floor={}
     fidx=0
     for floor in floor_order:
@@ -6530,10 +6639,15 @@ Before deciding what any markup means, perform a complete visual inventory page-
 MARKUP COUNT RULES:
 1) Markup Count and CAD Entity Count are different. Count visible markup marks only; never convert a markup count into an entity count.
 2) A visible distinct colored mark is one markup. Two touching/adjacent marks are two only when you can visually distinguish two separate strokes/marks; otherwise count them as ambiguous, not guessed.
-3) Record Pink, Yellow, Orange, Blue and Green separately for every page. Unknown colors go to human review.
+3) Record Pink, Yellow, Orange, Blue and Green separately for every page. Pink is the actual source-file color; do NOT rename it Red.
 4) Preserve the original handwritten Arabic status literally. Do not translate it into a different status when the handwriting is uncertain.
-5) Lock the Legend before interpreting the slides. If the legend says Pink = «لم يتم السحب نهائيًا», preserve exactly that meaning. Do not reverse it to «تم السحب».
-6) If a color is not defined in the Legend, normalized_status must remain empty/null and human_review_required=true.
+5) The confirmed legend is fixed and must be applied consistently:
+   - Pink: «لم يتم السحب نهائيًا» => CANCEL the cable/endpoint; SHIFT its label; do NOT reserve or retain a Patch Panel slot.
+   - Yellow: «لم يتم السحب» => DELETE the endpoint from the updated CAD drawing; RESERVE its Patch Panel slot; do NOT shift its label (keep its original port position).
+   - Orange: cable was MOVED to another location; KEEP its Patch Panel slot and KEEP its label unchanged. This is a move, NOT a cancellation/deletion.
+   - Green: cable was PULLED; KEEP its Patch Panel slot and KEEP its label unchanged.
+   - Blue or any undefined color: no inferred action; keep normalized_status empty/null and require human review.
+6) A color/action mapping does not by itself identify a CAD endpoint. Match the correct floor, room, nearby text and CAD target; uncertain matches remain for human review.
 7) Never treat printed CAD symbols as handwritten markups merely because they have a similar color or shape. Use stroke/overlay/context to decide; if uncertain, flag it.
 
 TWO-PASS OUTPUT:
@@ -6543,10 +6657,11 @@ TWO-PASS OUTPUT:
 
 REVISION / CAD MATCHING RULES:
 1) The CAD project is the source of truth for existing Point/Endpoint IDs and coordinates. The scan is the source of truth for the technician's markup/revision intent.
-2) Only approved removal statuses may currently become removable CAD findings: «لم يتم السحب», «تم رد الكابلات», «لا يوجد لها مسار», «تم نقل».
-3) A color alone is never enough to create a CAD operation.
-4) Match a markup to the candidate CAD endpoint only when the page/floor, room/nearby text, spatial location and drawing context support the match. Never fabricate a target_key.
-5) Cable/routing notes, moves, additions, Patch Panel/Rack notes and other non-removal markups must be preserved in markup_inventory with their original text and human_review_required=true until a dedicated CAD operation is confirmed. Do not turn them into endpoint deletion.
+2) Apply the fixed color actions exactly: Pink=DELETE CAD ENDPOINT + SHIFT LABEL + NO PATCH PANEL SLOT; Yellow=DELETE CAD ENDPOINT + RESERVE PATCH PANEL SLOT + KEEP LABEL POSITION; Orange=MOVE CAD ENDPOINT TO THE BLUE ARROW TIP + KEEP PATCH PANEL SLOT + KEEP LABEL; Green=NO CAD CHANGE + KEEP PATCH PANEL SLOT + KEEP LABEL.
+3) Orange is a move, never an endpoint deletion. Yellow deletes the endpoint from the updated CAD drawing but reserves its original Patch Panel slot. Green remains unchanged.
+4) A color alone is never enough to create a CAD operation. Confirm the matching endpoint and floor first.
+5) Match a markup to the candidate CAD endpoint only when the page/floor, room/nearby text, spatial location and drawing context support the match. Never fabricate a target_key.
+6) Preserve all four color classes and their actions in markup_inventory. If the endpoint match or the handwritten evidence is uncertain, require human review; do not silently execute a CAD change.
 6) x_norm/y_norm are page coordinates normalized 0..1000, left-to-right/top-to-bottom.
 7) Do not modify CAD during analysis. This stage produces a reviewed revision manifest only.
 
@@ -6929,7 +7044,7 @@ def _asbuilt_cv_color_inventory(image_path, legend_path=None):
                     for cname,(lo,hi,smin,vmin) in color_ranges.items():
                         cm=((ref_hsv[:,:,0]>=lo)&(ref_hsv[:,:,0]<=hi)&
                             (ref_hsv[:,:,1]>=smin)&(ref_hsv[:,:,2]>=vmin)).astype(np.uint8)
-                        n,lab,st,cen=cv2.connectedComponentsWithStats(cm,8)
+                        n,lab,st,cen=cv2.connectedComponentsWithStats(cm, connectivity=8)
                         comps=[]
                         for i in range(1,n):
                             a=int(st[i,cv2.CC_STAT_AREA])
@@ -6948,7 +7063,7 @@ def _asbuilt_cv_color_inventory(image_path, legend_path=None):
                     for cname,(lo,hi,smin,vmin) in color_ranges.items():
                         cm=((page_hsv[:,:,0]>=lo)&(page_hsv[:,:,0]<=hi)&
                             (page_hsv[:,:,1]>=smin)&(page_hsv[:,:,2]>=vmin)).astype(np.uint8)
-                        n,lab,st,cen=cv2.connectedComponentsWithStats(cm,8)
+                        n,lab,st,cen=cv2.connectedComponentsWithStats(cm, connectivity=8)
                         arr=[]
                         for i in range(1,n):
                             a=int(st[i,cv2.CC_STAT_AREA])
@@ -6961,64 +7076,49 @@ def _asbuilt_cv_color_inventory(image_path, legend_path=None):
 
                     # The known legend order is:
                     # pink -> green -> yellow -> orange -> orange.
-                    # Search for a compact vertical cluster.  This is much
-                    # safer than suppressing an arbitrary rectangle.
+                    # The old five-deep Cartesian search multiplied every
+                    # color-component count together and could dominate scan
+                    # time on dense/high-resolution pages. Keep only the three
+                    # nearest vertically aligned candidates at each stage.
                     candidates=[]
+                    x_tol=max(220,0.18*w)
+                    max_gap=max(650,0.55*h)
+                    def _next_legend_components(color_name, anchor, x_origin, excluded=None):
+                        opts=[q for q in page_components[color_name]
+                              if q is not excluded and q['cy']>anchor['cy']
+                              and q['cy']-anchor['cy']<=max_gap
+                              and abs(q['cx']-x_origin)<=x_tol]
+                        opts.sort(key=lambda q:(q['cy']-anchor['cy'],abs(q['cx']-x_origin)))
+                        return opts[:3]
                     for p in page_components['pink']:
-                        for g in page_components['green']:
-                            if g['cy'] <= p['cy'] or abs(g['cx']-p['cx']) > max(220,0.18*w):
-                                continue
-                            for yel in page_components['yellow']:
-                                if yel['cy'] <= g['cy'] or abs(yel['cx']-p['cx']) > max(220,0.18*w):
-                                    continue
-                                for o1 in page_components['orange']:
-                                    if o1['cy'] <= yel['cy'] or abs(o1['cx']-p['cx']) > max(220,0.18*w):
-                                        continue
-                                    for o2 in page_components['orange']:
-                                        if o2 is o1 or o2['cy'] <= o1['cy'] or abs(o2['cx']-p['cx']) > max(220,0.18*w):
-                                            continue
-
+                        for g in _next_legend_components('green',p,p['cx']):
+                            for yel in _next_legend_components('yellow',g,p['cx']):
+                                for o1 in _next_legend_components('orange',yel,p['cx']):
+                                    for o2 in _next_legend_components('orange',o1,p['cx'],excluded=o1):
                                         pts=[p,g,yel,o1,o2]
                                         ys=[q['cy'] for q in pts]
                                         xs=[q['cx'] for q in pts]
                                         minx,maxx=min(q['x'] for q in pts),max(q['x']+q['w'] for q in pts)
                                         miny,maxy=min(q['y'] for q in pts),max(q['y']+q['h'] for q in pts)
                                         bw=maxx-minx; bh=maxy-miny
-                                        if bw<=0 or bh<=0:
+                                        if bw<=0 or bh<=0 or bw>max(320,0.30*w) or bh>max(650,0.55*h):
                                             continue
-
-                                        # Legend strokes are horizontally elongated
-                                        # and tightly aligned in x.
-                                        if bw > max(320,0.30*w) or bh > max(650,0.55*h):
+                                        if max(xs)-min(xs)>max(220,0.16*w):
                                             continue
-                                        xspread=max(xs)-min(xs)
-                                        if xspread > max(220,0.16*w):
-                                            continue
-
-                                        # Similarity to reference component shapes.
                                         shape_score=0.0; used=0
                                         for cname,q in [('pink',p),('green',g),('yellow',yel),('orange',o1)]:
                                             if cname not in ref_sig:
                                                 continue
-                                            ra,rw0,rh0=ref_sig[cname]
-                                            # Resolution/phone-camera scale can
-                                            # change absolute component size by
-                                            # a large factor.  Use the reference
-                                            # primarily for the stroke shape.
+                                            _ra,rw0,rh0=ref_sig[cname]
                                             ref_aspect=rw0/max(rh0,1)
                                             q_aspect=q['w']/max(q['h'],1)
                                             aspect_pen=abs(np.log((q_aspect+1e-6)/(ref_aspect+1e-6)))
-                                            local=max(0.0,1.0-0.75*aspect_pen)
-                                            shape_score += local
+                                            shape_score += max(0.0,1.0-0.75*aspect_pen)
                                             used += 1
                                         shape_score /= max(used,1)
-
-                                        # Normalize vertical spacing; legend rows
-                                        # are relatively regular.
                                         gaps=[ys[i+1]-ys[i] for i in range(4)]
                                         spacing_cv=(max(gaps)-min(gaps))/max(np.mean(gaps),1.0)
                                         spacing_score=max(0.0,1.0-0.8*spacing_cv)
-
                                         score=0.65*shape_score+0.35*spacing_score
                                         candidates.append((score,(minx,miny,bw,bh)))
 
@@ -7054,7 +7154,7 @@ def _asbuilt_cv_color_inventory(image_path, legend_path=None):
         green_min=40
 
         masks={
-            'pink':((hsv[:,:,0]>=155)&(hsv[:,:,0]<=179)&(hsv[:,:,1]>=70)&(hsv[:,:,2]>=100)),
+            'pink':(((hsv[:,:,0]>=155)&(hsv[:,:,0]<=179)&(hsv[:,:,1]>=70)&(hsv[:,:,2]>=100))|((hsv[:,:,0]>=0)&(hsv[:,:,0]<=4)&(hsv[:,:,1]>=70)&(hsv[:,:,2]>=100))),
             'yellow':((hsv[:,:,0]>=20)&(hsv[:,:,0]<=40)&(hsv[:,:,1]>=60)&(hsv[:,:,2]>=100)),
             'orange':((hsv[:,:,0]>=5)&(hsv[:,:,0]<=20)&(hsv[:,:,1]>=80)&(hsv[:,:,2]>=100)),
             'green':((hsv[:,:,0]>=40)&(hsv[:,:,0]<=90)&(hsv[:,:,1]>=55)&(hsv[:,:,2]>=70)),
@@ -7062,7 +7162,7 @@ def _asbuilt_cv_color_inventory(image_path, legend_path=None):
         mins={'pink':pink_min,'yellow':yellow_min,'orange':orange_min,'green':green_min}
 
         out={
-            'available':True,'width':int(w),'height':int(h),
+            'available':True,'source_image_path':str(image_path),'width':int(w),'height':int(h),
             'counts':{'pink':0,'yellow':0,'orange':0,'blue':0,'green':0},
             'regions':{'pink':[],'yellow':[],'orange':[],'blue':[],'green':[]},
             'blue_ignored':True,
@@ -7084,7 +7184,7 @@ def _asbuilt_cv_color_inventory(image_path, legend_path=None):
             # Raw connected components: no morphology, so adjacent points
             # remain separate components.
             m=mask.astype(np.uint8)*255
-            n,labels,stats,centroids=cv2.connectedComponentsWithStats(m,8)
+            n,labels,stats,centroids=cv2.connectedComponentsWithStats(m, connectivity=8)
             regions=[]
 
             for i in range(1,n):
@@ -7262,36 +7362,360 @@ def _asbuilt_sheet_floor(page_number, total_pages):
     return pair_floor.get(idx,'')
 
 
-def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint=''):
-    """Rank existing CAD endpoints by normalized sheet position; review-only."""
-    try: sx=float(markup.get('x_norm') or 500); sy=float(markup.get('y_norm') or 500)
-    except Exception: sx=sy=500.0
+def _asbuilt_median_nearest_spacing(coords):
+    """Compute a floor's median nearest-endpoint spacing once, not per markup."""
+    if np is None or len(coords)<2:
+        return 1.0
+    try:
+        arr=np.asarray(coords,dtype=np.float64)
+        if arr.ndim!=2 or arr.shape[1]!=2 or len(arr)<2:
+            return 1.0
+        try:
+            from scipy.spatial import cKDTree
+            distances,_=cKDTree(arr).query(arr,k=2)
+            nearest=np.asarray(distances[:,1],dtype=np.float64)
+        except Exception:
+            # Bounded-memory vectorized fallback; still O(N^2), but in NumPy/C
+            # and performed once per floor rather than once per colored markup.
+            nearest=np.full((len(arr),),np.inf,dtype=np.float64)
+            for start in range(0,len(arr),64):
+                end=min(len(arr),start+64)
+                dx=arr[start:end,0,None]-arr[None,:,0]
+                dy=arr[start:end,1,None]-arr[None,:,1]
+                d2=dx*dx+dy*dy
+                d2[np.arange(end-start),np.arange(start,end)]=np.inf
+                nearest[start:end]=np.sqrt(np.min(d2,axis=1))
+        nearest=nearest[np.isfinite(nearest)&(nearest>1e-8)]
+        return float(np.median(nearest)) if len(nearest) else 1.0
+    except Exception:
+        return 1.0
+
+
+def _asbuilt_match_markup_to_cad(markup, catalog, per_floor=None, floor_hint='',page_to_cad_affine=None,registration_diagnostics=None,max_results=8):
+    """Rank endpoint candidates using registered CAD distance, endpoint density,
+    semantic hints (when present), and nearest-vs-runner-up separation.
+
+    Confidence is deliberately conservative: a nearby endpoint is not enough
+    when several endpoint instances are packed together or when the markup
+    provides no service/block evidence. This remains review-only.
+    """
+    try:
+        sx=float(markup.get('x_norm') or 500); sy=float(markup.get('y_norm') or 500)
+    except Exception:
+        sx=sy=500.0
+    mapped_xy=_asbuilt_norm_to_cad_xy(sx,sy,catalog,floor_hint=floor_hint,page_to_cad_affine=page_to_cad_affine)
+    # Reuse the already-normalized floor list. The previous implementation
+    # filtered the full project catalog and recomputed every endpoint's nearest
+    # neighbour (O(N^2)) for EVERY markup candidate, multiplying the cost by
+    # pages x markups. Spacing is now calculated once per floor during scan setup.
+    floor_rows=(per_floor or {}).get(str(floor_hint)) if floor_hint else None
+    if floor_rows is None:
+        floor_rows=[t for t in (catalog or []) if isinstance(t,dict) and
+                    (not floor_hint or str(t.get('floor') or '')==str(floor_hint))]
+    if not floor_rows:
+        return []
+    coords=[]
+    for t in floor_rows:
+        try: coords.append((float(t.get('x') or 0),float(t.get('y') or 0)))
+        except Exception: coords.append((0.0,0.0))
+    spacing=float(floor_rows[0].get('_asbuilt_spacing') or 0.0)
+    if not math.isfinite(spacing) or spacing<=1e-6:
+        spacing=_asbuilt_median_nearest_spacing(coords)
+    spacing=max(float(spacing),1e-6)
+    norm=lambda v: re.sub(r'[^A-Z0-9\u0600-\u06FF]+',' ',str(v or '').upper()).strip()
+    hint=norm(' '.join(str(markup.get(k) or '') for k in ('ocr_text','service_hint','nearby_text')))
+    hint_tokens=[w for w in hint.split() if len(w)>=2]
     scored=[]
-    for t in catalog or []:
-        floor=str(t.get('floor') or '')
-        if floor_hint and floor != floor_hint: continue
-        dx=float(t.get('nx') or 0)-sx; dy=float(t.get('ny') or 0)-sy
-        dist=(dx*dx+dy*dy)**0.5
-        if dist<=60: conf=.90
-        elif dist<=110: conf=.78
-        elif dist<=180: conf=.62
-        elif dist<=280: conf=.45
-        else: conf=.25
-        scored.append((dist,t,conf))
-    # HARD RULE: never fall back to another floor. If the page floor has no
-    # candidates, leave it unmatched for review instead of suggesting a wrong floor.
+    for t,(tx,ty) in zip(floor_rows,coords):
+        if mapped_xy is not None:
+            dist=math.hypot(tx-mapped_xy[0],ty-mapped_xy[1])
+            units=dist/spacing
+        else:
+            dist=math.hypot(float(t.get('nx') or 0)-sx,float(t.get('ny') or 0)-sy)
+            units=dist/85.0
+        searchable=norm(' '.join(str(t.get(k) or '') for k in ('service','block','label','rack')))
+        semantic_hits=sum(1 for token in hint_tokens if token in searchable)
+        semantic_penalty=(0.0 if semantic_hits else (0.35 if hint_tokens else 0.0))
+        score=units+semantic_penalty
+        scored.append((score,dist,units,semantic_hits,t))
     scored.sort(key=lambda z:z[0])
+    if not scored: return []
+    best=scored[0]
+    second=scored[1] if len(scored)>1 else None
+    # Confidence combines normalized geometric proximity and separation from
+    # the next candidate. Dense/ambiguous endpoint clusters stay below 78%.
+    proximity=math.exp(-0.72*max(0.0,best[2]))
+    separation=1.0 if second is None else max(0.0,min(1.0,(second[0]-best[0])/max(second[0],0.25)))
+    confidence=0.18+0.68*proximity+0.14*separation
+    if hint_tokens and best[3]:
+        confidence=min(0.97,confidence+0.06)
+    elif hint_tokens and not best[3]:
+        confidence*=0.78
+    if second is not None and second[0]-best[0] < 0.18:
+        confidence=min(confidence,0.72)
+    # Never auto-suggest a destructive CAD match from page-normalized proximity
+    # alone. Without a verified page-to-CAD transform the coordinate systems
+    # may differ because of cropping, rotation, skew or scan margins.
+    registration_verified = mapped_xy is not None
+    local_support = None
+    center_support = None
+    grid=(registration_diagnostics or {}).get('inlier_grid_5x5')
+    if registration_verified and isinstance(grid,list) and len(grid)==5:
+        try:
+            gx=max(0,min(4,int(float(sx)/1000.0*5)))
+            gy=max(0,min(4,int(float(sy)/1000.0*5)))
+            # A point can sit on a cell boundary. Sum the immediate 3x3
+            # neighborhood, retaining the support around the markup itself.
+            local_support=int(sum(grid[yy][xx]
+                for yy in range(max(0,gy-1),min(5,gy+2))
+                for xx in range(max(0,gx-1),min(5,gx+2))))
+            center_support=int(grid[gy][gx])
+            if local_support<5:
+                confidence=min(confidence,0.60)
+            elif local_support<12:
+                confidence=min(confidence,0.74)
+        except Exception:
+            local_support=None
+    if not registration_verified:
+        confidence=min(confidence,0.65)
     out=[]
-    for dist,t,conf in scored[:8]:
+    for rank,(_,dist,units,semantic_hits,t) in enumerate(scored[:max(1,int(max_results or 8))]):
+        local_conf=confidence if rank==0 else max(0.05,confidence*math.exp(-0.8*(scored[rank][0]-best[0])))
         out.append({'target_id':t.get('target_id'),'candidate_key':t.get('candidate_key'),
                     'floor':t.get('floor'),'label':t.get('label') or t.get('block') or t.get('target_id'),
                     'service':t.get('service',''),'block':t.get('block',''),'rack':t.get('rack',''),
                     'x':t.get('x'),'y':t.get('y'),'cad_x_norm':int(t.get('nx') or 0),
                     'cad_y_norm':int(t.get('ny') or 0),'distance_norm':round(dist,1),
-                    'match_confidence':round(conf,2),'editable_direct':bool(t.get('editable_direct'))})
+                    'distance_in_endpoint_spacing':round(units,3),
+                    'semantic_match':bool(semantic_hits),'match_confidence':round(float(local_conf),2),
+                    'registration_verified':registration_verified,'local_registration_support':local_support,'registration_center_cell_support':center_support,
+                    'editable_direct':bool(t.get('editable_direct'))})
     return out
 
-def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=None, per_floor=None, floor_hint=''):
+_ASB_REG_CACHE={}
+
+
+def _asbuilt_register_page_to_floor(page_image_path, floor):
+    """Register one uploaded As-Built page to the original DXF of its floor.
+
+    Uses asbuilt_registration.register_page_to_dxf (SIFT + MAGSAC + validation).
+    Returns an affine over normalized page coordinates (0..1000), or None with a
+    reason (-> manual review).  Never writes to the source DXF.
+    """
+    if cv2 is None or np is None or _ASBUILT_REGISTRATION is None:
+        return None, {'ok': False, 'reason': 'Registration dependencies are unavailable.'}, None, None
+    try:
+        floor_result = PROJECT_RESULTS.get(str(floor)) or {}
+        drawing_path = str(floor_result.get('drawing') or '').strip()
+        if not drawing_path or not Path(drawing_path).is_file():
+            return None, {'ok': False, 'reason': f'Original CAD drawing for {floor} was not found.'}, None, None
+        page_image = cv2.imread(str(page_image_path), cv2.IMREAD_COLOR)
+        if page_image is None:
+            return None, {'ok': False, 'reason': 'Could not read the rendered As-Built page image.'}, None, None
+        # CAD geometry is invariant across pages of the same floor. Cache it
+        # by path + file stat so the second half-sheet does not reload/reparse it.
+        stat=Path(drawing_path).stat()
+        cache_key=(str(Path(drawing_path).resolve()),int(getattr(stat,'st_mtime_ns',int(stat.st_mtime*1e9))),int(stat.st_size))
+        geom=_ASBUILT_REGISTRATION_CACHE.get(cache_key)
+        if geom is None:
+            geom=_ASBUILT_REGISTRATION.load_cad_geometry(drawing_path)
+            if len(_ASBUILT_REGISTRATION_CACHE)>=5:
+                _ASBUILT_REGISTRATION_CACHE.clear()
+            _ASBUILT_REGISTRATION_CACHE[cache_key]=geom
+        reg = _ASBUILT_REGISTRATION.register_page_to_dxf(page_image, geom)
+        summary = reg.summary()
+        if not reg.ok:
+            return None, {'ok': False, 'reason': '; '.join(reg.reasons) or 'Page-to-CAD registration rejected.',
+                          'status': reg.status, 'diagnostics': summary}, reg, geom
+        page_h, page_w = page_image.shape[:2]
+        gu, gv = np.meshgrid(np.linspace(0, 1000, 7), np.linspace(0, 1000, 7))
+        uv = np.stack([gu.ravel(), gv.ravel()], axis=1)
+        px = np.stack([uv[:, 0] * page_w / 1000.0, uv[:, 1] * page_h / 1000.0], axis=1)
+        world = np.asarray(reg.to_world(px), dtype=float)
+        A = np.hstack([uv, np.ones((len(uv), 1))])
+        cx, *_ = np.linalg.lstsq(A, world[:, 0], rcond=None)
+        cy, *_ = np.linalg.lstsq(A, world[:, 1], rcond=None)
+        resid = np.hypot(A @ cx - world[:, 0], A @ cy - world[:, 1])
+        span = float(np.ptp(world, axis=0).max()) or 1.0
+        if float(resid.max()) > 0.01 * span:
+            return None, {'ok': False, 'reason': 'Registration is not affine-like across the page; manual review required.',
+                          'diagnostics': summary}, reg, geom
+        affine = [float(cx[0]), float(cx[1]), float(cy[0]), float(cy[1]), float(cx[2]), float(cy[2])]
+        if not all(math.isfinite(v) for v in affine) or abs(affine[0]*affine[3]-affine[1]*affine[2]) < 1e-12:
+            return None, {'ok': False, 'reason': 'Computed page-to-CAD transform is invalid.'}, reg, geom
+        return affine, {'ok': True, 'status': reg.status, 'confidence': reg.confidence, 'diagnostics': summary}, reg, geom
+    except Exception as exc:
+        return None, {'ok': False, 'reason': f'{type(exc).__name__}: {exc}'}, None, None
+
+
+def _asbuilt_norm_to_cad_xy(x_norm,y_norm,catalog,floor_hint='',page_to_cad_affine=None):
+    """Convert page coordinates only when a verified page-to-CAD affine transform exists.
+
+    Endpoint-envelope scaling is intentionally disabled: scanned As-Built pages may
+    be cropped, rotated, skewed or include margins, so that estimate can move an
+    endpoint to a completely unrelated CAD location.
+    Expected transform format on floor catalog rows:
+      page_to_cad_affine = [a, b, c, d, tx, ty]
+    where CAD_X=a*u+b*v+tx and CAD_Y=c*u+d*v+ty, with u/v in 0..1000.
+    """
+    try:
+        if isinstance(page_to_cad_affine, (list, tuple)) and len(page_to_cad_affine) == 6:
+            a,b,c,d,tx,ty=[float(v) for v in page_to_cad_affine]
+            if all(math.isfinite(v) for v in (a,b,c,d,tx,ty)) and abs(a*d-b*c)>=1e-12:
+                u=max(0.0,min(1000.0,float(x_norm)))
+                v=max(0.0,min(1000.0,float(y_norm)))
+                return [a*u+b*v+tx,c*u+d*v+ty]
+        rows=[t for t in (catalog or []) if isinstance(t,dict) and
+              (not floor_hint or str(t.get('floor') or '')==str(floor_hint))]
+        transforms=[]
+        for row in rows:
+            raw=row.get('page_to_cad_affine')
+            if isinstance(raw,(list,tuple)) and len(raw)==6:
+                vals=[float(v) for v in raw]
+                if all(math.isfinite(v) for v in vals):
+                    transforms.append(vals)
+        if not transforms:
+            return None
+        # All supplied transforms for this floor must agree; never guess which page
+        # registration applies to the selected point.
+        t0=transforms[0]
+        if any(any(abs(a-b)>1e-8 for a,b in zip(t0,t)) for t in transforms[1:]):
+            return None
+        a,b,c,d,tx,ty=t0
+        if abs(a*d-b*c)<1e-12:
+            return None
+        u=max(0.0,min(1000.0,float(x_norm)))
+        v=max(0.0,min(1000.0,float(y_norm)))
+        return [a*u+b*v+tx,c*u+d*v+ty]
+    except Exception:
+        return None
+
+
+def _asbuilt_detect_blue_arrow_tips(image_path, orange_regions):
+    """Blue-ballpoint relocation arrow detector (see asbuilt_arrow.py).
+
+    Statuses: CONFIRMED | AMBIGUOUS | NOT_FOUND | NOT_CONFIRMED. Only CONFIRMED arrows with a
+    verified PDF-to-DXF registration may move CAD geometry.
+    """
+    if cv2 is None or np is None or not image_path:
+        return {}
+    try:
+        import asbuilt_arrow as _aa
+        return _aa.detect_blue_arrow_tips(str(image_path), orange_regions or [])
+    except Exception as e:
+        return {'_error':{'status':'ERROR','reason':'Arrow detector failed: '+str(e)}}
+
+def _asbuilt_blob_overlay(rows, page_image_path, floor, catalog, registration=None, geom=None):
+    """Require symbol-footprint confirmation before offering a destructive auto-match.
+
+    Spatial proximity remains available for manual review, but it is never promoted
+    to a destructive source selection when blob/footprint evidence is missing,
+    ambiguous, duplicated, or unavailable.
+    """
+    if not rows:
+        return
+
+    def _review_only(row, state, reason):
+        row['blob_match_state'] = state
+        row['blob_match_reason'] = str(reason or '')
+        row['suggested_target_id'] = ''
+        row['suggested_target_label'] = ''
+        row['match_confidence'] = 0.0
+        row['match_status'] = 'BLOB_REVIEW_REQUIRED'
+        row['human_review_required'] = True
+
+    try:
+        if cv2 is None or np is None or not catalog or _ASBUILT_REGISTRATION is None:
+            for row in rows:
+                if row.get('color') in ('pink', 'yellow', 'orange'):
+                    _review_only(row, 'UNAVAILABLE', 'Blob-to-symbol verification is unavailable; choose the CAD endpoint manually.')
+            return
+        import asbuilt_pipeline as PL, dxfedit as _dx
+        floor_result = PROJECT_RESULTS.get(str(floor)) or {}
+        dwg = str(floor_result.get('drawing') or '').strip()
+        if not dwg or not Path(dwg).is_file():
+            for row in rows:
+                if row.get('color') in ('pink', 'yellow', 'orange'):
+                    _review_only(row, 'UNAVAILABLE', 'Original floor drawing is unavailable for symbol-footprint verification.')
+            return
+        img = cv2.imread(str(page_image_path), cv2.IMREAD_COLOR)
+        if img is None:
+            for row in rows:
+                if row.get('color') in ('pink', 'yellow', 'orange'):
+                    _review_only(row, 'UNAVAILABLE', 'As-Built page image could not be read for symbol-footprint verification.')
+            return
+        eps = PL.endpoints_from_targets([t for t in catalog if str(t.get('floor') or '') == str(floor)])
+        if not eps:
+            for row in rows:
+                if row.get('color') in ('pink', 'yellow', 'orange'):
+                    _review_only(row, 'UNAVAILABLE', 'No CAD endpoint footprints are available on this floor.')
+            return
+        PL.attach_footprints(eps, _dx.Dxf(dwg))
+        if geom is None:
+            geom = _ASBUILT_REGISTRATION.load_cad_geometry(dwg)
+        res = PL.analyze_page(img, geom, eps, registration=registration,
+                              page_number=int(rows[0].get('page_number') or 1))
+        marks = [m for m in res['markups'] if m['color'] in ('pink', 'yellow', 'orange')]
+        used = set()
+        for row in rows:
+            if row.get('color') not in ('pink', 'yellow', 'orange'):
+                continue
+            bx, by, bw, bh = row.get('bbox_px') or [0, 0, 0, 0]
+            cx, cy = bx + bw / 2.0, by + bh / 2.0
+            best = None
+            for i, m in enumerate(marks):
+                if i in used or m['color'] != row['color']:
+                    continue
+                d = math.hypot(m['center_px'][0] - cx, m['center_px'][1] - cy)
+                if d <= max(12.0, 0.5 * max(bw, bh)) and (best is None or d < best[0]):
+                    best = (d, i, m)
+            if not best:
+                _review_only(row, 'NO_BLOB_ALIGNMENT', 'Detected color region could not be paired reliably with a symbol-footprint result.')
+                continue
+            used.add(best[1])
+            m = best[2]
+            row['blob_match_state'] = m['state']
+            row['blob_match_reason'] = m.get('reason', '')
+            if m['state'] == 'CONFIRMED':
+                tid = str(m.get('target_id') or '')
+                opts = [o for o in (row.get('candidate_options') or []) if str(o.get('target_id')) == tid]
+                rest = [o for o in (row.get('candidate_options') or []) if str(o.get('target_id')) != tid]
+                if not tid or not opts:
+                    _review_only(row, 'TARGET_NOT_IN_CATALOG', 'Footprint match did not resolve to an endpoint in the current floor catalog.')
+                    continue
+                opts[0]['match_confidence'] = float(m.get('confidence') or 0.0)
+                opts[0]['blob_match_confirmed'] = True
+                row['candidate_options'] = opts + rest
+                row['suggested_target_id'] = tid
+                row['suggested_target_label'] = m.get('label') or tid
+                row['match_confidence'] = float(m.get('confidence') or 0.0)
+                row['blob_match_coverage'] = float(m.get('match_coverage') or 0.0)
+                row['match_status'] = 'BLOB_CONFIRMED'
+                if row['color'] == 'orange':
+                    rs = m.get('relocation_state')
+                    src = next((t for t in catalog if str(t.get('target_id')) == tid), None)
+                    if rs == 'CONFIRMED' and m.get('arrow_destination_xy') and src is not None:
+                        dx, dy = m['arrow_destination_xy']
+                        ox = float(src.get('x', 0)) - float(src.get('insert_x', src.get('x', 0)))
+                        oy = float(src.get('y', 0)) - float(src.get('insert_y', src.get('y', 0)))
+                        row['arrow_destination_xy'] = [dx - ox, dy - oy]
+                        row['destination_match_status'] = 'CONFIRMED'
+                        row['destination_match_confidence'] = max(0.78, float((m.get('arrow') or {}).get('confidence') or 0.78))
+                        row['relocation_state'] = 'CONFIRMED'
+                        row['relocation_block_reason'] = ''
+                    else:
+                        row['destination_match_status'] = 'REVIEW_REQUIRED'
+                        row['relocation_state'] = rs or 'NOT_DETECTED'
+                        row['relocation_block_reason'] = m.get('relocation_reason') or 'السهم غير مؤكد'
+            else:
+                # Includes AMBIGUOUS, NOT_DETECTED, REGISTRATION_FAILED and DUPLICATE.
+                _review_only(row, m.get('state') or 'REVIEW_REQUIRED', m.get('reason') or 'CAD symbol match requires manual review.')
+    except Exception as exc:
+        for row in rows:
+            if row.get('color') in ('pink', 'yellow', 'orange'):
+                _review_only(row, 'ERROR', f'{type(exc).__name__}: {exc}')
+        print(f'[AS-BUILT] blob overlay failed closed: {type(exc).__name__}: {exc}')
+def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=None, per_floor=None, floor_hint='',page_to_cad_affine=None,registration_diagnostics=None):
     """Deterministic code-only markup inventory from OpenCV regions.
 
     This is intentionally NOT an entity matcher. Every detected colored region is
@@ -7301,24 +7725,61 @@ def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=No
     if not cv_info or not cv_info.get('available'):
         return []
     inv=[]
+    arrow_by_orange=_asbuilt_detect_blue_arrow_tips(cv_info.get('source_image_path'),(cv_info.get('regions') or {}).get('orange') or [])
+    # The colour key printed in the page corner (stack of coloured bars) is not a markup.
+    legend_ids=set()
+    try:
+        import asbuilt_markups as _amk
+        _img=cv_info.get('image_size') or {}
+        _W=int(_img.get('width') or 0) or int(cv_info.get('width') or 0); _H=int(_img.get('height') or 0) or int(cv_info.get('height') or 0)
+        if not (_W and _H) and cv2 is not None and cv_info.get('source_image_path'):
+            _im=cv2.imread(str(cv_info['source_image_path']),cv2.IMREAD_COLOR)
+            if _im is not None: _H,_W=_im.shape[:2]
+        if _W and _H:
+            _marks=[]
+            for _c,_rs in (cv_info.get('regions') or {}).items():
+                for _i,_r in enumerate(_rs or []):
+                    _bb=_r.get('bbox') or [0,0,0,0]
+                    _marks.append({'color':_c,'bbox':_bb,'center':[_bb[0]+_bb[2]/2.0,_bb[1]+_bb[3]/2.0],'legend':False,'key':(_c,_i)})
+            _amk._flag_legend(_marks,_W,_H)
+            legend_ids={m['key'] for m in _marks if m['legend']}
+    except Exception as _e:
+        print(f'[AS-BUILT] legend exclusion skipped: {_e}')
     for color in ('pink','yellow','orange','green'):
         for idx,r in enumerate((cv_info.get('regions') or {}).get(color) or [],1):
+            if (color,idx-1) in legend_ids:
+                continue
             bbox=r.get('bbox') or [0,0,0,0]
             area=float(r.get('area') or 0)
-            # Conservative confidence: size alone never makes a CAD decision.
-            conf=0.55
-            if area >= 500: conf=0.70
-            if area >= 1500: conf=0.78
-            # Project-validated counting rule: candidates below 78% are not
-            # included in the actionable markup inventory. They remain visible
-            # only as low-confidence detector noise in the raw CV evidence.
+            # Preserve the detector's shape/fill confidence. Do not replace it
+            # with a second, unrelated area-only threshold here.
+            conf=float(r.get('confidence') or 0.0)
             if conf < ASBUILT_MIN_MARKUP_CONFIDENCE:
                 continue
             row={
                 'markup_id':f'MK-{str(color).upper()}-P{int(page_number):02d}-{idx:03d}',
                 'page_number':int(page_number),'color':color,
-                'status_original':'لم يتم السحب نهائيًا' if color=='pink' else ('مسحوب' if color=='green' else None),
-                'normalized_status':'NOT_WITHDRAWN_FINAL' if color=='pink' else ('WITHDRAWN' if color=='green' else None),
+                # Canonical As-Built legend actions. Keep "pink" as the source-file color.
+                'status_original':{
+                    'pink':'لم يتم السحب نهائيًا',
+                    'yellow':'لم يتم السحب - مع حجز مكان في الباتش بانل',
+                    'orange':'كابل تم نقله إلى مكان آخر',
+                    'green':'كابل مسحوب',
+                }.get(color),
+                'normalized_status':{
+                    'pink':'CANCELLED_NOT_PULLED_FINAL',
+                    'yellow':'NOT_PULLED_RESERVE_PATCH_PANEL',
+                    'orange':'MOVED_KEEP_PATCH_PANEL',
+                    'green':'PULLED_KEEP_PATCH_PANEL',
+                }.get(color),
+                'patch_panel_action':{
+                    'pink':'NO_SLOT','yellow':'RESERVE_SLOT',
+                    'orange':'KEEP_SLOT','green':'KEEP_SLOT',
+                }.get(color),
+                'label_action':{
+                    'pink':'SHIFT','yellow':'KEEP',
+                    'orange':'KEEP','green':'KEEP',
+                }.get(color),
                 'confidence':conf,
                 'x_norm':int((r.get('center_norm') or [0,0])[0]),'y_norm':int((r.get('center_norm') or [0,0])[1]),
                 'bbox_px':[int(v) for v in bbox[:4]],'area_px':int(area),'entity_identified':False,
@@ -7327,14 +7788,125 @@ def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=No
                 'candidate_options':[],'suggested_target_id':'','suggested_target_label':'',
                 'match_confidence':0.0,'match_status':'UNMATCHED_REVIEW'
             }
+            if color=='orange':
+                arrow=arrow_by_orange.get(idx,{}) if isinstance(arrow_by_orange,dict) else {}
+                row['blue_arrow_detection']=arrow
+                tip=arrow.get('tip_norm') if isinstance(arrow,dict) else None
+                row['arrow_destination_options']=[]
+                row['arrow_destination_xy']=None
+                row['destination_match_confidence']=0.0
+                row['destination_match_status']='NOT_EVALUATED'
+                row['relocation_state']='NOT_DETECTED'
+                row['relocation_block_reason']=arrow.get('reason') or 'No blue relocation arrow detected.'
+                if arrow.get('status')=='AMBIGUOUS':
+                    row['relocation_state']='AMBIGUOUS'
+                elif arrow.get('status')=='CONFIRMED' and tip and len(tip)>=2:
+                    row['arrow_destination_norm']=[int(tip[0]),int(tip[1])]
+                    row['arrow_destination_px']=arrow.get('tip_px')
+                    xy=_asbuilt_norm_to_cad_xy(tip[0],tip[1],catalog,floor_hint=floor_hint,page_to_cad_affine=page_to_cad_affine)
+                    # Always provide a review-only CAD endpoint list. If registration is
+                    # unavailable, these are approximate candidates only; the operator
+                    # must explicitly choose one and the arrow-tip coordinate is never used.
+                    dest_probe={'x_norm':int(tip[0]),'y_norm':int(tip[1])}
+                    row['arrow_destination_options']=_asbuilt_match_markup_to_cad(
+                        dest_probe,catalog,per_floor,floor_hint=floor_hint,
+                        page_to_cad_affine=page_to_cad_affine,
+                        registration_diagnostics=registration_diagnostics,
+                        max_results=100) if catalog else []
+                    if xy is None:
+                        row['relocation_state']='REGISTRATION_FAILED'
+                        row['destination_match_status']='REGISTRATION_FAILED'
+                        row['relocation_block_reason']='Arrow detected, but PDF-to-CAD registration is unavailable. Automatic relocation is blocked; select the destination endpoint manually.'
+                    else:
+                        row['arrow_destination_xy']=xy
+                        row['relocation_state']='CONFIRMED'
+                        row['relocation_block_reason']=''
+            # Orange destination choices must remain available even when the blue
+            # ballpoint arrow is faint, broken, ambiguous, or not detected. In that
+            # case the markup position is only a search-order hint; every endpoint
+            # on the selected floor remains selectable and no coordinate is inferred.
+            if color=='orange' and catalog and not row.get('arrow_destination_options'):
+                floor_dest_count=sum(1 for t in catalog if isinstance(t,dict) and
+                                     (not floor_hint or str(t.get('floor') or '')==str(floor_hint)))
+                row['arrow_destination_options']=_asbuilt_match_markup_to_cad(
+                    row,catalog,per_floor,floor_hint=floor_hint,
+                    page_to_cad_affine=page_to_cad_affine,
+                    registration_diagnostics=registration_diagnostics,
+                    max_results=max(1,floor_dest_count))
+                row['destination_candidates_basis']='orange_markup_search_order_only'
+            if color=='orange' and catalog and row.get('arrow_destination_options'):
+                floor_dest_count=sum(1 for t in catalog if isinstance(t,dict) and
+                                     (not floor_hint or str(t.get('floor') or '')==str(floor_hint)))
+                # Keep the complete floor candidate set. The UI provides search
+                # instead of truncating the operator's choices to the first few rows.
+                if len(row['arrow_destination_options']) < floor_dest_count:
+                    probe=row.get('arrow_destination_norm')
+                    if probe and len(probe)>=2:
+                        dest_probe={'x_norm':int(probe[0]),'y_norm':int(probe[1])}
+                    else:
+                        dest_probe=row
+                    row['arrow_destination_options']=_asbuilt_match_markup_to_cad(
+                        dest_probe,catalog,per_floor,floor_hint=floor_hint,
+                        page_to_cad_affine=page_to_cad_affine,
+                        registration_diagnostics=registration_diagnostics,
+                        max_results=max(1,floor_dest_count))
             if catalog:
-                opts=_asbuilt_match_markup_to_cad(row,catalog,per_floor,floor_hint=floor_hint)
+                floor_source_count=sum(1 for t in catalog if isinstance(t,dict) and
+                                       (not floor_hint or str(t.get('floor') or '')==str(floor_hint)))
+                opts=_asbuilt_match_markup_to_cad(
+                    row,catalog,per_floor,floor_hint=floor_hint,
+                    page_to_cad_affine=page_to_cad_affine,
+                    registration_diagnostics=registration_diagnostics,
+                    max_results=max(1,floor_source_count))
                 row['candidate_options']=opts
                 if opts:
                     row['suggested_target_id']=opts[0].get('target_id') or ''
                     row['suggested_target_label']=opts[0].get('label') or ''
                     row['match_confidence']=float(opts[0].get('match_confidence') or 0)
                     row['match_status']='CANDIDATE_MATCH' if row['match_confidence']>=0.78 else 'REVIEW_MATCH'
+                # The source endpoint cannot also be offered as the relocation
+                # destination. Keep the mapped arrow-tip coordinate available;
+                # if it resolves back to the source, require a different review choice.
+                if color=='orange' and row.get('arrow_destination_options'):
+                    source_id=str(row.get('suggested_target_id') or '')
+                    row['arrow_destination_options']=[
+                        option for option in row['arrow_destination_options']
+                        if str(option.get('target_id') or '') != source_id
+                    ]
+                    if source_id and not row['arrow_destination_options']:
+                        row['relocation_state']='DESTINATION_CONFLICT'
+                        row['destination_match_status']='CONFLICT'
+                        row['relocation_block_reason']='Arrow destination resolves to the same endpoint as its source; select a different destination or review the arrow.'
+                    elif row['arrow_destination_options']:
+                        best_dest=row['arrow_destination_options'][0]
+                        dest_conf=float(best_dest.get('match_confidence') or 0.0)
+                        dest_units=float(best_dest.get('distance_in_endpoint_spacing') or 999.0)
+                        second_conf=float(row['arrow_destination_options'][1].get('match_confidence') or 0.0) if len(row['arrow_destination_options'])>1 else 0.0
+                        dest_margin=dest_conf-second_conf if second_conf else 1.0
+                        row['destination_match_confidence']=round(dest_conf,2)
+                        row['destination_match_distance_spacing']=round(dest_units,3)
+                        row['destination_match_margin']=round(dest_margin,3)
+                        # A detected tip is not a valid CAD destination merely because
+                        # the page transform exists. Require proximity, confidence and
+                        # separation from the runner-up as independent checks.
+                        destination_ok=(dest_conf>=0.78 and dest_units<=0.85 and dest_margin>=0.04)
+                        row['destination_match_status']='CONFIRMED' if destination_ok else 'REVIEW_REQUIRED'
+                        if destination_ok:
+                            row['relocation_state']='CONFIRMED'
+                            row['relocation_block_reason']=''
+                        else:
+                            row['relocation_state']='DESTINATION_REVIEW_REQUIRED'
+                            row['relocation_block_reason']=('Arrow detected and registered, but CAD destination matching is weak or ambiguous. '
+                                f'Best candidate confidence={dest_conf:.2f}, distance={dest_units:.2f} endpoint spacings, margin={dest_margin:.2f}. '
+                                'Choose a destination endpoint manually; do not auto-move to the nearest candidate.')
+                    else:
+                        row['destination_match_status']='NO_CANDIDATE'
+                        row['relocation_state']='DESTINATION_UNMATCHED'
+                        row['relocation_block_reason']='Arrow tip is registered, but no CAD endpoint candidate could be matched. Manual destination review is required.'
+            if color=='orange' and row.get('relocation_state')=='CONFIRMED' and not row.get('arrow_destination_options'):
+                row['destination_match_status']='NO_CANDIDATE'
+                row['relocation_state']='DESTINATION_UNMATCHED'
+                row['relocation_block_reason']='Arrow tip is registered, but no CAD endpoint candidate could be matched. Manual destination review is required.'
             inv.append(row)
     return inv
 
@@ -7349,14 +7921,30 @@ def asbuilt_chat_start(path,filename,api_key='',model='',label_pattern=None,firs
         raise RuntimeError('Analyze the CAD project before starting the As-Built scan.')
 
     label_pattern,_=_validate_label_pattern(label_pattern)
-    catalog,by_key,per_floor,candidate_text=_asbuilt_project_candidate_catalog(label_pattern=label_pattern)
-    if not catalog:
-        raise RuntimeError('No endpoint targets exist in the analyzed project.')
-
     input_paths=list(paths or []) or [path]
     input_names=list(filenames or []) or [filename or Path(path).name]
     if len(input_names)<len(input_paths):
         input_names += [Path(x).name for x in input_paths[len(input_names):]]
+
+    # Determine the sheet-pair floors before building the CAD candidate catalog.
+    # A two-page Ground Floor test should not build candidates/labels for every
+    # other analyzed floor in the project.
+    expected_pages=0
+    for src,name in zip(input_paths,input_names):
+        ext=Path(name or src).suffix.lower()
+        if ext=='.pdf':
+            if fitz is None:
+                raise RuntimeError('PyMuPDF (fitz) is required to read As-Built PDF page counts.')
+            with fitz.open(str(src)) as _pdf_meta:
+                expected_pages+=len(_pdf_meta)
+        else:
+            expected_pages+=1
+    needed_floors={_asbuilt_sheet_floor(p,expected_pages) for p in range(1,expected_pages+1)}
+    needed_floors.discard('')
+    catalog,by_key,per_floor,candidate_text=_asbuilt_project_candidate_catalog(
+        label_pattern=label_pattern,floors=needed_floors)
+    if not catalog:
+        raise RuntimeError('No endpoint targets exist for the floors represented by this As-Built upload.')
 
     pages=[]
     page_number=1
@@ -7411,6 +7999,10 @@ def asbuilt_chat_start(path,filename,api_key='',model='',label_pattern=None,firs
             rec=dict(t); rec['candidate_key']=rec.get('candidate_key') or f'{floor_name}-T{i:04d}'
             rec['nx']=int(round((float(t.get('x') or 0)-minx)*1000/dx)); rec['ny']=int(round((maxy-float(t.get('y') or 0))*1000/dy))
             norm_rows.append(rec); match_catalog.append(rec)
+        # Cache scale normalization once. All markups on this floor share it.
+        floor_coords=[(float(t.get('x') or 0.0),float(t.get('y') or 0.0)) for t in norm_rows]
+        if norm_rows:
+            norm_rows[0]['_asbuilt_spacing']=_asbuilt_median_nearest_spacing(floor_coords)
         match_per_floor[floor_name]=norm_rows
 
     total_pages=len(pages)
@@ -7457,9 +8049,20 @@ def asbuilt_chat_start(path,filename,api_key='',model='',label_pattern=None,firs
                 'error':str(cv.get('error') or 'OpenCV unavailable')
             })
 
-        rows.append(row)
         floor_hint=sheet_floor
-        inventory.extend(_asbuilt_code_markup_inventory(cv,pno,'',catalog=match_catalog,per_floor=match_per_floor,floor_hint=floor_hint))
+        page_affine, registration_info, page_registration, page_geometry = _asbuilt_register_page_to_floor(pg.get('path'), floor_hint)
+        row['cad_registration_ok']=bool(registration_info.get('ok'))
+        row['cad_registration_reason']=str(registration_info.get('reason') or '')
+        row['cad_registration_diagnostics']=registration_info.get('diagnostics') or {}
+        rows.append(row)
+        _page_rows=_asbuilt_code_markup_inventory(
+            cv,pno,'',catalog=match_catalog,per_floor=match_per_floor,
+            floor_hint=floor_hint,page_to_cad_affine=page_affine,
+            registration_diagnostics=registration_info.get('diagnostics') or {}
+        )
+        _asbuilt_blob_overlay(_page_rows,pg.get('path'),floor_hint,match_catalog,
+                              registration=page_registration,geom=page_geometry)
+        inventory.extend(_page_rows)
 
     chat_id=uuid.uuid4().hex
     result={
@@ -7676,6 +8279,12 @@ def _asbuilt_targets(floor,label_pattern=None):
             'y':float(rec.get('y') or ent.get('y') or 0.0),
             'root':root,
             'depth':int(rec.get('depth') or ent.get('depth') or 0),
+            'ancestor_handles':list(rec.get('ancestor_handles') or []),
+            'ancestor_blocks':list(rec.get('ancestors') or []),
+            'parent_transform':list(rec.get('parent_transform') or [1,0,0,1,0,0]),
+            'insert_x':float(rec.get('insert_x') if rec.get('insert_x') is not None else rec.get('x') or 0.0),
+            'insert_y':float(rec.get('insert_y') if rec.get('insert_y') is not None else rec.get('y') or 0.0),
+            'entity_type':str(rec.get('entity_type') or 'INSERT'),
             'editable_direct':bool(root and handle),
         })
 
@@ -7811,6 +8420,10 @@ def export_project_asbuilt(results_by_floor, site_changes, label_pattern=None):
       'Second Floor':{'IDF-G1':('S-R1',{1:11,2:16,3:24,4:29,5:34,6:39,7:44,8:49},7,20),'IDF-G2':('S-R2',{1:11,2:16,3:24,4:29,5:34,6:39,7:44,8:49},7,20)},
       'Third Floor':{'IDF-G1':('T-R1',{1:11,2:16,3:24,4:29,5:34,6:39,7:44,8:49},7,20),'IDF-G2':('T-R2',{1:11,2:16,3:24,4:29,5:34,6:39,7:44,8:49},7,20)},
     }
+    # Restrict generated workbook sheets to floors represented by this As-Built batch.
+    # The source project may contain many analyzed floors, but they must not leak
+    # into an export created from a one-floor upload.
+    PORT_LAYOUTS={floor:layout for floor,layout in PORT_LAYOUTS.items() if floor in effective}
     changes_by_sheet=defaultdict(list)
     for ch in site_changes:
         t=ch.get('target') or {}; sf=t.get('schedule_floor') or ch.get('floor'); rack=t.get('rack')
@@ -7883,6 +8496,33 @@ def export_project_asbuilt(results_by_floor, site_changes, label_pattern=None):
     return {'port_map':pm.name,'quantity_summary':sm.name,'cable_schedule':cs.name}
 
 
+def _asbuilt_write_dxf(src, changes, out_path):
+    """Write a separate, independently verified As-Built DXF (original untouched)."""
+    try:
+        import dxfedit as _dx
+        d=_dx.Dxf(src); ed=_dx.Editor(d)
+        dels=[]; moves=[]
+        for ch in changes:
+            if ch.get('op') not in {'MOVE_ENDPOINT','DELETE_ENDPOINT','SITE_REMOVE'}: continue
+            t=ch['target']
+            handles=[str(h) for h in (t.get('ancestor_handles') or [])]+[str(t.get('handle'))]
+            tgt=d.resolve(handles)
+            if ch['op']=='MOVE_ENDPOINT':
+                ed.move(tgt,(ch['x'],ch['y']))
+                moves.append({'path':handles,'delta':[ch['x']-tgt['world'][0],ch['y']-tgt['world'][1]]})
+            else:
+                ed.delete(tgt); dels.append({'path':handles})
+        if not dels and not moves:
+            return {'file':None,'verification':None,'error':'No CAD endpoint edits in this batch.'}
+        out_path=Path(out_path); ed.write(out_path)
+        ver=_dx.verify_output(str(src),str(out_path),dels,moves)
+        if not ver.get('ok'):
+            return {'file':out_path.name,'verification':ver,'error':'Verification FAILED: '+'; '.join(ver.get('problems') or [])[:300]}
+        return {'file':out_path.name,'verification':ver,'error':None}
+    except Exception as exc:
+        return {'file':None,'verification':None,'error':f'{type(exc).__name__}: {exc}'}
+
+
 def generate_asbuilt_package(floor,changes,label_pattern=None):
     """Generate a Desktop AutoCAD As-Built change script for one analyzed drawing.
 
@@ -7924,11 +8564,15 @@ def generate_asbuilt_package(floor,changes,label_pattern=None):
             tid=str(ch.get('target_id') or '')
             t=targets.get(tid)
             if not t: raise RuntimeError(f'Change #{idx}: target was not found in {floor}.')
-            if op in {'MOVE_ENDPOINT','DELETE_ENDPOINT'} and not t.get('editable_direct'):
-                raise RuntimeError(
-                    f"Change #{idx}: {t.get('label') or t.get('block')} is nested inside a parent block (depth {t.get('depth')}). "
-                    'Direct move/delete is blocked to avoid changing every block instance. Use Site removal for Excel + manual CAD deletion, or edit it manually in AutoCAD.'
-                )
+            nested=not bool(t.get('editable_direct'))
+            if nested:
+                ah=list(t.get('ancestor_handles') or []); ab=list(t.get('ancestor_blocks') or [])
+                if int(t.get('depth') or 0)<1 or len(ah)!=len(ab) or len(ah)!=int(t.get('depth') or 0) or not t.get('handle'):
+                    raise RuntimeError(f"Change #{idx}: nested target ancestry is incomplete; refusing unsafe CAD edit.")
+                if any((not str(v).strip()) or str(v).startswith('*') for v in ab):
+                    raise RuntimeError(f"Change #{idx}: anonymous/dynamic/xref block ancestry is not eligible for instance-safe editing.")
+            if nested and str(t.get('entity_type') or '')!='INSERT':
+                raise RuntimeError(f"Change #{idx}: nested target is not a supported INSERT entity.")
             item={'op':op,'target':t,'note':note,'floor':floor}
             if op=='MOVE_ENDPOINT':
                 try: nx=float(ch.get('x')); ny=float(ch.get('y'))
@@ -7941,7 +8585,17 @@ def generate_asbuilt_package(floor,changes,label_pattern=None):
                     raise RuntimeError(f'Change #{idx}: choose one of the four approved site removal statuses.')
                 if action not in ASBUILT_PATCH_ACTIONS:
                     raise RuntimeError(f'Change #{idx}: choose SHIFT or RESERVE for Patch Panel handling.')
-                item.update(site_status=status,patch_action=action,cad_manual_required=not bool(t.get('editable_direct')))
+                item.update(site_status=status,patch_action=action,cad_manual_required=False,cad_nested_clone=not bool(t.get('editable_direct')))
+            if op=='MOVE_ENDPOINT' and nested:
+                m=list(t.get('parent_transform') or [])
+                if len(m)!=6: raise RuntimeError(f'Change #{idx}: nested transform is incomplete.')
+                a,b,c,d,tx,ty=[float(v) for v in m]; det=a*d-b*c
+                if abs(det)<1e-12: raise RuntimeError(f'Change #{idx}: nested transform is singular; refusing move.')
+                dx=nx-tx; dy=ny-ty
+                lx=(d*dx-c*dy)/det; ly=(-b*dx+a*dy)/det
+                item.update(nested_clone=True,local_x=lx,local_y=ly)
+            elif op in {'DELETE_ENDPOINT','SITE_REMOVE'} and nested:
+                item.update(nested_clone=True)
             normalized.append(item)
         elif op=='ADD_BLOCK':
             block=str(ch.get('block') or '').strip()
@@ -7961,6 +8615,28 @@ def generate_asbuilt_package(floor,changes,label_pattern=None):
         else:
             raise RuntimeError(f'Change #{idx}: unsupported operation {op or "(blank)"}.')
 
+    # Each nested block-instance path is cloned from its original definitions.
+    # Do not allow two nested edits to the same root INSERT in one script: the
+    # second clone would otherwise start from the original definition and could
+    # overwrite the first edit. Fail before producing a misleading package.
+    # The separate DXF below handles any number of edits per root.  The legacy
+    # AutoCAD script cannot, so conflicting nested edits are left out of the
+    # script only (and reported) instead of aborting the whole package.
+    all_normalized=list(normalized)
+    dxf_info=_asbuilt_write_dxf(src,all_normalized,EXPORTS/f'{stem}_ASBUILT.dxf')
+    nested_root_changes={}; lsp_skipped=[]; keep=[]
+    for ch in normalized:
+        if ch.get('nested_clone'):
+            roots=list((ch.get('target') or {}).get('ancestor_handles') or [])
+            rh=str(roots[0]) if roots else ''
+            if not rh or rh in nested_root_changes:
+                lsp_skipped.append(ch); continue
+            nested_root_changes[rh]=ch
+        keep.append(ch)
+    keep=[c for c in keep if c.get('nested_clone') or str((c.get('target') or {}).get('handle') or '') not in nested_root_changes or c.get('op') not in {'MOVE_ENDPOINT','DELETE_ENDPOINT','SITE_REMOVE'}]
+    lsp_skipped+= [c for c in normalized if c not in keep and c not in lsp_skipped]
+    normalized=keep
+
     lines=[
       '(vl-load-com)',
       '(setq *tt-old-cmdecho* (getvar "CMDECHO"))',
@@ -7971,21 +8647,114 @@ def generate_asbuilt_package(floor,changes,label_pattern=None):
       '(if (not (tblsearch "LAYER" "TELETECH-ASBUILT")) (command "_.-LAYER" "_M" "TELETECH-ASBUILT" ""))',
       '(setq *tt-doc* (vla-get-ActiveDocument (vlax-get-acad-object)))',
       '(setq *tt-ms* (vla-get-ModelSpace *tt-doc*))',
+      "(defun tt:clean-ent (d) (vl-remove-if (function (lambda (x) (member (car x) (quote (5 102 330 360))))) d))",
+      "(defun tt:clone-block (src new removeh childh childname watchh / btr bd e ed typ h ok skip targetnew)",
+      "  (setq btr (tblobjname \"BLOCK\" src))",
+      "  (if (or (null btr) (tblsearch \"BLOCK\" new)) nil",
+      "    (progn",
+      "      (setq bd (tt:clean-ent (entget btr)))",
+      "      (if (assoc 2 bd) (setq bd (subst (cons 2 new) (assoc 2 bd) bd)))",
+      "      (if (assoc 3 bd) (setq bd (subst (cons 3 new) (assoc 3 bd) bd)))",
+      "      (if (not (entmake bd)) nil",
+      "        (progn",
+      "          (setq e (entnext btr) ok T skip nil targetnew nil)",
+      "          (while (and e ok (/= \"ENDBLK\" (cdr (assoc 0 (entget e)))))",
+      "            (setq ed (entget e) typ (cdr (assoc 0 ed)) h (cdr (assoc 5 ed)))",
+      "            (cond",
+      "              ((and removeh h (= (strcase h) (strcase removeh))) (setq skip (= typ \"INSERT\")))",
+      "              ((and skip (member typ (quote (\"ATTRIB\" \"SEQEND\")))) (if (= typ \"SEQEND\") (setq skip nil)))",
+      "              (T",
+      "                (setq skip nil ed (tt:clean-ent ed))",
+      "                (if (and childh h (= (strcase h) (strcase childh)) (= typ \"INSERT\") childname (assoc 2 ed))",
+      "                  (setq ed (subst (cons 2 childname) (assoc 2 ed) ed)))",
+      "                (if (not (entmake ed)) (setq ok nil)",
+      "                  (if (and watchh h (= (strcase h) (strcase watchh))) (setq targetnew (cdr (assoc 5 (entget (entlast)))))))",
+      "              )",
+      "            )",
+      "            (setq e (entnext e))",
+      "          )",
+      "          (if (and ok e (= \"ENDBLK\" (cdr (assoc 0 (entget e)))))",
+      "            (if (entmake (tt:clean-ent (entget e))) (list new targetnew) nil)",
+      "            nil)",
+      "        )",
+      "      )",
+      "    )",
+      "  )",
+      ")",
+      "(defun tt:clone-path (blocks handles targeth removeit / i n src new childh childname result root ed btr flags target targetnew j ent parentbtr valid)",
+      "  (setq n (length blocks) i (1- (length blocks)) childname nil targetnew nil valid T j 0)",
+      "  (if (or (= n 0) (/= n (length handles))) nil",
+      "    (progn",
+      "      (setq target (handent targeth))",
+      "      (if (or (null target) (/= \"INSERT\" (cdr (assoc 0 (entget target)))) (equal 1 (cdr (assoc 66 (entget target))))) (setq valid nil))",
+      "      (while (and valid (< j n))",
+      "        (setq ent (handent (nth j handles)))",
+      "        (if (or (null ent) (/= \"INSERT\" (cdr (assoc 0 (entget ent)))) (equal 1 (cdr (assoc 66 (entget ent)))) (/= (strcase (nth j blocks)) (strcase (cdr (assoc 2 (entget ent))))))",
+      "          (setq valid nil)",
+      "          (if (> j 0)",
+      "            (progn",
+      "              (setq parentbtr (tblobjname \"BLOCK\" (nth (1- j) blocks)))",
+      "              (if (or (null parentbtr) (/= (cdr (assoc 330 (entget ent))) (cdr (assoc 5 (entget parentbtr))))) (setq valid nil))",
+      "            )",
+      "            (if (and (assoc 67 (entget ent)) (/= 0 (cdr (assoc 67 (entget ent))))) (setq valid nil))",
+      "          )",
+      "        )",
+      "        (setq j (1+ j))",
+      "      )",
+      "      (setq btr (tblobjname \"BLOCK\" (car (last blocks))))",
+      "      (if (or (not valid) (null btr) (/= (cdr (assoc 330 (entget target))) (cdr (assoc 5 (entget btr))))) (setq i -1))",
+      "      (while (>= i 0)",
+      "        (setq src (nth i blocks) btr (tblsearch \"BLOCK\" src) flags (if btr (cdr (assoc 70 btr)) 0))",
+      "        (if (or (null btr) (/= 0 (logand flags 29)) (= (substr src 1 1) \"*\"))",
+      "          (setq result nil valid nil i -1)",
+      "          (progn",
+      "            (setq new (strcat \"TTAB_\" (itoa (getvar \"MILLISECS\")) \"_\" (itoa i) \"_\" (itoa (setq *tt-clone-seq* (1+ *tt-clone-seq*)))))",
+      "            (setq childh (if (< i (1- n)) (nth (1+ i) handles) nil))",
+      "            (setq result (tt:clone-block src new (if (and removeit (= i (1- n))) targeth nil) childh childname (if (and (not removeit) (= i (1- n))) targeth nil)))",
+      "            (if result (progn (setq childname (car result)) (if (= i (1- n)) (setq targetnew (cadr result))) (setq i (1- i))) (setq valid nil i -1))",
+      "          )",
+      "        )",
+      "      )",
+      "      (if (and valid (> n 0) childname)",
+      "        (progn",
+      "          (setq root (handent (car handles)))",
+      "          (if (and root (= \"INSERT\" (cdr (assoc 0 (entget root)))) (or (null (assoc 67 (entget root))) (= 0 (cdr (assoc 67 (entget root))))))",
+      "            (progn",
+      "              (setq ed (entget root))",
+      "              (if (entmod (subst (cons 2 childname) (assoc 2 ed) ed)) (progn (entupd root) (list childname targetnew)) nil)",
+      "            )",
+      "            nil)",
+      "        )",
+      "        nil)",
+      "    )",
+      "  )",
+      ")",
+      "(setq *tt-clone-seq* 0)",
     ]
     for idx,ch in enumerate(normalized,1):
         op=ch['op']
         lines.append(f'(princ "\\nTELETECH As-Built change {idx}: {op}\\n")')
         if op=='MOVE_ENDPOINT':
-            t=ch['target']; h=_lsp_escape(t['handle']); ox=float(t['x']); oy=float(t['y']); nx=float(ch['x']); ny=float(ch['y'])
-            lines += [
-              f'(setq *tt-e* (handent "{h}"))',
-              f'(if *tt-e* (vla-Move (vlax-ename->vla-object *tt-e*) (vlax-3d-point (list {ox:.12g} {oy:.12g} 0.0)) (vlax-3d-point (list {nx:.12g} {ny:.12g} 0.0))) (princ "\\nWARNING: target handle not found.\\n"))'
-            ]
+            t=ch['target']; h=_lsp_escape(t['handle']); nx=float(ch['x']); ny=float(ch['y'])
+            if ch.get('nested_clone'):
+                blocks=' '.join('"'+_lsp_escape(x)+'"' for x in t.get('ancestor_blocks') or [])
+                handles=' '.join('"'+_lsp_escape(x)+'"' for x in t.get('ancestor_handles') or [])
+                lx=float(ch['local_x']); ly=float(ch['local_y'])
+                lines += [f'(setq *tt-cloned* (tt:clone-path (quote ({blocks})) (quote ({handles})) "{h}" nil))',
+                          '(if (and *tt-cloned* (cadr *tt-cloned*) (setq *tt-e* (handent (cadr *tt-cloned*))))',
+                          f'  (progn (setq *tt-oldp* (cdr (assoc 10 (entget *tt-e*)))) (if *tt-oldp* (vla-Move (vlax-ename->vla-object *tt-e*) (vlax-3d-point *tt-oldp*) (vlax-3d-point (list {lx:.12g} {ly:.12g} 0.0))) (princ "\\nWARNING: cloned nested INSERT has no insertion point.\\n")))',
+                          '  (princ "\\nWARNING: nested instance-safe move could not be completed; inspect clone path.\\n"))']
+            else:
+                ox=float(t.get('insert_x',t['x'])); oy=float(t.get('insert_y',t['y']))
+                lines += [f'(setq *tt-e* (handent "{h}"))',
+                          f'(if *tt-e* (vla-Move (vlax-ename->vla-object *tt-e*) (vlax-3d-point (list {ox:.12g} {oy:.12g} 0.0)) (vlax-3d-point (list {nx:.12g} {ny:.12g} 0.0))) (princ "\\nWARNING: target handle not found.\\n"))']
         elif op in {'DELETE_ENDPOINT','SITE_REMOVE'}:
             t=ch['target']; h=_lsp_escape(t.get('handle',''))
-            if op=='SITE_REMOVE' and ch.get('cad_manual_required'):
-                msg=_lsp_escape(t.get('label') or t.get('block') or 'endpoint')
-                lines.append(f'(princ "\\nMANUAL CAD DELETE REQUIRED: {msg} is nested/read-only. Excel outputs were adjusted.\\n")')
+            if ch.get('nested_clone'):
+                blocks=' '.join('"'+_lsp_escape(x)+'"' for x in t.get('ancestor_blocks') or [])
+                handles=' '.join('"'+_lsp_escape(x)+'"' for x in t.get('ancestor_handles') or [])
+                lines += [f'(setq *tt-cloned* (tt:clone-path (quote ({blocks})) (quote ({handles})) "{h}" T))',
+                          '(if *tt-cloned* (princ "\\nNested endpoint removed from a private block-instance clone.\\n") (princ "\\nWARNING: nested clone/delete unsupported for this block; original instance left unchanged.\\n"))']
             else:
                 lines += [f'(setq *tt-e* (handent "{h}"))',
                           '(if *tt-e* (entdel *tt-e*) (princ "\\nWARNING: target handle not found.\\n"))']
@@ -8017,7 +8786,12 @@ def generate_asbuilt_package(floor,changes,label_pattern=None):
     lsp_abs=str(lsp.resolve()).replace('\\','/')
     scr.write_text(f'(load "{lsp_abs}")\r\n',encoding='utf-8')
     site_changes=[x for x in normalized if x.get('op')=='SITE_REMOVE']
-    adjusted_files=export_project_asbuilt(PROJECT_RESULTS,site_changes,label_pattern=label_pattern) if site_changes else {}
+    export_floors={floor}
+    if floor=='Roof Floor' and 'Third Floor' in PROJECT_RESULTS:
+        export_floors.add('Third Floor')
+    scoped_results={f:PROJECT_RESULTS[f] for f in export_floors if f in PROJECT_RESULTS}
+    scoped_site_changes=[c for c in site_changes if str(c.get('floor') or '') in export_floors]
+    adjusted_files=export_project_asbuilt(scoped_results,scoped_site_changes,label_pattern=label_pattern) if scoped_site_changes else {}
     readme.write_text(
       'TELETECH As-Built Desktop AutoCAD package\n\n'
       f'Floor: {floor}\nOriginal drawing: {src.name}\nChanges: {len(normalized)}\n\n'
@@ -8027,7 +8801,7 @@ def generate_asbuilt_package(floor,changes,label_pattern=None):
       '4. Use SAVEAS and save a NEW file, for example *_ASBUILT.dwg. Do not overwrite the original.\n'
       '5. If this package contains SITE_REMOVE changes, the included ASBUILT Excel files already remove those endpoints from Quantity/Labeling.\n'
       '6. Port Map rule: SHIFT repacks following ports; RESERVE leaves a RES slot and records the decision in the sheet Legend.\n'
-      '7. Nested/read-only CAD symbols are listed as MANUAL CAD DELETE REQUIRED; Excel is still adjusted safely.\n',encoding='utf-8')
+      '7. Nested static block endpoints use a private cloned block-instance path. Dynamic/xref/anonymous or attributed paths are left unchanged and emit a warning.\n',encoding='utf-8')
     man={'generated_at':ts,'floor':floor,'source_drawing':str(src),'changes':normalized}
     # JSON-safe copy without nested full target records if they contain non-serializable values.
     def clean(o):
@@ -8039,10 +8813,13 @@ def generate_asbuilt_package(floor,changes,label_pattern=None):
     zpath=EXPORTS/f'{stem}_PACKAGE.zip'
     with zipfile.ZipFile(zpath,'w',zipfile.ZIP_DEFLATED) as z:
         for fp in (lsp,scr,readme,manifest): z.write(fp,arcname=fp.name)
+        if dxf_info.get('file') and (EXPORTS/dxf_info['file']).exists(): z.write(EXPORTS/dxf_info['file'],arcname=dxf_info['file'])
         for name in adjusted_files.values():
             fp=EXPORTS/name
             if fp.exists(): z.write(fp,arcname=fp.name)
-    return {'zip':zpath.name,'scr':scr.name,'lsp':lsp.name,'readme':readme.name,'manifest':manifest.name,'changes':len(normalized),'floor':floor,**adjusted_files}
+    return {'zip':zpath.name,'scr':scr.name,'lsp':lsp.name,'readme':readme.name,'manifest':manifest.name,'changes':len(all_normalized),'floor':floor,
+            'dxf':dxf_info.get('file'),'dxf_verification':dxf_info.get('verification'),'dxf_error':dxf_info.get('error'),
+            'lsp_skipped':len(lsp_skipped),**adjusted_files}
 
 def generate_asbuilt_project_package(changes,label_pattern=None):
     """Generate a full-project As-Built package from reviewed changes across floors.
@@ -8085,14 +8862,21 @@ def generate_asbuilt_project_package(changes,label_pattern=None):
             normalized_site.append({'op':'SITE_REMOVE','target':t,'target_id':tid,'floor':floor,
                                     'site_status':status,'patch_action':action,
                                     'note':str(ch.get('note') or ''),
-                                    'cad_manual_required':not bool(t.get('editable_direct'))})
+                                    'cad_manual_required':False,'cad_nested_clone':not bool(t.get('editable_direct'))})
 
     # Reuse the proven single-floor CAD script writer, but assemble one clean master ZIP.
     floor_outputs=[]
     for floor,items in grouped.items():
         floor_outputs.append(generate_asbuilt_package(floor,items,label_pattern=label_pattern))
 
-    adjusted_files=export_project_asbuilt(PROJECT_RESULTS,normalized_site,label_pattern=label_pattern) if normalized_site else {}
+    # Build adjusted Excel only from floors actually present in this As-Built batch.
+    # Roof is stored with Third Floor CAD, so retain Third Floor as its export dependency.
+    export_floors=set(grouped)
+    if 'Roof Floor' in export_floors:
+        export_floors.add('Third Floor')
+    scoped_results={f:PROJECT_RESULTS[f] for f in export_floors if f in PROJECT_RESULTS}
+    scoped_site=[c for c in normalized_site if c.get('floor') in export_floors]
+    adjusted_files=export_project_asbuilt(scoped_results,scoped_site,label_pattern=label_pattern) if scoped_site else {}
     ts=time.strftime('%Y%m%d-%H%M%S')
     master_readme=EXPORTS/f'PROJECT_ASBUILT_{ts}_README.txt'
     master_manifest=EXPORTS/f'PROJECT_ASBUILT_{ts}_changes.json'
@@ -8101,10 +8885,12 @@ def generate_asbuilt_project_package(changes,label_pattern=None):
       'TELETECH Full-Project As-Built package\n\n'
       f'Project floors changed: {len(grouped)}\nTotal reviewed changes: {len(changes)}\n'
       f'Site removals affecting Excel: {len(normalized_site)}\n\n'
-      'Run the matching *_RUN.scr in each ORIGINAL floor drawing using full AutoCAD Desktop.\n'
+      'Ready-to-use revised drawings are in DXF/ (originals untouched, each verified after writing).\nAlternatively run the matching *_RUN.scr in each ORIGINAL floor drawing using full AutoCAD Desktop.\n'
       'Then SAVEAS each revised drawing to a new *_ASBUILT.dwg file.\n'
       'Combined ASBUILT Excel files already apply every reviewed SITE_REMOVE across all floors.\n'
-      'SHIFT repacks following ports. RESERVE keeps the original patch-port position reserved.\n',encoding='utf-8')
+      'SHIFT repacks following ports. RESERVE keeps the original patch-port position reserved.\n'
+      'Nested static block edits use a private clone path; dynamic/xref/anonymous or attributed paths are not modified.\n'
+      'Orange relocation destinations use the detected blue ballpoint arrow tip plus a verified page-to-CAD transform. If arrow detection, page registration, or local feature support is uncertain, the move remains blocked for human review; no endpoint-envelope coordinate guess is used.\n',encoding='utf-8')
     clean_changes=[]
     for c in changes:
         clean_changes.append({k:v for k,v in c.items() if k not in {'api_key'}})
@@ -8118,14 +8904,19 @@ def generate_asbuilt_project_package(changes,label_pattern=None):
                 fp=EXPORTS/name if name else None
                 if fp and fp.exists():
                     z.write(fp,arcname=f"CAD/{fo.get('floor','Floor')}/{fp.name}")
+        for fo in floor_outputs:
+            dn=fo.get('dxf')
+            if dn and (EXPORTS/dn).exists():
+                z.write(EXPORTS/dn,arcname=f"DXF/{fo.get('floor','Floor')}/{dn}")
         for name in adjusted_files.values():
             fp=EXPORTS/name
             if fp.exists():
                 z.write(fp,arcname=f'Excel/{fp.name}')
     return {
+      'dxf_files':[{'floor':fo.get('floor'),'dxf':fo.get('dxf'),'verified':bool((fo.get('dxf_verification') or {}).get('ok')),'error':fo.get('dxf_error')} for fo in floor_outputs],
       'zip':master_zip.name,'readme':master_readme.name,'manifest':master_manifest.name,
       'changes':len(changes),'floors':list(grouped),'floor_count':len(grouped),
-      'scripts':[{'floor':fo.get('floor'),'scr':fo.get('scr'),'lsp':fo.get('lsp')} for fo in floor_outputs],
+      'scripts':[{'floor':fo.get('floor'),'scr':fo.get('scr'),'lsp':fo.get('lsp'),'dxf':fo.get('dxf')} for fo in floor_outputs],
       **adjusted_files
     }
 
@@ -8691,9 +9482,10 @@ h2,h3,h4{margin:0;line-height:1.25}a{text-decoration:none}code{font-family:var(-
 .brandRow{display:flex;gap:10px;align-items:center;padding:4px 8px}.brandRow svg{width:30px;height:30px;flex:none}
 .brandName{font-weight:700;color:#fff;font-size:15px;letter-spacing:.02em}.brandSub{font-size:12px;color:#7f9a8f}
 .nav{display:flex;flex-direction:column;gap:2px}
-.navItem{display:flex;align-items:center;gap:10px;width:100%;justify-content:flex-start;background:none;border:0;color:#cfe0d8;padding:0 10px;border-radius:8px;min-height:40px;font-weight:550}
+.navItem{display:flex;align-items:center;gap:10px;width:100%;justify-content:flex-start;background:none;border:0;color:#cfe0d8;padding:0 10px;border-radius:8px;min-height:40px;font-weight:550;transition:background-color .15s ease,color .15s ease,box-shadow .15s ease;}
 .navItem svg{width:18px;height:18px;flex:none;opacity:.75}.navItem:hover:not(:disabled){background:rgba(255,255,255,.07)}
-.navItem.on{background:rgba(255,255,255,.13);color:#fff}.navItem.on svg{opacity:1}
+.navItem:focus-visible{outline:none;background:rgba(255,255,255,.09);box-shadow:0 0 0 2px rgba(167,200,255,.95),inset 0 0 0 1px rgba(167,200,255,.5);color:#fff}
+.navItem.on,.navItem.on:hover,.navItem.on:focus-visible{background:linear-gradient(180deg,rgba(74,168,163,.28),rgba(51,119,117,.18));border:1px solid rgba(144,203,196,.45);color:#fff;box-shadow:0 0 0 2px rgba(160,225,220,.8),inset 0 0 0 1px rgba(255,255,255,.1)}.navItem.on svg{opacity:1}
 .navBadge{margin-left:auto;min-width:20px;padding:0 7px;border-radius:999px;background:#f5c04a;color:#3b2800;font-size:12px;font-weight:700;text-align:center}
 .navItem.fresh::after{content:"";width:8px;height:8px;border-radius:50%;background:#5fd3a2;margin-left:auto}
 .sideNote{margin-top:auto;padding:0 8px;font-size:12px;color:#7f9a8f}
@@ -8765,7 +9557,7 @@ tbody th{color:var(--ink);font-size:13px}.floorRow{cursor:pointer}.floorRow:hove
 .stepNo{width:24px;height:24px;border-radius:50%;background:var(--brand);color:#fff;display:grid;place-items:center;font-size:12.5px;font-weight:700;flex:none}
 .fileMeta{font-size:12.5px;color:var(--muted);overflow-wrap:anywhere;max-height:56px;overflow:auto}
 .thread{display:flex;flex-direction:column;gap:8px;min-height:44px;max-height:220px;overflow:auto;padding:8px;background:var(--paper);border-radius:8px}
-.thread:empty::before{content:"Questions and corrections about the scan appear here.";color:var(--faint);font-size:13px}
+.thread:empty::before{content:"لا توجد ملاحظات";color:var(--faint);font-size:13px}
 .thread>div{font-size:13.5px;overflow-wrap:anywhere;unicode-bidi:plaintext;background:#fff!important;border:1px solid var(--line)}
 .thread>div[style*=flex-end]{background:var(--brand-s)!important;border-color:var(--ok-l)}
 details.advanced{border:1px solid var(--line);border-radius:10px;background:#fff;margin-bottom:16px}
@@ -8782,6 +9574,33 @@ details.advanced>summary::before{content:"›";display:inline-block;margin-right
 @media(max-width:1100px){.projStatus{display:none}}
 @media(max-width:900px){.app{grid-template-columns:1fr}.side{position:static;height:auto;flex-direction:row;align-items:center;gap:8px;padding:8px 10px;overflow-x:auto}.brandSub,.sideNote{display:none}.nav{flex-direction:row;gap:4px}.navItem{width:auto;white-space:nowrap}.top{padding:10px 16px;flex-wrap:wrap}.views{padding:18px 16px 56px}.steps{grid-template-columns:1fr}.kpis{grid-template-columns:1fr 1fr}.kpi:nth-child(3){border-left:0}.kpi:nth-child(n+3){border-top:1px solid var(--line)}#projectSelect{min-width:0;flex:1}}
 @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+
+#view-asbuilt{--ab-ink:#1f3347;--ab-line:#e5eaf0;--ab-accent:#285c62}
+#view-asbuilt .viewHead h2{font-size:20px;color:var(--ab-ink)}
+#view-asbuilt .viewHead p{color:#667085;font-size:13px;margin-top:2px}
+#view-asbuilt .step,#view-asbuilt .card{border-color:var(--ab-line);border-radius:12px;box-shadow:0 2px 8px rgba(30,50,70,.03)}
+#view-asbuilt .stepNo{background:var(--ab-accent)}
+#view-asbuilt .actionBig,#view-asbuilt button:not(.alt):not(.good){background:var(--ab-accent);border-color:var(--ab-accent);color:#fff;border-radius:8px}
+#view-asbuilt button.alt{background:#f3f6f8;border:1px solid #e2e8ee;color:#47586a;border-radius:8px}
+#view-asbuilt button.good{background:#e8f3ef;border:1px solid #d5e9e1;color:#24725d;border-radius:8px}
+#view-asbuilt input,#view-asbuilt select{border:1px solid #dce3eb;border-radius:8px;background:#fff}
+#view-asbuilt .summaryChip{background:#f3f6f8;border-radius:8px;color:#405267}
+#view-asbuilt .cardHead h3{font-size:15px;color:var(--ab-ink)}
+
+#view-asbuilt{direction:rtl;text-align:right}
+#view-asbuilt .steps{align-items:start}
+#view-asbuilt .step{gap:12px}
+#view-asbuilt input[type=file]{font-size:12px;color:#667085;padding:6px;direction:ltr;text-align:right}
+#view-asbuilt input[type=file]::file-selector-button{margin-inline-start:10px;border:0;background:#edf4f4;color:#285c62;border-radius:6px;padding:7px 12px;font-weight:600;cursor:pointer}
+#view-asbuilt .fileMeta{font-size:11.5px;color:#8a97a6}
+#view-asbuilt .stepHead{font-size:14px;color:#1f3347}
+#view-asbuilt .actionBig{padding:11px;font-size:13.5px;font-weight:650}
+#view-asbuilt .status{border-radius:8px;font-size:12.5px;padding:9px 11px;background:#f1f6f7;color:#41586a;border:0}
+#view-asbuilt .callout{background:#f6f8fa;border:1px solid #e5eaf0;border-inline-start:3px solid #8fb3b3;color:#5a6b7c;font-size:12px;padding:9px 12px;border-radius:8px}
+#view-asbuilt table{font-size:12px}
+#view-asbuilt th{background:#f3f6f8;color:#405267;font-weight:650;text-align:right}
+#view-asbuilt .advanced>summary{font-weight:650;color:#41586a}
+#view-asbuilt .thread{min-height:0}
 </style></head><body>
 <div class="app">
 <aside class="side">
@@ -8842,24 +9661,24 @@ details.advanced>summary::before{content:"›";display:inline-block;margin-right
 </section>
 
 <section class="view" id="view-asbuilt">
- <div class="viewHead"><h2>As-Built revisions</h2><p>Upload the technicians' scan. Colored markups are counted by code, and nothing changes in CAD until you approve it.</p></div>
- <div class="cardHead" style="margin-bottom:12px"><span id="asProjectBadge" class="badge neutral">Analyze CAD first</span></div>
+ <div class="viewHead"><h2>As-Built</h2><p>ارفع الاسكان ثم راجع العلامات ثم أنشئ الملفات</p></div>
+ <div class="cardHead" style="margin-bottom:12px"><span id="asProjectBadge" class="badge neutral">حلّل المشروع أولًا</span></div>
  <div class="steps">
-  <div class="step"><div class="stepHead"><span class="stepNo">1</span>Upload the scan</div><input id="asChatFile" type="file" accept=".pdf,.png,.jpg,.jpeg" multiple><div id="asChatFileMeta" class="fileMeta">No file selected.</div><div class="stepHead" style="font-weight:600;font-size:13px;margin-top:4px">Legend reference (optional)</div><input id="asLegendFile" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp"><div id="asLegendMeta" class="fileMeta">A separate legend crop is excluded from counting.</div></div>
-  <div class="step"><div class="stepHead"><span class="stepNo">2</span>Analyze</div><div class="sub">Reads each page and counts colored markups. Blue ink is ignored.</div><input id="asChatModel" type="hidden" value=""><button id="asChatSend" class="actionBig" style="margin-top:auto">Analyze As-Built</button></div>
-  <div class="step"><div class="stepHead"><span class="stepNo">3</span>Approve &amp; generate</div><div id="asChatStatus" class="status info">Analyze the CAD project first, then upload the scan.</div><button id="asGenerate" class="actionBig" style="margin-top:auto">Generate new CAD package</button></div>
+  <div class="step"><div class="stepHead"><span class="stepNo">1</span>رفع الاسكان</div><input id="asChatFile" type="file" accept=".pdf,.png,.jpg,.jpeg" multiple><div id="asChatFileMeta" class="fileMeta">لم يتم اختيار ملف</div><div class="stepHead" style="font-weight:600;font-size:13px;margin-top:4px">مرجع الألوان (اختياري)</div><input id="asLegendFile" type="file" accept=".png,.jpg,.jpeg,.webp,.bmp"><div id="asLegendMeta" class="fileMeta"></div></div>
+  <div class="step"><div class="stepHead"><span class="stepNo">2</span>التحليل</div><input id="asChatModel" type="hidden" value=""><button id="asChatSend" class="actionBig">تحليل الاسكان</button></div>
+  <div class="step"><div class="stepHead"><span class="stepNo">3</span>الاعتماد والإنشاء</div><div id="asChatStatus" class="status info">حلّل المشروع أولًا ثم ارفع الاسكان</div><button id="asGenerate" class="actionBig">إنشاء الملفات</button></div>
  </div>
- <div class="card" style="margin-top:16px"><div class="cardHead"><div><h3>Markup counts</h3><div class="sub">Detected by OpenCV from the scan, not CAD entities. Match each to a CAD endpoint to confirm it.</div></div><button id="asChatAdd" class="good" style="display:none">Add to revision list</button></div><div id="asCounts" class="summaryStrip"><div class="summaryChip">No analysis yet.</div></div><div id="asLegend" class="small sub"></div><div id="asChatReview" class="reviewWrap" style="display:none;margin-top:10px"></div></div>
- <div class="card"><div class="cardHead"><h3>Clarifications</h3><button id="asChatReset" class="alt">Reset</button></div><div id="asChatThread" class="thread"></div><div class="actions" style="margin-top:10px"><input id="asChatInput" dir="auto" placeholder="اكتب تصحيحًا أو ملاحظة عن علامة غير واضحة..." style="flex:1;min-width:200px"></div></div>
- <details class="advanced"><summary>Manual revision entry</summary><div class="advInner stack">
-  <div class="fields"><select id="asFloor"><option value="">Select floor</option></select><select id="asOp"><option value="SITE_REMOVE">Site remove / withdraw</option><option value="MOVE_ENDPOINT">Move endpoint</option><option value="DELETE_ENDPOINT">Delete endpoint</option><option value="ADD_BLOCK">Add block / symbol</option><option value="ADD_NOTE">Add note</option></select></div>
-  <div id="asTargetWrap"><select id="asTarget" style="width:100%"><option value="">Select floor first</option></select></div>
-  <div id="asSiteWrap" class="fields"><select id="asSiteStatus"><option value="">Site status...</option><option value="لم يتم السحب">لم يتم السحب</option><option value="تم رد الكابلات">تم رد الكابلات</option><option value="لا يوجد لها مسار">لا يوجد لها مسار</option><option value="تم نقل">تم نقل</option></select><select id="asPatchAction"><option value="">Patch action...</option><option value="SHIFT">SHIFT</option><option value="RESERVE">RESERVE</option></select></div>
-  <div class="fields"><input id="asX" type="number" step="0.01" placeholder="New X"><input id="asY" type="number" step="0.01" placeholder="New Y"><input id="asBlock" placeholder="Block name"><input id="asRotation" type="number" value="0" placeholder="Rotation"><input id="asScale" type="number" value="1" placeholder="Scale"></div>
-  <div class="fields"><input id="asText" placeholder="Note text"><input id="asTextHeight" type="number" value="150" placeholder="Text height"><input id="asNote" placeholder="Internal note"></div>
-  <div class="actions"><button id="asAdd">Add reviewed change</button><button id="asClear" class="alt">Clear list</button></div><div id="asStatus" class="status">No manual change added.</div></div></details>
- <div class="card"><div class="cardHead"><h3>Approved revision list</h3></div><div id="asChangeList"></div><div id="asDownloads" class="downloads" style="margin-top:10px"></div></div>
- <div class="callout"><b>Safety boundary:</b> only supported endpoint and site-removal changes are generated, packaged for AutoCAD Desktop. Cable route changes stay in review, because the system must not guess a cable path.</div>
+ <div class="card" style="margin-top:16px"><div class="cardHead"><div><h3>العلامات المكتشفة</h3></div><button id="asChatAdd" class="good" style="display:none">إضافة للقائمة</button></div><div id="asCounts" class="summaryStrip"><div class="summaryChip">لا يوجد تحليل بعد</div></div><div id="asLegend" class="small sub"></div><div id="asChatReview" class="reviewWrap" style="display:none;margin-top:10px"></div></div>
+ <div class="card"><div class="cardHead"><h3>ملاحظات</h3><button id="asChatReset" class="alt">إعادة ضبط</button></div><div id="asChatThread" class="thread"></div><div class="actions" style="margin-top:10px"><input id="asChatInput" dir="auto" placeholder="اكتب تصحيحًا أو ملاحظة عن علامة غير واضحة..." style="flex:1;min-width:200px"></div></div>
+ <details class="advanced"><summary>إدخال يدوي</summary><div class="advInner stack">
+  <div class="fields"><select id="asFloor"><option value="">اختر الدور</option></select><select id="asOp"><option value="SITE_REMOVE">سحب / إلغاء من الموقع</option><option value="MOVE_ENDPOINT">نقل نقطة</option><option value="DELETE_ENDPOINT">حذف نقطة</option><option value="ADD_BLOCK">إضافة رمز</option><option value="ADD_NOTE">إضافة ملاحظة</option></select></div>
+  <div id="asTargetWrap"><select id="asTarget" style="width:100%"><option value="">اختر الدور أولًا</option></select></div>
+  <div id="asSiteWrap" class="fields"><select id="asSiteStatus"><option value="">حالة الموقع</option><option value="لم يتم السحب">لم يتم السحب</option><option value="تم رد الكابلات">تم رد الكابلات</option><option value="لا يوجد لها مسار">لا يوجد لها مسار</option><option value="تم نقل">تم نقل</option></select><select id="asPatchAction"><option value="">إجراء الباتش بانل</option><option value="SHIFT">SHIFT</option><option value="RESERVE">RESERVE</option></select></div>
+  <div class="fields"><input id="asX" type="number" step="0.01" placeholder="X الجديد"><input id="asY" type="number" step="0.01" placeholder="Y الجديد"><input id="asBlock" placeholder="اسم الرمز"><input id="asRotation" type="number" value="0" placeholder="الدوران"><input id="asScale" type="number" value="1" placeholder="المقياس"></div>
+  <div class="fields"><input id="asText" placeholder="نص الملاحظة"><input id="asTextHeight" type="number" value="150" placeholder="ارتفاع النص"><input id="asNote" placeholder="ملاحظة داخلية"></div>
+  <div class="actions"><button id="asAdd">إضافة تعديل</button><button id="asClear" class="alt">مسح القائمة</button></div><div id="asStatus" class="status"></div></div></details>
+ <div class="card"><div class="cardHead"><h3>قائمة التعديلات المعتمدة</h3></div><div id="asChangeList"></div><div id="asDownloads" class="downloads" style="margin-top:10px"></div></div>
+ <div class="callout">تُنشأ فقط تعديلات النقاط والسحب المعتمدة، ومسارات الكابلات تبقى للمراجعة</div>
 </section>
 
 <section class="view" id="view-docs"><div id="projectDocumentsCard">
@@ -8930,8 +9749,8 @@ function renderVisionReview(j){
  box.innerHTML=h; box.style.display='block'; $('asChatAdd').style.display='inline-block';
 }
 function handleAsChatTurn(j){if(j.type==='final'){asChatBubble('model',j.document_summary||'Analysis ready — review the counts below.');renderVisionReview(j);if(j.human_review_required&&j.question)asChatBubble('model','⚠️ '+j.question);}else{asChatBubble('model',j.question||'...');$('asChatReview').style.display='none';$('asChatReview').innerHTML='';$('asChatAdd').style.display='none';}}
-function renderAsbuiltChanges(){const box=$('asChangeList');if(!box)return;if(!asbuiltChanges.length){box.innerHTML='<div class="sub">No reviewed As-Built changes added yet.</div>';return;}let h='<div class="reviewWrap"><table><thead><tr><th>#</th><th>Floor</th><th>Operation</th><th>Target / Block</th><th>Site status / Patch action / New XY</th><th></th></tr></thead><tbody>';asbuiltChanges.forEach((c,i)=>{const t=asbuiltTargets.find(x=>x.target_id===c.target_id);let target=c.target_label||(t?(t.label||t.block||t.target_id):(c.block||c.target_id||''));let detail=c.op==='SITE_REMOVE'?`${c.site_status} | ${c.patch_action}`:c.op==='MOVE_ENDPOINT'?`${c.x}, ${c.y}`:c.op==='ADD_BLOCK'?`${c.x}, ${c.y} | ${c.block}`:c.op==='ADD_NOTE'?`${c.x}, ${c.y} | ${c.text}`:(c.note||'');h+=`<tr><td>${i+1}</td><td>${esc(c.floor||'')}</td><td>${esc(c.op)}</td><td>${esc(target)}</td><td>${esc(detail)}</td><td><button class="alt asDel" data-i="${i}">Remove</button></td></tr>`});h+='</tbody></table></div>';box.innerHTML=h;document.querySelectorAll('.asDel').forEach(b=>b.onclick=()=>{asbuiltChanges.splice(+b.dataset.i,1);renderAsbuiltChanges();});}
-async function loadAsbuiltTargets(){const floor=$('asFloor').value;if(!floor){asbuiltTargets=[];$('asTarget').innerHTML='<option value="">Select floor first</option>';return;}let r=await fetch('/api/asbuilt_targets?floor='+encodeURIComponent(floor)+'&label_pattern='+encodeURIComponent(activeLabelPattern())),j=await r.json();if(!r.ok||j.error){$('asStatus').textContent=j.error||'Cannot load As-Built targets';return;}asbuiltTargets=j.targets||[];$('asTarget').innerHTML='<option value="">Select endpoint</option>'+asbuiltTargets.map(x=>`<option value="${esc(x.target_id)}">${esc(x.label||x.block)} | ${esc(x.service)} | ${x.x.toFixed(1)}, ${x.y.toFixed(1)}${x.editable_direct?'':' [nested/read-only]'}</option>`).join('');$('asStatus').textContent=`Loaded ${asbuiltTargets.length} endpoints for ${floor}.`;}
+function renderAsbuiltChanges(){const box=$('asChangeList');if(!box)return;if(!asbuiltChanges.length){box.innerHTML='<div class="sub">لا توجد تعديلات معتمدة</div>';return;}let h='<div class="reviewWrap"><table><thead><tr><th>#</th><th>الدور</th><th>العملية</th><th>العنصر</th><th>التفاصيل</th><th></th></tr></thead><tbody>';asbuiltChanges.forEach((c,i)=>{const t=asbuiltTargets.find(x=>x.target_id===c.target_id);let target=c.target_label||(t?(t.label||t.block||t.target_id):(c.block||c.target_id||''));let detail=c.op==='SITE_REMOVE'?`${c.site_status} | ${c.patch_action}`:c.op==='MOVE_ENDPOINT'?`${c.x}, ${c.y}`:c.op==='ADD_BLOCK'?`${c.x}, ${c.y} | ${c.block}`:c.op==='ADD_NOTE'?`${c.x}, ${c.y} | ${c.text}`:(c.note||'');h+=`<tr><td>${i+1}</td><td>${esc(c.floor||'')}</td><td>${esc(c.op)}</td><td>${esc(target)}</td><td>${esc(detail)}</td><td><button class="alt asDel" data-i="${i}">Remove</button></td></tr>`});h+='</tbody></table></div>';box.innerHTML=h;document.querySelectorAll('.asDel').forEach(b=>b.onclick=()=>{asbuiltChanges.splice(+b.dataset.i,1);renderAsbuiltChanges();});}
+async function loadAsbuiltTargets(){const floor=$('asFloor').value;if(!floor){asbuiltTargets=[];$('asTarget').innerHTML='<option value="">اختر الدور أولًا</option>';return;}let r=await fetch('/api/asbuilt_targets?floor='+encodeURIComponent(floor)+'&label_pattern='+encodeURIComponent(activeLabelPattern())),j=await r.json();if(!r.ok||j.error){$('asStatus').textContent=j.error||'Cannot load As-Built targets';return;}asbuiltTargets=j.targets||[];$('asTarget').innerHTML='<option value="">Select endpoint</option>'+asbuiltTargets.map(x=>`<option value="${esc(x.target_id)}">${esc(x.label||x.block)} | ${esc(x.service)} | ${x.x.toFixed(1)}, ${x.y.toFixed(1)}${x.editable_direct?'':' [nested/read-only]'}</option>`).join('');$('asStatus').textContent=`Loaded ${asbuiltTargets.length} endpoints for ${floor}.`;}
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 const DEFAULT_LABEL_SCHEMA='{rack}/{network}{panel2}/{code}{port2}';
 function activeLabelPattern(){return $('labelSchemaMode').value==='custom'?$('labelPattern').value.trim():DEFAULT_LABEL_SCHEMA}
@@ -8954,10 +9773,10 @@ if($('createProject'))$('createProject').onclick=async()=>{const name=$('project
 if($('renameProject'))$('renameProject').onclick=async()=>{const id=$('projectSelect').value;if(!id)return $('projectStatus').textContent='Select a project first.';const current=$('projectSelect').selectedOptions[0]?.textContent||'';const name=prompt('Enter the new project name:',current);if(name===null)return;if(!name.trim())return $('projectStatus').textContent='Project name cannot be empty.';try{const r=await fetch('/api/project_rename',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project_id:id,name:name.trim()})}),j=await r.json();if(!r.ok||j.error)throw Error(j.error||'Rename failed');await loadProjects(id);$('projectStatus').textContent='Project renamed.';}catch(e){$('projectStatus').textContent=e.message}};
 if($('deleteProject'))$('deleteProject').onclick=async()=>{const id=$('projectSelect').value;if(!id)return $('projectStatus').textContent='Select a project first.';const name=$('projectSelect').selectedOptions[0]?.textContent||'this project';if(!confirm('Permanently delete project "'+name+'" and ALL its drawings, results and generated files? This cannot be undone.'))return;try{const r=await fetch('/api/project_delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({project_id:id})}),j=await r.json();if(!r.ok||j.error)throw Error(j.error||'Delete failed');activeProjectId='';localStorage.removeItem('teletech_project_id');result=null;await loadProjects(j.active_project_id||'');await loadUploadedDrawings();renderProject([]);$('projectStatus').textContent='Project deleted.';}catch(e){$('projectStatus').textContent=e.message}};
 function renderProject(rows){if(!Array.isArray(rows)||!rows.length){$('projectSummary').innerHTML='<div class="sub">No project floors loaded yet.</div>';refreshAsbuiltFloors([]);return;}let h='<div class="sub" style="margin-bottom:8px">Click any drawing to show its own BOQ table below.</div><table><thead><tr><th>Floor</th><th>Drawing</th><th>Rack 1</th><th>Rack 2</th><th>Physical</th><th>Logical Ports</th><th>Status</th></tr></thead><tbody>';for(const x of rows){let st=(x.rack_review||x.review)?`CHECK (${x.review||0}/${x.rack_review||0})`:'READY';h+=`<tr class="floorRow" data-floor="${esc(x.floor)}" style="cursor:pointer"><td><b>${esc(x.floor)}</b></td><td>${esc(x.drawing)}</td><td>${esc(x.rack1)}: ${x.rack1_physical}</td><td>${esc(x.rack2)}: ${x.rack2_physical}</td><td>${x.physical_total}</td><td>${x.logical_total}</td><td>${st}</td></tr>`;}h+='</tbody></table>';$('projectSummary').innerHTML=h;refreshAsbuiltFloors(rows);document.querySelectorAll('.floorRow').forEach(tr=>tr.onclick=async()=>{let r=await fetch('/api/project_result?floor='+encodeURIComponent(tr.dataset.floor)),j=await r.json();if(!r.ok||j.error)return $('status').textContent=j.error||'Cannot load floor result';render(j.result);$('status').textContent='Showing BOQ for '+tr.dataset.floor;});}
-function refreshAsbuiltFloors(rows){asbuiltProjectFloors=(rows||[]).map(x=>x.floor);if($('asProjectBadge')){$('asProjectBadge').textContent=`${asbuiltProjectFloors.length} analyzed floor${asbuiltProjectFloors.length===1?'':'s'}`;$('asProjectBadge').className='badge '+(asbuiltProjectFloors.length?'':'neutral');}if(!$('asFloor'))return;const cur=$('asFloor').value;let opts='<option value="">Select floor for manual change</option>';for(const x of rows||[])opts+=`<option value="${esc(x.floor)}">${esc(x.floor)}</option>`;$('asFloor').innerHTML=opts;if((rows||[]).some(x=>x.floor===cur))$('asFloor').value=cur;}
+function refreshAsbuiltFloors(rows){asbuiltProjectFloors=(rows||[]).map(x=>x.floor);if($('asProjectBadge')){$('asProjectBadge').textContent=`${asbuiltProjectFloors.length} دور محلَّل`;$('asProjectBadge').className='badge '+(asbuiltProjectFloors.length?'':'neutral');}if(!$('asFloor'))return;const cur=$('asFloor').value;let opts='<option value="">اختر الدور</option>';for(const x of rows||[])opts+=`<option value="${esc(x.floor)}">${esc(x.floor)}</option>`;$('asFloor').innerHTML=opts;if((rows||[]).some(x=>x.floor===cur))$('asFloor').value=cur;}
 function setBusy(v){busy=v;$('upload').disabled=v;$('file').disabled=v;if($('generateLabels'))$('generateLabels').disabled=v}
 function uploadFile(f){return new Promise((resolve,reject)=>{const x=new XMLHttpRequest();x.open('POST','/api/upload?filename='+encodeURIComponent(f.name)+'&project_id='+encodeURIComponent(activeProjectId||''),true);x.timeout=20*60*1000;x.setRequestHeader('Content-Type','application/octet-stream');x.upload.onprogress=e=>{if(e.lengthComputable)$('status').textContent=`Uploading ${Math.round(e.loaded*100/e.total)}% (${(e.loaded/1048576).toFixed(1)} / ${(e.total/1048576).toFixed(1)} MB)...`};x.onload=()=>{let j;try{j=JSON.parse(x.responseText||'{}')}catch(e){return reject(new Error('Invalid upload response'))}if(x.status<200||x.status>=300||j.error)return reject(new Error(j.error||`Upload HTTP ${x.status}`));resolve(j)};x.onerror=()=>reject(new Error('Upload connection failed'));x.ontimeout=()=>reject(new Error('Upload timed out'));x.send(f)})}
-async function loadProjectDocuments(){const list=$('projectDocsList'),status=$('projectDocsStatus');if(!list)return;try{const r=await fetch('/api/project_documents',{cache:'no-store',credentials:'same-origin'}),j=await r.json();if(!r.ok||j.error)throw Error(j.error||'Cannot load project documents');const rows=j.documents||[];if(!rows.length){list.innerHTML='<div class="sub">No project documents uploaded yet.</div>';return;}let h='<div class="reviewWrap"><table style="min-width:850px"><thead><tr><th>Category</th><th>Document</th><th>Number</th><th>Date</th><th>Uploaded by</th><th>Uploaded at</th><th>Actions</th></tr></thead><tbody>';for(const x of rows){h+=`<tr><td>${esc(x.category_label||x.category||'')}</td><td>${esc(x.filename||'')}<div class="sub small">${esc(x.note||'')}</div></td><td>${esc(x.document_number||'—')}</td><td>${esc(x.document_date||'—')}</td><td>${esc(x.uploaded_by||'')}</td><td>${esc(x.uploaded_at||'')}</td><td><div class="drawingActions"><button class="good docDownload" data-id="${esc(x.id)}">Download</button><button class="docDelete" style="background:#b42318" data-id="${esc(x.id)}">Delete</button></div></td></tr>`}h+='</tbody></table></div>';list.innerHTML=h;list.querySelectorAll('.docDownload').forEach(b=>b.onclick=()=>{location.href='/api/project_documents/download?id='+encodeURIComponent(b.dataset.id)});list.querySelectorAll('.docDelete').forEach(b=>b.onclick=async()=>{if(!confirm('Delete this project document permanently?'))return;try{const r=await fetch('/api/project_documents/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.id})}),j=await r.json();if(!r.ok||j.error)throw Error(j.error||'Delete failed');status.textContent='Document deleted.';await loadProjectDocuments()}catch(e){status.textContent=e.message}});}catch(e){status.textContent=e.message}}
+async function loadProjectDocuments(){const list=$('projectDocsList'),status=$('projectDocsStatus');if(!list)return;try{const r=await fetch('/api/project_documents',{cache:'no-store',credentials:'same-origin'}),j=await r.json();if(!r.ok||j.error)throw Error(j.error||'Cannot load project documents');const rows=j.documents||[];if(!rows.length){list.innerHTML='<div class="sub">No files uploaded to the general Project Documents section yet. BOQ, MIR and invoice files are managed separately in Reconciliation.</div>';return;}let h='<div class="reviewWrap"><table style="min-width:850px"><thead><tr><th>Category</th><th>Document</th><th>Number</th><th>Date</th><th>Uploaded by</th><th>Uploaded at</th><th>Actions</th></tr></thead><tbody>';for(const x of rows){h+=`<tr><td>${esc(x.category_label||x.category||'')}</td><td>${esc(x.filename||'')}<div class="sub small">${esc(x.note||'')}</div></td><td>${esc(x.document_number||'—')}</td><td>${esc(x.document_date||'—')}</td><td>${esc(x.uploaded_by||'')}</td><td>${esc(x.uploaded_at||'')}</td><td><div class="drawingActions"><button class="good docDownload" data-id="${esc(x.id)}">Download</button><button class="docDelete" style="background:#b42318" data-id="${esc(x.id)}">Delete</button></div></td></tr>`}h+='</tbody></table></div>';list.innerHTML=h;list.querySelectorAll('.docDownload').forEach(b=>b.onclick=()=>{location.href='/api/project_documents/download?id='+encodeURIComponent(b.dataset.id)});list.querySelectorAll('.docDelete').forEach(b=>b.onclick=async()=>{if(!confirm('Delete this project document permanently?'))return;try{const r=await fetch('/api/project_documents/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.id})}),j=await r.json();if(!r.ok||j.error)throw Error(j.error||'Delete failed');status.textContent='Document deleted.';await loadProjectDocuments()}catch(e){status.textContent=e.message}});}catch(e){status.textContent=e.message}}
 const docUploadButton=$('uploadProjectDoc');if(docUploadButton)docUploadButton.onclick=async()=>{const f=$('docFile').files[0];if(!f)return $('projectDocsStatus').textContent='Choose a PDF or Excel file first.';const ext=(f.name.split('.').pop()||'').toLowerCase();if(!['pdf','xls','xlsx','xlsm','csv'].includes(ext))return $('projectDocsStatus').textContent='Only PDF and Excel/CSV files are allowed.';if(f.size>100*1024*1024)return $('projectDocsStatus').textContent='File exceeds the 100 MB limit.';const fd=new FormData();fd.append('file',f);fd.append('category',$('docCategory').value);fd.append('document_number',$('docNumber').value.trim());fd.append('document_date',$('docDate').value);fd.append('note',$('docNote').value.trim());docUploadButton.disabled=true;$('projectDocsStatus').textContent='Uploading '+f.name+'...';try{const r=await fetch('/api/project_documents/upload',{method:'POST',body:fd}),j=await r.json();if(!r.ok||j.error)throw Error(j.error||'Upload failed');$('docFile').value='';$('docNumber').value='';$('docDate').value='';$('docNote').value='';$('projectDocsStatus').textContent='Document uploaded successfully.';await loadProjectDocuments()}catch(e){$('projectDocsStatus').textContent=e.message}finally{docUploadButton.disabled=false}};
 async function loadUploadedDrawings(){try{let r=await fetch('/api/uploaded_drawings',{cache:'no-store'}),j=await r.json();if(!r.ok||j.error)return;const rows=j.drawings||[];const card=$('uploadedDrawingsCard'),list=$('uploadedDrawingsList'),st=$('uploadedDrawingsStatus');if(!rows.length){card.style.display='none';return;}card.style.display='block';const role=window.currentUser&&window.currentUser.role;const tech=role==='TECHNICIAN';st.textContent=tech?'Uploaded drawings are waiting for Engineer/Admin analysis.':'Uploaded drawings available for analysis.';let h='<div class="reviewWrap"><table><thead><tr><th>Drawing</th><th>Uploader</th><th>Time</th><th>Status</th><th></th></tr></thead><tbody>';for(const x of rows){const canAnalyze=!tech&&['ADMIN','ENGINEER'].includes(role)&&!x.analyzed;h+=`<tr><td>${esc(x.drawing||'')}</td><td>${esc(x.uploaded_by||'')}</td><td>${esc(x.uploaded_at||'')}</td><td>${x.analyzed?'ANALYZED':'WAITING FOR ANALYSIS'}</td><td><div class="drawingActions">${canAnalyze?`<button class="good analyzeUploaded" data-id="${esc(x.id)}">Analyze</button>`:''}<button class="deleteDrawing" style="background:#b42318" data-id="${esc(x.id)}">Delete</button></div></td></tr>`}h+='</tbody></table></div>';list.innerHTML=h;document.querySelectorAll('.analyzeUploaded').forEach(b=>b.onclick=async()=>{if(busy)return;setBusy(true);$('status').textContent='Analyzing uploaded drawing...';try{let r=await fetch('/api/analyze_uploaded',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.id,university:$('univ').value,building:$('building').value,floor:$('floor').value})}),j=await r.json();if(!r.ok||j.error)throw Error(j.error||'Analysis failed');render(j.result);renderProject(j.project);$('status').textContent='CAD analysis completed. As-Built is now available for this analyzed project.';await loadUploadedDrawings();}catch(e){$('status').textContent=e.message}finally{setBusy(false)}});document.querySelectorAll('.deleteDrawing').forEach(b=>b.onclick=async()=>{const row=b.closest('tr');const label=row?.querySelector('td')?.textContent||'this drawing';if(!confirm('Delete drawing '+label+'? If it has an analyzed floor result, that floor result will also be removed.'))return;try{const r=await fetch('/api/project_delete_drawing',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:b.dataset.id})}),j=await r.json();if(!r.ok||j.error)throw Error(j.error||'Drawing delete failed');renderProject(j.project||[]);if(result&&j.removed_floor===result.floor)result=null;await loadUploadedDrawings();$('status').textContent='Drawing deleted.';}catch(e){$('status').textContent=e.message}})}catch(e){}}
 $('upload').onclick=async()=>{if(busy)return;const fs=[...$('file').files];if(!fs.length)return $('status').textContent='Choose one or more DWG/DXF drawings.';setBusy(true);try{const technician=(window.currentUser&&window.currentUser.role==='TECHNICIAN');for(let i=0;i<fs.length;i++){const f=fs[i];$('status').textContent=`[${i+1}/${fs.length}] Uploading ${f.name}...`;let uj=await uploadFile(f);if(technician){$('status').textContent=`[${i+1}/${fs.length}] Uploaded ${f.name}. Waiting for Engineer/Admin to run CAD Analysis.`;await loadUploadedDrawings();continue;}$('status').textContent=`[${i+1}/${fs.length}] Analyzing ${f.name}...`;let requested=fs.length>1?'Auto Detect':$('floor').value;let r=await fetch('/api/analyze',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:uj.path,university:$('univ').value,building:$('building').value,floor:requested})}),j=await r.json();if(!r.ok||j.error)throw Error(j.error||'Analysis failed');render(j.result);renderProject(j.project);} $('status').textContent=technician?`Uploaded ${fs.length} drawing(s) successfully. An Engineer/Admin must analyze them before As-Built can be used.`:`Project analysis completed: ${fs.length} drawing(s). Same-floor re-analysis replaces that floor only.`;await loadUploadedDrawings()}catch(e){$('status').textContent=e.message}finally{setBusy(false)}};
@@ -9000,7 +9819,7 @@ if($('asChatReset'))$('asChatReset').onclick=()=>{asChatId=null;asChatFilePath='
 if($('asChatAdd'))$('asChatAdd').onclick=()=>{const trs=[...document.querySelectorAll('#asChatReview tr[data-airow]')];let added=0;for(const tr of trs){const i=+tr.dataset.airow,f=asbuiltVisionRows[i];if(!tr.querySelector('.aiUse').checked)continue;const tid=tr.querySelector('.aiTarget').value,pa=tr.querySelector('.aiPatch').value;if(!tid)return $('asChatStatus').textContent=`${f.floor}, page ${f.page_number}: choose the CAD endpoint before adding.`;if(!pa)return $('asChatStatus').textContent=`${f.floor}, page ${f.page_number}: choose SHIFT or RESERVE.`;if(asbuiltChanges.some(c=>c.op==='SITE_REMOVE'&&c.floor===f.floor&&c.target_id===tid))return $('asChatStatus').textContent='The same CAD endpoint is already in the As-Built change list.';const opt=(f.candidate_options||[]).find(x=>x.target_id===tid);asbuiltChanges.push({op:'SITE_REMOVE',floor:f.floor,target_id:tid,target_label:(opt&&(opt.label||opt.block))||f.suggested_label||'',site_status:f.status,patch_action:pa,note:`As-Built chat page ${f.page_number}: ${f.evidence||f.nearby_text||f.status}`});added++;}renderAsbuiltChanges();$('asChatStatus').className='status success';$('asChatStatus').textContent=added?`Added ${added} reviewed removal(s). Review the list below and generate one full-project package.`:'No reviewed rows were selected.';};
 if($('asAdd'))$('asAdd').onclick=()=>{const floor=$('asFloor').value;if(!floor)return $('asStatus').textContent='Select the floor for this manual change.';const op=$('asOp').value;const c={op,floor,note:$('asNote').value.trim()};if(op==='SITE_REMOVE'||op==='MOVE_ENDPOINT'||op==='DELETE_ENDPOINT'){const tid=$('asTarget').value;if(!tid)return $('asStatus').textContent='Choose an endpoint first.';const t=asbuiltTargets.find(x=>x.target_id===tid);if(!t)return $('asStatus').textContent='Endpoint was not found.';if((op==='MOVE_ENDPOINT'||op==='DELETE_ENDPOINT')&&!t.editable_direct)return $('asStatus').textContent='This endpoint is nested/read-only for direct Move/Delete. Use Site removal for Excel + manual CAD deletion, or edit it manually in AutoCAD.';c.target_id=tid;c.target_label=t.label||t.block||tid;if(op==='SITE_REMOVE'){const st=$('asSiteStatus').value;const pa=$('asPatchAction').value;if(!st)return $('asStatus').textContent='Choose one of the four approved site statuses.';if(!['SHIFT','RESERVE'].includes(pa))return $('asStatus').textContent='Choose SHIFT or RESERVE.';c.site_status=st;c.patch_action=pa;}else if(op==='MOVE_ENDPOINT'){if($('asX').value===''||$('asY').value==='')return $('asStatus').textContent='Enter the new X and Y.';c.x=Number($('asX').value);c.y=Number($('asY').value);}}else if(op==='ADD_BLOCK'){if(!$('asBlock').value.trim()||$('asX').value===''||$('asY').value==='')return $('asStatus').textContent='Add Block needs block name and X/Y.';c.block=$('asBlock').value.trim();c.x=Number($('asX').value);c.y=Number($('asY').value);c.rotation=Number($('asRotation').value||0);c.scale=Number($('asScale').value||1);}else if(op==='ADD_NOTE'){if(!$('asText').value.trim()||$('asX').value===''||$('asY').value==='')return $('asStatus').textContent='Add Note needs text and X/Y.';c.text=$('asText').value.trim();c.x=Number($('asX').value);c.y=Number($('asY').value);c.height=Number($('asTextHeight').value||150);}asbuiltChanges.push(c);renderAsbuiltChanges();$('asStatus').textContent=`Added manual change #${asbuiltChanges.length} on ${floor}.`;};
 if($('asClear'))$('asClear').onclick=()=>{asbuiltChanges=[];renderAsbuiltChanges();$('asStatus').textContent='As-Built change list cleared.';$('asDownloads').innerHTML='';};
-if($('asGenerate'))$('asGenerate').onclick=async()=>{if(!asbuiltChanges.length)return $('asStatus').textContent='Add at least one reviewed change.';$('asStatus').textContent='Generating per-floor CAD scripts + one combined adjusted Excel package...';$('asDownloads').innerHTML='';let r=await fetch('/api/asbuilt_generate_project',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({changes:asbuiltChanges,label_pattern:activeLabelPattern()})}),j=await r.json();if(!r.ok||j.error)return $('asStatus').textContent=j.error||'As-Built generation failed';let h=`<a href="/download/${encodeURIComponent(j.files.zip)}"><button class="good">Download Full Project As-Built ZIP</button></a>`;for(const d of j.files.scripts||[])if(d.scr)h+=`<a href="/download/${encodeURIComponent(d.scr)}"><button class="alt">${esc(d.floor)} RUN.scr</button></a>`;if(j.files.port_map)h+=`<a href="/download/${encodeURIComponent(j.files.port_map)}"><button class="alt">Adjusted Port Map</button></a>`;if(j.files.quantity_summary)h+=`<a href="/download/${encodeURIComponent(j.files.quantity_summary)}"><button class="alt">Adjusted Quantity Summary</button></a>`;if(j.files.cable_schedule)h+=`<a href="/download/${encodeURIComponent(j.files.cable_schedule)}"><button class="alt">Adjusted Labeling</button></a>`;$('asDownloads').innerHTML=h;$('asStatus').textContent=`Generated ${j.files.changes} reviewed change(s) across ${j.files.floor_count} floor(s). Run each floor's RUN.scr in its ORIGINAL drawing, review, then SAVEAS. Combined Excel outputs include all reviewed site removals.`;};
+if($('asGenerate'))$('asGenerate').onclick=async()=>{if(!asbuiltChanges.length)return $('asStatus').textContent='Add at least one reviewed change.';$('asStatus').textContent='جارٍ إنشاء الملفات...';$('asDownloads').innerHTML='';let r=await fetch('/api/asbuilt_generate_project',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({changes:asbuiltChanges,label_pattern:activeLabelPattern()})}),j=await r.json();if(!r.ok||j.error)return $('asStatus').textContent=j.error||'As-Built generation failed';let h=`<a href="/download/${encodeURIComponent(j.files.zip)}"><button class="good">Download Full Project As-Built ZIP</button></a>`;for(const d of j.files.scripts||[]){if(d.dxf)h+=`<a href="/download/${encodeURIComponent(d.dxf)}"><button class="good">${esc(d.floor)} · DXF</button></a>`;if(d.scr)h+=`<a href="/download/${encodeURIComponent(d.scr)}"><button class="alt">${esc(d.floor)} · SCR</button></a>`}if(j.files.port_map)h+=`<a href="/download/${encodeURIComponent(j.files.port_map)}"><button class="alt">Adjusted Port Map</button></a>`;if(j.files.quantity_summary)h+=`<a href="/download/${encodeURIComponent(j.files.quantity_summary)}"><button class="alt">Adjusted Quantity Summary</button></a>`;if(j.files.cable_schedule)h+=`<a href="/download/${encodeURIComponent(j.files.cable_schedule)}"><button class="alt">Adjusted Labeling</button></a>`;$('asDownloads').innerHTML=h;const bad=(j.files.dxf_files||[]).filter(x=>x.error);$('asStatus').textContent=`تم إنشاء ${j.files.changes} تعديل على ${j.files.floor_count} دور`+(bad.length?' ⚠ DXF: '+bad.map(x=>x.floor+' — '+x.error).join(' | '):' تم فحص ملفات DXF بعد الكتابة والملفات الأصلية لم تُمس');};
 refreshAsbuiltOpUi();renderAsbuiltChanges();
 </script><script>(function(){
 fetch("/api/auth/me",{cache:"no-store"}).then(r=>r.json()).then(me=>{window.currentUser=me;
@@ -9090,8 +9909,8 @@ async function loadProjectStatus(){
 })();</script><script>(function(){
 const q=id=>document.getElementById(id);
 const views=['project','results','outputs','asbuilt','docs'];
-function show(v){if(!views.includes(v))v='project';views.forEach(n=>q('view-'+n).classList.toggle('on',n===v));document.querySelectorAll('.navItem').forEach(b=>{const on=b.dataset.view===v;b.classList.toggle('on',on);if(on){b.setAttribute('aria-current','page');b.classList.remove('fresh')}else b.removeAttribute('aria-current')});if(location.hash!=='#'+v)history.replaceState(null,'','#'+v);window.scrollTo(0,0)}
-document.querySelectorAll('.navItem').forEach(b=>b.onclick=()=>show(b.dataset.view));
+function show(v){if(!views.includes(v))v='project';views.forEach(n=>q('view-'+n).classList.toggle('on',n===v));document.querySelectorAll('.navItem').forEach(b=>{const on=b.dataset.view===v;b.classList.toggle('on',on);b.setAttribute('aria-pressed', on ? 'true' : 'false');b.setAttribute('data-active', on ? '1' : '0');if(on){b.setAttribute('aria-current','page');b.classList.remove('fresh')}else b.removeAttribute('aria-current')});if(location.hash!=='#'+v)history.replaceState(null,'','#'+v);window.scrollTo(0,0)}
+document.querySelectorAll('.navItem').forEach(b=>{b.onclick=()=>show(b.dataset.view);b.setAttribute('aria-pressed', b.classList.contains('on') ? 'true' : 'false');});
 q('goProject').onclick=()=>show('project');show((location.hash||'').slice(1));
 // project menu closes after an action or an outside click
 const menu=q('projectMenu');document.addEventListener('click',e=>{if(menu.open&&!menu.contains(e.target))menu.open=false});
@@ -9118,33 +9937,63 @@ function chips(){const box=q('floorChips'),fl=asbuiltProjectFloors||[],cur=resul
 const cp=q('clearProject'),oc=cp.onclick;cp.onclick=function(e){if(!confirm('Clear all analyzed floors, uploaded drawings and generated files from this project?'))return;return oc.call(this,e)};
 })();</script>
 <script>(function(){
-const orig=window.renderVisionReview,ST=['لم يتم السحب','تم رد الكابلات','لا يوجد لها مسار','تم نقل'];
-const DEF={yellow:['لم يتم السحب','RESERVE']};
-const opt=(arr,sel,ph)=>'<option value="">'+ph+'</option>'+arr.map(v=>'<option'+(v===sel?' selected':'')+'>'+esc(v)+'</option>').join('');
+const orig=window.renderVisionReview;
+const RULES={
+ pink:{status:'لم يتم السحب نهائيًا',patch:'SHIFT',label:'SHIFT label · no slot',kind:'cancel'},
+ yellow:{status:'لم يتم السحب',patch:'RESERVE',label:'Keep label · reserve slot',kind:'reserve'},
+ orange:{status:'تم نقل',patch:'KEEP',label:'Keep slot + label',kind:'move'},
+ green:{status:'مسحوب',patch:'KEEP',label:'Keep slot + label',kind:'pulled'}
+};
 window.renderVisionReview=function(j){
  orig.apply(this,arguments);
- const inv=((j&&j.markup_inventory)||[]).filter(m=>m.color!=='green');
+ const inv=(j&&j.markup_inventory)||[];
  if((asbuiltVisionRows||[]).length||!inv.length)return;
  const box=$('asChatReview'),cnt={};inv.forEach(m=>cnt[m.color]=(cnt[m.color]||0)+1);
- let h='<div style="padding:12px 14px;border-bottom:1px solid var(--line)"><b>Bulk approve</b><div class="miniNote">Set what each color means, tick the rows you accept, then add them all at once. Green (already withdrawn) is skipped. Rows start ticked only when the match is 78% or higher and the color has a rule.</div><div class="stack" style="margin-top:10px">';
- for(const c of ['pink','yellow','orange']){if(!cnt[c])continue;h+='<div class="actions">'+colorDot(c)+'<b style="min-width:100px">'+c+' ('+cnt[c]+')</b><select id="bs_'+c+'" style="min-width:170px" dir="auto">'+opt(ST,(DEF[c]||[])[0],'Site status...')+'</select><select id="ba_'+c+'">'+opt(['SHIFT','RESERVE'],(DEF[c]||[])[1],'Patch action...')+'</select></div>'}
- h+='<div class="actions"><button id="bulkAdd">Add selected to revision list</button><button id="bulkAll" class="alt">Select all matched</button><button id="bulkNone" class="alt">Clear</button><span id="bulkMsg" class="miniNote"></span></div></div></div>';
- h+='<div style="max-height:420px;overflow:auto"><table><thead><tr><th>Use</th><th>Page</th><th>Floor</th><th>Color</th><th>CAD endpoint</th><th>Match</th></tr></thead><tbody>';
- inv.forEach((m,i)=>{const o=m.candidate_options||[],b=o[0]||{},pct=Math.round(Number(b.match_confidence||0)*100);
-  h+='<tr data-b="'+i+'"><td><input type="checkbox" class="bu" '+(pct>=78&&DEF[m.color]?'checked':'')+(o.length?'':' disabled')+'></td><td>'+Number(m.page_number||0)+'</td><td>'+esc(m.floor_hint||'')+'</td><td>'+colorDot(m.color)+'</td><td><select class="bt" style="min-width:300px">'+(o.length?o.map(x=>'<option value="'+esc(x.target_id||'')+'">'+esc((x.label||x.block||x.target_id||'')+' | '+(x.service||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No CAD candidate</option>')+'</select></td><td class="'+(pct>=78?'confHigh':pct>=60?'confMid':'confLow')+'">'+pct+'%</td></tr>'});
+ let h='<div style="padding:10px 12px;border-bottom:1px solid var(--line)"><b>Color rules</b><div class="stack" style="display:flex;flex-direction:column;align-items:stretch;gap:7px;margin-top:8px">';
+ for(const c of ['pink','yellow','orange','green']){
+  if(!cnt[c])continue;const r=RULES[c];
+  h+='<span class="actions" style="gap:6px">'+colorDot(c)+'<b>'+c+' ('+cnt[c]+')</b><span>'+esc(r.status)+'</span><b>'+r.patch+'</b><span class="miniNote">'+esc(r.label)+'</span></span>';
+ }
+ h+='</div><div class="actions" style="display:flex;flex-direction:row;align-items:center;justify-content:flex-start;flex-wrap:wrap;gap:8px;margin-top:8px"><button id="bulkAdd" style="width:auto;min-width:0;flex:0 0 auto">Add selected to revision list</button><button id="bulkAll" class="alt" style="width:auto;min-width:0;flex:0 0 auto">Select all matched</button><button id="bulkNone" class="alt" style="width:auto;min-width:0;flex:0 0 auto">Clear</button><span id="bulkMsg" class="miniNote"></span></div></div>';
+ h+='<div style="max-height:420px;overflow:auto"><table><thead><tr><th>Use</th><th>Page</th><th>Floor</th><th>Color</th><th>CAD endpoint</th><th>Match</th><th>Action</th></tr></thead><tbody>';
+ inv.forEach((m,i)=>{const o=m.candidate_options||[],d=m.arrow_destination_options||[],pct=Math.round(Number((o[0]||{}).match_confidence||0)*100),dpct=Math.round(Number((d[0]||{}).match_confidence||0)*100),arrow=m.blue_arrow_detection||{},rule=RULES[m.color],moveReady=rule&&rule.kind==='move'&&o.length>0&&d.length>0,blocked=!rule||!o.length||(rule.kind==='move'&&!moveReady);
+  const blobConfirmed=m.blob_match_state==='CONFIRMED'&&m.match_status==='BLOB_CONFIRMED',sourceReady=blobConfirmed&&pct>=78;const tip=m.arrow_destination_xy||[],dconf=Number(m.destination_match_confidence||0),dstatus=m.destination_match_status||'NOT_EVALUATED',tipReady=dstatus==='CONFIRMED'&&dconf>=0.78,destLabel=tip.length?'Registered arrow tip (CAD) X='+Number(tip[0]).toFixed(2)+', Y='+Number(tip[1]).toFixed(2):(m.relocation_state==='REGISTRATION_FAILED'?'Registration failed / no CAD coordinate':(m.relocation_block_reason||'No confirmed arrow destination'));const destHtml=rule&&rule.kind==='move'?'<div class="miniNote" style="margin-top:5px">Blue pen arrow: '+esc(arrow.status||'NOT_FOUND')+' · detection '+Math.round(Number(arrow.detection_confidence||arrow.confidence||0)*100)+'% · arrowhead '+(arrow.arrowhead_detected?'detected':'not confirmed')+(Array.isArray(arrow.tail_px)&&Array.isArray(arrow.tip_px)?'<br>Stroke px: '+arrow.tail_px.join(', ')+' → '+arrow.tip_px.join(', '):'')+(arrow.head_ratio!==undefined?'<br>Head ratio: '+Number(arrow.head_ratio).toFixed(2)+' · spread/shaft: '+Number(arrow.head_spread||0).toFixed(2)+' · gap: '+Number(arrow.orange_to_stroke_gap_px||0).toFixed(1)+' px (limit '+Number(arrow.max_allowed_gap_px||0).toFixed(1)+')':'')+'<br>Destination match: '+Math.round(dconf*100)+'% · '+esc(dstatus)+'<br>'+esc(destLabel)+(dstatus==='REVIEW_REQUIRED'||!tip.length?'<div class="miniNote">Search and select any endpoint on this floor. Manual selection does not depend on arrow detection; automatic movement remains blocked.</div>':'')+'</div><input class="bdestSearch" type="search" placeholder="Search all floor endpoints by label, service, rack..." style="width:100%;min-width:260px;margin-top:4px"><select class="bdest" size="5" style="min-width:260px;width:100%;margin-top:4px" '+(!d.length?'disabled':'')+'>'+(d.length?'<option value="">Choose destination endpoint...</option>'+(tipReady?'<option value="__ARROW_TIP__" selected>موضع رأس السهم</option>':'')+d.map(x=>'<option value="'+esc(x.target_id||'')+'">'+esc((x.label||x.block||x.target_id||'')+' | '+(x.service||'')+' | '+(x.rack||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No floor endpoints available</option>')+'</select>':'<span>'+esc(rule?rule.patch:'REVIEW')+'</span>';
+  h+='<tr data-b="'+i+'"><td><input type="checkbox" class="bu" '+''+((blocked||!sourceReady)?' disabled':'')+'></td><td>'+Number(m.page_number||0)+'</td><td>'+esc(m.floor_hint||'')+'</td><td>'+colorDot(m.color)+'</td><td><input class="bsourceSearch" type="search" placeholder="Search source endpoint..." style="width:100%;min-width:240px"><select class="bt" size="5" style="min-width:260px;width:100%" '+(!o.length?'disabled':'')+'>'+(o.length?'<option value="">Review source endpoint...</option>'+o.map((x,xi)=>'<option value="'+esc(x.target_id||'')+'"'+(xi===0&&sourceReady?' selected':'')+'>'+esc((x.label||x.block||x.target_id||'')+' | '+(x.service||'')+' | '+(x.rack||'')+' | '+Math.round(Number(x.match_confidence||0)*100)+'%')+'</option>').join(''):'<option value="">No CAD candidate</option>')+'</select></td><td class="'+(pct>=78?'confHigh':pct>=60?'confMid':'confLow')+'">Source '+pct+'%'+(pct<78&&o.length?'<div class="miniNote">choose the endpoint manually</div>':'')+(rule&&rule.kind==='move'?'<div class="miniNote">Destination '+dpct+'%</div>':'')+'</td><td>'+(rule&&rule.kind==='move'?'<span class="miniNote">MOVE_ENDPOINT · blue pen arrow</span>'+destHtml:destHtml)+'</td></tr>';
+ });
  box.innerHTML=h+'</tbody></table></div>';
- const msg=t=>$('bulkMsg').textContent=t,rows=()=>[...box.querySelectorAll('tr[data-b]')];
- $('bulkAll').onclick=()=>rows().forEach(r=>{const c=r.querySelector('.bu');if(!c.disabled)c.checked=true});
+ // Search is client-side over the complete endpoint list returned by the server.
+ box.querySelectorAll('tr[data-b]').forEach(r=>{const sourceSel=r.querySelector('.bt'),destSel=r.querySelector('.bdest'),useBox=r.querySelector('.bu');const syncUse=()=>{const hasSource=!!(sourceSel&&sourceSel.value),m=inv[+r.dataset.b],rule=RULES[m.color],hasDestination=rule?.kind!=='move'||!!(destSel&&destSel.value);if(useBox){useBox.disabled=!hasSource||!hasDestination||!sourceSel||sourceSel.disabled;if(!hasSource)useBox.checked=false;}};if(sourceSel)sourceSel.addEventListener('change',syncUse);if(destSel)destSel.addEventListener('change',syncUse);
+   [['.bsourceSearch','.bt'],['.bdestSearch','.bdest']].forEach(([searchSel,selectSel])=>{
+     const search=r.querySelector(searchSel),sel=r.querySelector(selectSel);
+     if(!search||!sel)return;
+     const all=[...sel.options].map(o=>({value:o.value,text:o.textContent}));
+     search.addEventListener('input',()=>{
+       const q=search.value.trim().toLocaleLowerCase();
+       const chosen=sel.value;
+       sel.innerHTML='';
+       all.forEach(o=>{
+         if(!o.value||o.value==='__ARROW_TIP__'||!q||o.text.toLocaleLowerCase().includes(q)){
+           const opt=document.createElement('option');opt.value=o.value;opt.textContent=o.text;
+           if(o.value===chosen)opt.selected=true;
+           sel.appendChild(opt);
+         }
+       });
+     });
+   });
+ });
+ const msg=t=>$('bulkMsg').textContent=t,rows=()=>[...box.querySelectorAll('tr[data-b]')],mForRowConfirmed=r=>{const m=inv[+r.dataset.b],sel=r.querySelector('.bt'),o=(m?.candidate_options||[]).find(x=>x.target_id===sel?.value);return !!(m&&m.blob_match_state==='CONFIRMED'&&m.match_status==='BLOB_CONFIRMED'&&o&&o.target_id===m.suggested_target_id&&o.blob_match_confirmed===true&&Number(o.match_confidence||0)>=0.78)};
+ $('bulkAll').onclick=()=>rows().forEach(r=>{const c=r.querySelector('.bu');if(!c.disabled&&mForRowConfirmed(r)&&r.querySelector('.bt').value)c.checked=true});
  $('bulkNone').onclick=()=>rows().forEach(r=>r.querySelector('.bu').checked=false);
- $('bulkAdd').onclick=()=>{let add=0,dup=0,miss=0;
+ $('bulkAdd').onclick=()=>{let add=0,dup=0,miss=0,moves=0,pulled=0;
   for(const r of rows()){if(!r.querySelector('.bu').checked)continue;
-   const m=inv[+r.dataset.b],tid=r.querySelector('.bt').value,st=($('bs_'+m.color)||{}).value,pa=($('ba_'+m.color)||{}).value;
-   if(!st||!pa)return msg('Choose a site status and patch action for '+m.color+' first.');
-   if(!tid){miss++;continue}
-   const o=(m.candidate_options||[]).find(x=>x.target_id===tid)||{},fl=o.floor||m.floor_hint||'';
+   const m=inv[+r.dataset.b],rule=RULES[m.color],tid=r.querySelector('.bt').value;
+   if(!rule)continue;if(rule.kind==='move'){const did=r.querySelector('.bdest')?.value||'',src=(m.candidate_options||[]).find(x=>x.target_id===tid)||{},dst=(m.arrow_destination_options||[]).find(x=>x.target_id===did)||{},tip=m.arrow_destination_xy||[];if(!tid||!did||!src.target_id||(did==='__ARROW_TIP__'&&(tip.length!==2||!Number.isFinite(Number(tip[0]))||!Number.isFinite(Number(tip[1]))))||(did!=='__ARROW_TIP__'&&(!dst.target_id||did===tid))){miss++;continue}const useTip=did==='__ARROW_TIP__';if(useTip&&(!tip.length||m.destination_match_status!=='CONFIRMED'||Number(m.destination_match_confidence||0)<0.78)){miss++;continue}if(!useTip&&(!dst.target_id||!Number.isFinite(Number(dst.x))||!Number.isFinite(Number(dst.y)))){miss++;continue}const mf=src.floor||m.floor_hint||'';if(asbuiltChanges.some(c=>c.op==='MOVE_ENDPOINT'&&c.floor===mf&&c.target_id===tid)){dup++;continue}const destX=useTip?Number(tip[0]):Number(dst.x),destY=useTip?Number(tip[1]):Number(dst.y);if(!useTip){m.destination_match_status='MANUALLY_CONFIRMED';m.relocation_state='MANUALLY_CONFIRMED';m.destination_match_confidence=1.0}asbuiltChanges.push({op:'MOVE_ENDPOINT',floor:mf,target_id:tid,x:destX,y:destY,destination_confirmation:useTip?'REGISTERED_TIP_CONFIRMED':'MANUALLY_CONFIRMED',note:'As-Built page '+m.page_number+' orange mark with blue ballpoint arrow; '+(useTip?'registered arrow tip explicitly confirmed (destination match '+Math.round(Number(m.destination_match_confidence||0)*100)+'%)':'destination CAD endpoint MANUALLY_CONFIRMED by reviewer; automatic match score is informational only')+(Number(src.match_confidence||0)<0.78?' | source endpoint chosen manually (auto-match '+Math.round(Number(src.match_confidence||0)*100)+'%)':'')+(dst.target_id?' | destination '+(dst.label||dst.target_id):'')});moves++;continue}if(rule.kind==='pulled'){pulled++;continue}if(!tid){miss++;continue}
+   const o=(m.candidate_options||[]).find(x=>x.target_id===tid)||{},fl=o.floor||m.floor_hint||'';if(!o.target_id){miss++;continue}
    if(asbuiltChanges.some(c=>c.op==='SITE_REMOVE'&&c.floor===fl&&c.target_id===tid)){dup++;continue}
-   asbuiltChanges.push({op:'SITE_REMOVE',floor:fl,target_id:tid,target_label:o.label||o.block||'',site_status:st,patch_action:pa,note:'As-Built page '+m.page_number+' '+m.color+' '+(m.markup_id||'')});add++}
-  renderAsbuiltChanges();msg('Added '+add+(dup?', skipped '+dup+' already in the list':'')+(miss?', '+miss+' without an endpoint':'')+'.')};
+   asbuiltChanges.push({op:'SITE_REMOVE',floor:fl,target_id:tid,target_label:o.label||o.block||'',site_status:rule.status,patch_action:rule.patch,note:'As-Built page '+m.page_number+' '+m.color+' '+(m.markup_id||'')+(m.blob_match_state==='CONFIRMED'&&m.match_status==='BLOB_CONFIRMED'?' | CAD symbol footprint confirmed':' | endpoint manually selected by reviewer; automatic symbol match was not confirmed')});add++;
+  }
+  renderAsbuiltChanges();msg('Added '+add+(dup?' · duplicates '+dup:'')+(miss?' · skipped '+miss+' (no endpoint chosen)':'')+(moves?' · orange moved items kept for destination review '+moves:'')+(pulled?' · green pulled items kept unchanged '+pulled:''));
+ };
 };
 // show Generate results next to the button (they were written into the collapsed manual-entry panel)
 const as=$('asStatus');if(as)new MutationObserver(()=>{const s=$('asChatStatus');s.className='status info';s.textContent=as.textContent}).observe(as,{childList:true,characterData:true,subtree:true});
@@ -9337,12 +10186,51 @@ def _recon_dispatch(pdir, st, a, q, user):
             if not rec: skipped.append(f'{did}: not found'); continue
             f=(base/str(rec.get('stored_name',''))).resolve(); ext=f.suffix.lower()
             if f.parent!=base or not f.is_file(): skipped.append(f"{rec.get('filename')}: file missing"); continue
-            kind='mir' if ext=='.pdf' else ('boq' if ext in ('.xlsx','.xlsm') else None)
+            kind=('invoice' if ext=='.pdf' and re.search(r'invoice|فاتورة',str(rec.get('filename','')),re.I) else ('mir' if ext=='.pdf' else ('boq' if ext in ('.xlsx','.xlsm') else None)))
             if not kind: skipped.append(f"{rec.get('filename')}: unsupported type"); continue
             try:
                 RECON.save_upload(pdir,st,kind,RECON.safe_display_name(rec.get('filename','file')),f.read_bytes(),user,lambda n:n,{'source_note':'imported from project Documents'}); done+=1
             except RECON.ReconError as e: skipped.append(f"{rec.get('filename')}: {e}")
         return {'ok':True,'imported':done,'skipped':skipped}
+    if a=='import_repo_docs':
+        root=RECON.Path(__file__).resolve().parent
+        candidates=[]
+        for f in root.iterdir():
+            if not f.is_file(): continue
+            ext=f.suffix.lower()
+            if ext in ('.xlsx','.xlsm') and re.search(r'boq|مقايسة|مقايسه',f.name,re.I):
+                candidates.append((f,'boq'))
+            elif ext=='.pdf' and re.search(r'invoice|فاتورة',f.name,re.I):
+                candidates.append((f,'invoice'))
+            elif ext=='.pdf' and re.search(r'MIR',f.stem,re.I):
+                candidates.append((f,'mir'))
+        done=[]; skipped=[]
+        for f,kind in candidates[:100]:
+            if kind=='boq' and st.get('boq'):
+                skipped.append(f'{f.name}: a BOQ is already loaded; existing BOQ was preserved')
+                continue
+            try:
+                meta=RECON.save_upload(pdir,st,kind,RECON.safe_display_name(f.name),f.read_bytes(),user,lambda n:n,{'source_note':'imported from repository source file'})
+                done.append({'filename':meta['filename'],'kind':kind})
+            except (RECON.ReconError,OSError) as e: skipped.append(f'{f.name}: {e}')
+        return {'ok':True,'imported':len(done),'files':done,'skipped':skipped}
+    if a=='import_repo_invoices':
+        root=RECON.Path(__file__).resolve().parent
+        excluded={'.git','venv','webui-venv','.venv','node_modules','workspace','__pycache__','dist','build'}
+        candidates=[]
+        for f in root.rglob('*.pdf'):
+            try:
+                rel=f.relative_to(root)
+                if any(part in excluded for part in rel.parts): continue
+                if re.search(r'invoice|فاتورة',f.name,re.I) and f.is_file(): candidates.append(f)
+            except (OSError,ValueError): continue
+        done=0; skipped=[]
+        for f in candidates[:50]:
+            try:
+                RECON.save_upload(pdir,st,'invoice',RECON.safe_display_name(f.name),f.read_bytes(),user,lambda n:n,{'source_note':'imported from repository invoice file'})
+                done+=1
+            except (RECON.ReconError,OSError) as e: skipped.append(f'{f.name}: {e}')
+        return {'ok':True,'imported':done,'files':[f.name for f in candidates[:50]],'skipped':skipped}
     if a=='export':
         pr=_project_get(CURRENT_PROJECT_ID,user); out=RECON.make_export(pdir,st,(pr or {}).get('name',''))
         RECON._audit(st,user,'RECON_EXPORT',out.name); return {'ok':True,'filename':out.name}
@@ -9697,7 +10585,7 @@ class Handler(BaseHTTPRequestHandler):
                     if not isinstance(q,dict): return self._json({'error':'Invalid request.'},400)
                     a=str(q.get('action',''))
                     with RECON.locked_state(pdir) as st: res=_recon_dispatch(pdir,st,a,q,current_user)
-                    if a in ('ocr','update_record','match_decide','approve_exact','match_run','remove_doc','delete_record','import_docs','export','boq_unit','dup','add_line'):
+                    if a in ('ocr','update_record','match_decide','approve_exact','match_run','remove_doc','delete_record','import_docs','export','boq_unit','dup','add_line','import_repo_invoices','import_repo_docs'):
                         _auth_audit(self,'RECON_'+a.upper(),p.path,f"project={CURRENT_PROJECT_ID} id={str(q.get('id') or q.get('doc_id') or q.get('item_id') or '')[:60]} decision={q.get('decision','')} reviewed={bool(q.get('mark_reviewed'))}",role=current_user['role'],username=current_user['username'])
                     return self._json(res)
                 except (RECON.ReconError,ValueError) as e: return self._json({'error':str(e)},400)
@@ -9818,7 +10706,11 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError: n=0
                 if n <= 0: return self._json({'error':'Empty upload or missing Content-Length'},411)
                 if n > MAX_UPLOAD_BYTES: return self._json({'error':'Drawing is larger than the 2 GiB upload limit'},413)
-                target=_project_dir(CURRENT_PROJECT_ID)/(uuid.uuid4().hex+'_'+name)
+                # Store CAD drawings under a short physical filename. Deep Windows workspace paths
+                # plus the original consultant filename can exceed the Windows path limit.
+                # Keep the original filename in UPLOADED_DRAWINGS/UI metadata instead.
+                suffix=Path(name).suffix.lower()
+                target=_project_dir(CURRENT_PROJECT_ID)/(uuid.uuid4().hex+'_DRAWING'+suffix)
                 written=self._stream_upload(target,n)
                 CURRENT_DRAWING=target
                 print(f'[UI] upload saved: {target.name} ({written} bytes)')
@@ -9999,7 +10891,7 @@ if globals().get('_TT_PATCHED') and not globals().get('_TT_ADDON'):
                 _LA_CACHE=None
         return f
     asbuilt_chat_start=_tt_scope_any(asbuilt_chat_start)
-    for _n in ('_split_asbuilt_pdf_to_images','_asbuilt_cv_color_inventory','_asbuilt_project_candidate_catalog','_asbuilt_code_markup_inventory','asbuilt_chat_start'):
+    for _n in ('_split_asbuilt_pdf_to_images','_asbuilt_cv_color_inventory','_asbuilt_project_candidate_catalog','_asbuilt_median_nearest_spacing','_asbuilt_register_page_to_floor','_asbuilt_code_markup_inventory','_asbuilt_blob_overlay','asbuilt_chat_start'):
         globals()[_n]=_tt_timed(globals()[_n])
 
 

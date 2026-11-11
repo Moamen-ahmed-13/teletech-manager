@@ -1,0 +1,25 @@
+{
+  "generated_at": "20261110-144636",
+  "floors": [
+    "Ground Floor"
+  ],
+  "changes": [
+    {
+      "op": "MOVE_ENDPOINT",
+      "floor": "Ground Floor",
+      "target_id": "162|7249F",
+      "x": 33207.99999999971,
+      "y": -41069.82756048136
+    },
+    {
+      "op": "DELETE_ENDPOINT",
+      "floor": "Ground Floor",
+      "target_id": "143|8081F37"
+    },
+    {
+      "op": "DELETE_ENDPOINT",
+      "floor": "Ground Floor",
+      "target_id": "138|8081F37"
+    }
+  ]
+}
