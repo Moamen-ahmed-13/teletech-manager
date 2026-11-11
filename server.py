@@ -7683,6 +7683,8 @@ def _asbuilt_blob_overlay(rows, page_image_path, floor, catalog, registration=No
                 if not tid or not opts:
                     _review_only(row, 'TARGET_NOT_IN_CATALOG', 'Footprint match did not resolve to an endpoint in the current floor catalog.')
                     continue
+                opts[0]['match_confidence'] = float(m.get('confidence') or 0.0)
+                opts[0]['blob_match_confirmed'] = True
                 row['candidate_options'] = opts + rest
                 row['suggested_target_id'] = tid
                 row['suggested_target_label'] = m.get('label') or tid
@@ -9979,7 +9981,7 @@ window.renderVisionReview=function(j){
      });
    });
  });
- const msg=t=>$('bulkMsg').textContent=t,rows=()=>[...box.querySelectorAll('tr[data-b]')],mForRowConfirmed=r=>{const m=inv[+r.dataset.b],sel=r.querySelector('.bt'),o=(m?.candidate_options||[]).find(x=>x.target_id===sel?.value);return !!(m&&m.blob_match_state==='CONFIRMED'&&m.match_status==='BLOB_CONFIRMED'&&o&&Number(o.match_confidence||0)>=0.78)};
+ const msg=t=>$('bulkMsg').textContent=t,rows=()=>[...box.querySelectorAll('tr[data-b]')],mForRowConfirmed=r=>{const m=inv[+r.dataset.b],sel=r.querySelector('.bt'),o=(m?.candidate_options||[]).find(x=>x.target_id===sel?.value);return !!(m&&m.blob_match_state==='CONFIRMED'&&m.match_status==='BLOB_CONFIRMED'&&o&&o.target_id===m.suggested_target_id&&o.blob_match_confirmed===true&&Number(o.match_confidence||0)>=0.78)};
  $('bulkAll').onclick=()=>rows().forEach(r=>{const c=r.querySelector('.bu');if(!c.disabled&&mForRowConfirmed(r)&&r.querySelector('.bt').value)c.checked=true});
  $('bulkNone').onclick=()=>rows().forEach(r=>r.querySelector('.bu').checked=false);
  $('bulkAdd').onclick=()=>{let add=0,dup=0,miss=0,moves=0,pulled=0;
