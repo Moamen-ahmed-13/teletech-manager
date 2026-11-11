@@ -26,8 +26,13 @@ import dxfedit
 from asbuilt_markups import detect_markups
 
 # scoring / gating
-MIN_MATCH_SCORE = 0.35
+# Destructive source matching must be evidence-led. A centroid merely falling
+# inside a broad highlighter blob is not sufficient to delete an endpoint.
+MIN_MATCH_SCORE = 0.48
 AMBIGUITY_MARGIN = 0.12
+MIN_FOOTPRINT_POINTS = 8
+MIN_DELETE_COVERAGE = 0.16
+STRONG_DELETE_COVERAGE = 0.32
 CENTROID_REACH_MM = 700.0
 MIN_MOVE_MM = 400.0
 
@@ -134,16 +139,20 @@ def _score_endpoints(reg, mark, endpoints, P):
         dc = math.hypot(e['x'] - wx, e['y'] - wy)
         d_blob, inside = dist_fn(P[i][0], P[i][1])
         foot = e.get('_foot')
+        foot_n = int(len(foot)) if foot is not None else 0
         cov = 0.0
-        if foot is not None and len(foot):
+        if foot_n:
             fp = reg.to_photo(foot)
             hit = sum(1 for q in fp if dist_fn(q[0], q[1])[1])
-            cov = hit / float(len(fp))
+            cov = hit / float(foot_n)
         if dc > CENTROID_REACH_MM * 2.2 and not inside and cov == 0:
             continue
         prox = max(0.0, 1.0 - dc / CENTROID_REACH_MM)
-        score = 0.5 * cov + 0.3 * (1.0 if inside else 0.0) + 0.2 * prox
-        rows.append({'index': i, 'score': round(score, 3), 'coverage': round(cov, 3), 'anchor_inside': inside,
+        # Footprint coverage carries most of the weight. The centre-in-blob
+        # signal is secondary because wide marker strokes can cross neighbours.
+        score = 0.62 * cov + 0.28 * (1.0 if inside else 0.0) + 0.10 * prox
+        rows.append({'index': i, 'score': round(score, 3), 'coverage': round(cov, 3),
+                     'footprint_points': foot_n, 'anchor_inside': inside,
                      'centroid_dist_mm': round(dc, 1), 'blob_dist_px': None if d_blob == float('inf') else round(d_blob, 1)})
     rows.sort(key=lambda r: (-r['score'], r['centroid_dist_mm']))
     return rows, (float(wx), float(wy))
@@ -189,21 +198,28 @@ def analyze_page(page_bgr, geom, endpoints, registration=None, page_number=1, lo
         rows, _ = _score_endpoints(reg, m, endpoints, P) if endpoints else ([], (wx, wy))
         rec['candidates'] = [dict(r, target_id=endpoints[r['index']]['id'], block=endpoints[r['index']]['block'],
                                   label=endpoints[r['index']]['label']) for r in rows[:4]]
-        if not rows or rows[0]['score'] < MIN_MATCH_SCORE:
+        # Pink/Yellow delete a physical CAD endpoint; Orange moves one. Never
+        # auto-confirm any of these from centroid proximity alone. Require a
+        # real sampled symbol footprint and visible overlap with the markup.
+        eligible = [r for r in rows if r.get('footprint_points', 0) >= MIN_FOOTPRINT_POINTS
+                    and ((r.get('anchor_inside') and r.get('coverage', 0.0) >= MIN_DELETE_COVERAGE)
+                         or r.get('coverage', 0.0) >= STRONG_DELETE_COVERAGE)]
+        if not eligible or eligible[0]['score'] < MIN_MATCH_SCORE:
             near = rows[0]['centroid_dist_mm'] if rows else None
-            rec.update(state='NOT_DETECTED', reason='No endpoint symbol lies under this markup'
-                       + (f' (nearest is {near:.0f} mm from its centre).' if near is not None else '.'))
-        elif (len(rows) > 1 and rows[1]['score'] >= MIN_MATCH_SCORE and (rows[0]['score'] - rows[1]['score']) < AMBIGUITY_MARGIN
-              and not _clear_centre_winner(rows)):
-            rec.update(state='AMBIGUOUS', reason='Two endpoints are equally covered by this markup '
-                       f"({rows[0]['score']:.2f} vs {rows[1]['score']:.2f}).")
+            rec.update(state='NOT_DETECTED',
+                       reason='No CAD symbol has sufficient footprint overlap with this markup; manual review required'
+                       + (f' (nearest centre is {near:.0f} mm away).' if near is not None else '.'))
+        elif (len(eligible) > 1 and (eligible[0]['score'] - eligible[1]['score']) < AMBIGUITY_MARGIN
+              and not _clear_centre_winner(eligible)):
+            rec.update(state='AMBIGUOUS', reason='Two CAD symbol footprints are similarly covered by this markup '
+                       f"({eligible[0]['score']:.2f} vs {eligible[1]['score']:.2f}); manual review required.")
         else:
-            best = _clear_centre_winner(rows) or rows[0]
+            best = _clear_centre_winner(eligible) or eligible[0]
             e = endpoints[best['index']]
             rec.update(state='CONFIRMED', target_index=best['index'], target_id=e['id'], block=e['block'],
                        label=e['label'], match_score=best['score'],
                        confidence=round(min(0.99, best['score'] * (0.75 + 0.25 * reg.confidence)), 2),
-                       reason='Endpoint matched under the highlighter.')
+                       reason='CAD symbol footprint overlaps the highlighter with sufficient evidence.')
         if c == 'orange':
             arrow = arrows.get(oindex[id(m)], {})
             rec['arrow'] = arrow
