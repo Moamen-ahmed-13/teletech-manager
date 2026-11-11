@@ -7606,73 +7606,113 @@ def _asbuilt_detect_blue_arrow_tips(image_path, orange_regions):
         return {'_error':{'status':'ERROR','reason':'Arrow detector failed: '+str(e)}}
 
 def _asbuilt_blob_overlay(rows, page_image_path, floor, catalog, registration=None, geom=None):
-    """Re-decide each markup's source endpoint by highlighter-blob coverage of the
-    symbol footprint (asbuilt_pipeline).  Confirmed -> becomes the suggestion;
-    ambiguous / nothing under the markup -> the distance-based guess is withdrawn
-    and the row is flagged for review with a reason (never silently skipped)."""
-    if not rows or cv2 is None or np is None or not catalog or _ASBUILT_REGISTRATION is None:
+    """Require symbol-footprint confirmation before offering a destructive auto-match.
+
+    Spatial proximity remains available for manual review, but it is never promoted
+    to a destructive source selection when blob/footprint evidence is missing,
+    ambiguous, duplicated, or unavailable.
+    """
+    if not rows:
         return
+
+    def _review_only(row, state, reason):
+        row['blob_match_state'] = state
+        row['blob_match_reason'] = str(reason or '')
+        row['suggested_target_id'] = ''
+        row['suggested_target_label'] = ''
+        row['match_confidence'] = 0.0
+        row['match_status'] = 'BLOB_REVIEW_REQUIRED'
+        row['human_review_required'] = True
+
     try:
+        if cv2 is None or np is None or not catalog or _ASBUILT_REGISTRATION is None:
+            for row in rows:
+                if row.get('color') in ('pink', 'yellow', 'orange'):
+                    _review_only(row, 'UNAVAILABLE', 'Blob-to-symbol verification is unavailable; choose the CAD endpoint manually.')
+            return
         import asbuilt_pipeline as PL, dxfedit as _dx
-        floor_result=PROJECT_RESULTS.get(str(floor)) or {}
-        dwg=str(floor_result.get('drawing') or '').strip()
-        if not dwg or not Path(dwg).is_file(): return
-        img=cv2.imread(str(page_image_path),cv2.IMREAD_COLOR)
-        if img is None: return
-        eps=PL.endpoints_from_targets([t for t in catalog if str(t.get('floor') or '')==str(floor)])
-        if not eps: return
-        PL.attach_footprints(eps,_dx.Dxf(dwg))
+        floor_result = PROJECT_RESULTS.get(str(floor)) or {}
+        dwg = str(floor_result.get('drawing') or '').strip()
+        if not dwg or not Path(dwg).is_file():
+            for row in rows:
+                if row.get('color') in ('pink', 'yellow', 'orange'):
+                    _review_only(row, 'UNAVAILABLE', 'Original floor drawing is unavailable for symbol-footprint verification.')
+            return
+        img = cv2.imread(str(page_image_path), cv2.IMREAD_COLOR)
+        if img is None:
+            for row in rows:
+                if row.get('color') in ('pink', 'yellow', 'orange'):
+                    _review_only(row, 'UNAVAILABLE', 'As-Built page image could not be read for symbol-footprint verification.')
+            return
+        eps = PL.endpoints_from_targets([t for t in catalog if str(t.get('floor') or '') == str(floor)])
+        if not eps:
+            for row in rows:
+                if row.get('color') in ('pink', 'yellow', 'orange'):
+                    _review_only(row, 'UNAVAILABLE', 'No CAD endpoint footprints are available on this floor.')
+            return
+        PL.attach_footprints(eps, _dx.Dxf(dwg))
         if geom is None:
-            geom=_ASBUILT_REGISTRATION.load_cad_geometry(dwg)
-        # Reuse the page registration already computed for CAD matching. Without
-        # this, each page ran the expensive SIFT/MAGSAC registration twice.
-        res=PL.analyze_page(img,geom,eps,registration=registration,page_number=int(rows[0].get('page_number') or 1))
-        marks=[m for m in res['markups'] if m['color'] in ('pink','yellow','orange')]
-        used=set()
+            geom = _ASBUILT_REGISTRATION.load_cad_geometry(dwg)
+        res = PL.analyze_page(img, geom, eps, registration=registration,
+                              page_number=int(rows[0].get('page_number') or 1))
+        marks = [m for m in res['markups'] if m['color'] in ('pink', 'yellow', 'orange')]
+        used = set()
         for row in rows:
-            if row.get('color') not in ('pink','yellow','orange'): continue
-            bx,by,bw,bh=row.get('bbox_px') or [0,0,0,0]; cx,cy=bx+bw/2.0,by+bh/2.0
-            best=None
-            for i,m in enumerate(marks):
-                if i in used or m['color']!=row['color']: continue
-                d=math.hypot(m['center_px'][0]-cx,m['center_px'][1]-cy)
-                if d<=max(12.0,0.5*max(bw,bh)) and (best is None or d<best[0]): best=(d,i,m)
-            if not best: continue
-            used.add(best[1]); m=best[2]
-            row['blob_match_state']=m['state']; row['blob_match_reason']=m.get('reason','')
-            if m['state']=='CONFIRMED':
-                tid=str(m.get('target_id') or '')
-                opts=[o for o in (row.get('candidate_options') or []) if str(o.get('target_id'))==tid]
-                rest=[o for o in (row.get('candidate_options') or []) if str(o.get('target_id'))!=tid]
-                row['candidate_options']=opts+rest
-                row['suggested_target_id']=tid; row['suggested_target_label']=m.get('label') or tid
-                row['match_confidence']=float(m.get('confidence') or 0.0)
-                row['match_status']='BLOB_CONFIRMED'
-                if row['color']=='orange':
-                    rs=m.get('relocation_state')
-                    src=next((t for t in catalog if str(t.get('target_id'))==tid),None)
-                    if rs=='CONFIRMED' and m.get('arrow_destination_xy') and src is not None:
-                        dx,dy=m['arrow_destination_xy']
-                        # land the symbol's drawn position (not its block insert point) on the arrow tip
-                        ox=float(src.get('x',0))-float(src.get('insert_x',src.get('x',0)))
-                        oy=float(src.get('y',0))-float(src.get('insert_y',src.get('y',0)))
-                        row['arrow_destination_xy']=[dx-ox,dy-oy]
-                        row['destination_match_status']='CONFIRMED'
-                        row['destination_match_confidence']=max(0.78,float((m.get('arrow') or {}).get('confidence') or 0.78))
-                        row['relocation_state']='CONFIRMED'; row['relocation_block_reason']=''
+            if row.get('color') not in ('pink', 'yellow', 'orange'):
+                continue
+            bx, by, bw, bh = row.get('bbox_px') or [0, 0, 0, 0]
+            cx, cy = bx + bw / 2.0, by + bh / 2.0
+            best = None
+            for i, m in enumerate(marks):
+                if i in used or m['color'] != row['color']:
+                    continue
+                d = math.hypot(m['center_px'][0] - cx, m['center_px'][1] - cy)
+                if d <= max(12.0, 0.5 * max(bw, bh)) and (best is None or d < best[0]):
+                    best = (d, i, m)
+            if not best:
+                _review_only(row, 'NO_BLOB_ALIGNMENT', 'Detected color region could not be paired reliably with a symbol-footprint result.')
+                continue
+            used.add(best[1])
+            m = best[2]
+            row['blob_match_state'] = m['state']
+            row['blob_match_reason'] = m.get('reason', '')
+            if m['state'] == 'CONFIRMED':
+                tid = str(m.get('target_id') or '')
+                opts = [o for o in (row.get('candidate_options') or []) if str(o.get('target_id')) == tid]
+                rest = [o for o in (row.get('candidate_options') or []) if str(o.get('target_id')) != tid]
+                if not tid or not opts:
+                    _review_only(row, 'TARGET_NOT_IN_CATALOG', 'Footprint match did not resolve to an endpoint in the current floor catalog.')
+                    continue
+                row['candidate_options'] = opts + rest
+                row['suggested_target_id'] = tid
+                row['suggested_target_label'] = m.get('label') or tid
+                row['match_confidence'] = float(m.get('confidence') or 0.0)
+                row['blob_match_coverage'] = float(m.get('match_coverage') or 0.0)
+                row['match_status'] = 'BLOB_CONFIRMED'
+                if row['color'] == 'orange':
+                    rs = m.get('relocation_state')
+                    src = next((t for t in catalog if str(t.get('target_id')) == tid), None)
+                    if rs == 'CONFIRMED' and m.get('arrow_destination_xy') and src is not None:
+                        dx, dy = m['arrow_destination_xy']
+                        ox = float(src.get('x', 0)) - float(src.get('insert_x', src.get('x', 0)))
+                        oy = float(src.get('y', 0)) - float(src.get('insert_y', src.get('y', 0)))
+                        row['arrow_destination_xy'] = [dx - ox, dy - oy]
+                        row['destination_match_status'] = 'CONFIRMED'
+                        row['destination_match_confidence'] = max(0.78, float((m.get('arrow') or {}).get('confidence') or 0.78))
+                        row['relocation_state'] = 'CONFIRMED'
+                        row['relocation_block_reason'] = ''
                     else:
-                        row['destination_match_status']='REVIEW_REQUIRED'
-                        row['relocation_state']=rs or 'NOT_DETECTED'
-                        row['relocation_block_reason']=m.get('relocation_reason') or 'السهم غير مؤكد'
-            elif m['state'] in ('AMBIGUOUS','NOT_DETECTED','REGISTRATION_FAILED'):
-                row['suggested_target_id']=''; row['suggested_target_label']=''
-                row['match_confidence']=0.0
-                row['match_status']={'AMBIGUOUS':'AMBIGUOUS_REVIEW','NOT_DETECTED':'NOT_DETECTED_REVIEW','REGISTRATION_FAILED':'REGISTRATION_FAILED'}[m['state']]
-                row['human_review_required']=True
+                        row['destination_match_status'] = 'REVIEW_REQUIRED'
+                        row['relocation_state'] = rs or 'NOT_DETECTED'
+                        row['relocation_block_reason'] = m.get('relocation_reason') or 'السهم غير مؤكد'
+            else:
+                # Includes AMBIGUOUS, NOT_DETECTED, REGISTRATION_FAILED and DUPLICATE.
+                _review_only(row, m.get('state') or 'REVIEW_REQUIRED', m.get('reason') or 'CAD symbol match requires manual review.')
     except Exception as exc:
-        print(f'[AS-BUILT] blob overlay skipped: {type(exc).__name__}: {exc}')
-
-
+        for row in rows:
+            if row.get('color') in ('pink', 'yellow', 'orange'):
+                _review_only(row, 'ERROR', f'{type(exc).__name__}: {exc}')
+        print(f'[AS-BUILT] blob overlay failed closed: {type(exc).__name__}: {exc}')
 def _asbuilt_code_markup_inventory(cv_info, page_number, ocr_text='', catalog=None, per_floor=None, floor_hint='',page_to_cad_affine=None,registration_diagnostics=None):
     """Deterministic code-only markup inventory from OpenCV regions.
 
