@@ -226,15 +226,27 @@ def analyze_page(page_bgr, geom, endpoints, registration=None, page_number=1, lo
         else:
             best = _clear_centre_winner(eligible) or eligible[0]
             e = endpoints[best['index']]
+            reg_conf = getattr(reg, 'confidence', None)
             rec.update(state='CONFIRMED', target_index=best['index'], target_id=e['id'], block=e['block'],
                        label=e['label'], match_score=best['score'],
-                       confidence=round(min(0.99, best['score'] * (0.75 + 0.25 * reg.confidence)), 2),
+                       confidence=round(min(0.99, best['score'] * (0.75 + 0.25 * (reg_conf or 0))), 2),
                        reason='CAD symbol footprint overlaps the highlighter with sufficient evidence.')
+            rec['_reg'] = reg
+            if best.get('coverage') is not None:
+                rec['coverage'] = best['coverage']
+            if best.get('anchor_inside') is not None:
+                rec['anchor_inside'] = best['anchor_inside']
+            if best.get('footprint_points') is not None:
+                rec['footprint_points'] = best['footprint_points']
+            if best.get('centroid_dist_mm') is not None:
+                rec['centroid_dist_mm'] = best['centroid_dist_mm']
         if c == 'orange':
             arrow = arrows.get(oindex[id(m)], {})
             rec['arrow'] = arrow
             _resolve_relocation(rec, arrow, reg, geom, endpoints)
     _dedupe(result['markups'])
+    for r in result['markups']:
+        r.pop('_reg', None)   # never serialize the registration object into reports
     return result
 
 
@@ -305,19 +317,32 @@ def strip_private(rec):
 # DXF application + verification
 # ------------------------------------------------------------------------------
 def plan_change(rec, endpoints):
-    """Turn a CONFIRMED markup record into a DXF operation (or None)."""
+    """Turn a CONFIRMED markup record into a DXF operation (or None).
+
+    Every planned op carries full matching evidence (footprint coverage,
+    ambiguity margin, registration quality) so the changes.json audit trail can
+    be reviewed independently of the CAD result.
+    """
     if rec.get('state') != 'CONFIRMED':
         return None
     e = endpoints[rec['target_index']]
     c = rec['color']
+    evidence = {k: rec.get(k) for k in ('match_score', 'coverage', 'confidence',
+                                        'centroid_dist_mm', 'anchor_inside',
+                                        'footprint_points') if k in rec}
+    evidence['registration_confidence'] = getattr(getattr(rec, '_reg', None), 'confidence', None)
     if c in ('pink', 'yellow'):
         return {'op': 'DELETE', 'color': c, 'patch_action': PATCH_ACTION[c], 'handles': e['handles'],
-                'block': e['block'], 'anchor': [e['x'], e['y']], 'insert': e['insert'], 'label': e['label']}
+                'block': e['block'], 'anchor': [e['x'], e['y']], 'insert': e['insert'],
+                'label': e['label'], 'service': e.get('service', ''), 'rack': e.get('rack', ''),
+                'match_evidence': evidence}
     if c == 'orange' and rec.get('relocation_state') == 'CONFIRMED':
         dx, dy = rec['arrow_destination_xy'][0] - e['x'], rec['arrow_destination_xy'][1] - e['y']
         return {'op': 'MOVE', 'color': c, 'patch_action': 'KEEP', 'handles': e['handles'], 'block': e['block'],
-                'anchor': [e['x'], e['y']], 'insert': e['insert'], 'dest_anchor': rec['arrow_destination_xy'],
-                'dest_insert': [e['insert'][0] + dx, e['insert'][1] + dy], 'label': e['label']}
+                'anchor': [e['x'], e['y']], 'insert': e['insert'],
+                'dest_insert': [e['insert'][0] + dx, e['insert'][1] + dy], 'label': e['label'],
+                'service': e.get('service', ''), 'rack': e.get('rack', ''),
+                'move_distance_mm': rec.get('move_distance_mm'), 'match_evidence': evidence}
     return None
 
 

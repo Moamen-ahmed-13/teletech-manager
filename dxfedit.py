@@ -321,11 +321,59 @@ def verify_output(original_path, output_path, deletes, moves, tol=0.2):
     changed = [n for n, c in fo.items() if fa.get(n) != c]
     if changed:
         problems.append(f'original block definitions were modified: {changed[:5]}')
-    # model-space geometry other than INSERTs unchanged
-    def geo(d):
-        return Counter(e.dxftype() for e in d.msp if e.dxftype() != 'INSERT')
-    if geo(o) != geo(out):
+    # model-space geometry other than INSERTs unchanged: per-entity signatures
+    # catch moved/restyled geometry that a bare dxftype counter would miss.
+    def geo_digest(doc):
+        import ezdxf.math as _m
+        sig = Counter()
+        for e in doc.msp:
+            t = e.dxftype()
+            if t == 'INSERT':
+                continue
+            layer = str(e.dxf.get('layer', ''))
+            try:
+                shape = _entity_shape_key(e, _m)
+            except Exception:
+                shape = '?'
+            sig[(t, layer, shape)] += 1
+        return sig
+
+    def _entity_shape_key(e, _m):
+        parts = []
+        for attr in ('start', 'end', 'center', 'insert', 'p1', 'p2',
+                     'major_axis', 'text', 'char_height', 'height', 'radius'):
+            v = e.dxf.get(attr, None)
+            if v is None:
+                continue
+            if isinstance(v, (float, int)):
+                parts.append(f'{attr}={round(float(v), 3)}')
+            elif isinstance(v, str) and attr == 'text':
+                parts.append(f'text={v}')
+        for name in ('start', 'end', 'center', 'p1', 'p2'):
+            p = e.dxf.get(name, None)
+            if isinstance(p, (_m.Vec3, tuple, list)):
+                xyz = Vec3(p)
+                parts.append(f'{name}=({round(xyz.x, 3)},{round(xyz.y, 3)},{round(xyz.z, 3)})')
+        try:
+            pts = [f'({round(p[0], 3)},{round(p[1], 3)})'
+                   for p in (e.vertices() if t in {'LWPOLYLINE', 'POLYLINE'} else [])]
+            if pts:
+                parts.append('pts=' + ','.join(pts))
+        except Exception:
+            pass
+        return '|'.join(parts)
+
+    if geo_digest(o) != geo_digest(out):
         problems.append('model-space geometry (non-INSERT) changed')
+
+    # Deleted root entities must be physically absent from the output database,
+    # not merely absent from an INSERT multiset signature.
+    for dp in del_paths:
+        if len(dp) > 1:      # nested deletes live inside cloned TTAB_ definitions by design
+            continue
+        ent = out.doc.entitydb.get(dp[-1])
+        if ent is not None and ent.dxftype() == 'INSERT':
+            problems.append(f'deleted handle {dp[-1]} still exists in the output drawing database')
     return {'ok': not problems, 'problems': problems[:40], 'original_count': len(orig),
             'output_count': sum(after.values()), 'deleted_paths': len(del_paths), 'moved_paths': len(mv)}
 
