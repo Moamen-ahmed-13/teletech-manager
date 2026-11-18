@@ -1,0 +1,1131 @@
+{
+  "drawing": "eng2.dxf",
+  "wall_segments": 49840,
+  "door_inserts": 77,
+  "dangling_endpoints": 168,
+  "matched_gaps": 74,
+  "auto_closed": 52,
+  "needs_review": 13,
+  "door_present": 1,
+  "ignored_large": 8,
+  "thresholds": {
+    "cluster_tolerance": 50.0,
+    "auto_close_max": 600.0,
+    "door_min": 600.0,
+    "door_max": 1300.0,
+    "review_max": 2500.0,
+    "search_radius": 6000.0
+  },
+  "gaps": [
+    {
+      "gap_id": 1,
+      "point_a": [
+        139067.23,
+        -57967.53
+      ],
+      "point_b": [
+        139066.95,
+        -57967.78
+      ],
+      "width": 0.4,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 2,
+      "point_a": [
+        140022.61,
+        -57971.85
+      ],
+      "point_b": [
+        140022.33,
+        -57972.1
+      ],
+      "width": 0.4,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 3,
+      "point_a": [
+        158138.75,
+        -54568.75
+      ],
+      "point_b": [
+        158138.56,
+        -54569.08
+      ],
+      "width": 0.4,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 4,
+      "point_a": [
+        159096.01,
+        -54573.95
+      ],
+      "point_b": [
+        159095.82,
+        -54574.29
+      ],
+      "width": 0.4,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 5,
+      "point_a": [
+        152659.88,
+        -58033.89
+      ],
+      "point_b": [
+        152659.66,
+        -58034.2
+      ],
+      "width": 0.4,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 6,
+      "point_a": [
+        153616.59,
+        -58038.8
+      ],
+      "point_b": [
+        153616.37,
+        -58039.12
+      ],
+      "width": 0.4,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 7,
+      "point_a": [
+        167466.61,
+        -54618.15
+      ],
+      "point_b": [
+        167466.46,
+        -54618.52
+      ],
+      "width": 0.4,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 8,
+      "point_a": [
+        168424.87,
+        -54623.0
+      ],
+      "point_b": [
+        168424.72,
+        -54623.38
+      ],
+      "width": 0.4,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 9,
+      "point_a": [
+        189401.15,
+        -35392.12
+      ],
+      "point_b": [
+        189401.19,
+        -35392.53
+      ],
+      "width": 0.4,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 10,
+      "point_a": [
+        189400.58,
+        -36347.33
+      ],
+      "point_b": [
+        189400.62,
+        -36347.74
+      ],
+      "width": 0.4,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 11,
+      "point_a": [
+        172960.87,
+        -58135.04
+      ],
+      "point_b": [
+        172960.73,
+        -58135.43
+      ],
+      "width": 0.4,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 12,
+      "point_a": [
+        173919.51,
+        -58139.44
+      ],
+      "point_b": [
+        173919.38,
+        -58139.83
+      ],
+      "width": 0.4,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 13,
+      "point_a": [
+        189438.38,
+        -14035.86
+      ],
+      "point_b": [
+        189438.55,
+        -14036.24
+      ],
+      "width": 0.4,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 14,
+      "point_a": [
+        189441.41,
+        -13081.84
+      ],
+      "point_b": [
+        189441.6,
+        -13082.22
+      ],
+      "width": 0.4,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 15,
+      "point_a": [
+        186597.55,
+        -58192.67
+      ],
+      "point_b": [
+        186597.47,
+        -58193.09
+      ],
+      "width": 0.4,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 16,
+      "point_a": [
+        187557.02,
+        -58196.31
+      ],
+      "point_b": [
+        187556.94,
+        -58196.74
+      ],
+      "width": 0.4,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 17,
+      "point_a": [
+        140287.0,
+        1234.76
+      ],
+      "point_b": [
+        140283.1,
+        1234.72
+      ],
+      "width": 3.9,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 18,
+      "point_a": [
+        171871.25,
+        -13854.23
+      ],
+      "point_b": [
+        171871.39,
+        -13865.0
+      ],
+      "width": 10.8,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 19,
+      "point_a": [
+        143912.0,
+        -57570.0
+      ],
+      "point_b": [
+        143932.0,
+        -57570.0
+      ],
+      "width": 20.0,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 20,
+      "point_a": [
+        171870.78,
+        -12884.57
+      ],
+      "point_b": [
+        171871.3,
+        -12905.0
+      ],
+      "width": 20.4,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 21,
+      "point_a": [
+        172381.5,
+        -9425.0
+      ],
+      "point_b": [
+        172381.5,
+        -9375.0
+      ],
+      "width": 50.0,
+      "classification": "auto_closed",
+      "has_door_nearby": true,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 22,
+      "point_a": [
+        182372.0,
+        -18410.0
+      ],
+      "point_b": [
+        182492.0,
+        -18410.0
+      ],
+      "width": 120.0,
+      "classification": "auto_closed",
+      "has_door_nearby": true,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 23,
+      "point_a": [
+        178932.0,
+        -26610.0
+      ],
+      "point_b": [
+        178812.0,
+        -26610.0
+      ],
+      "width": 120.0,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 24,
+      "point_a": [
+        182492.0,
+        -26610.0
+      ],
+      "point_b": [
+        182372.0,
+        -26610.0
+      ],
+      "width": 120.0,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 25,
+      "point_a": [
+        144912.0,
+        -26610.0
+      ],
+      "point_b": [
+        144772.0,
+        -26610.0
+      ],
+      "width": 140.0,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 26,
+      "point_a": [
+        177892.0,
+        -24680.0
+      ],
+      "point_b": [
+        177892.0,
+        -24520.0
+      ],
+      "width": 160.0,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 27,
+      "point_a": [
+        149312.0,
+        -24520.0
+      ],
+      "point_b": [
+        149312.0,
+        -24680.0
+      ],
+      "width": 160.0,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 28,
+      "point_a": [
+        149312.0,
+        -16320.0
+      ],
+      "point_b": [
+        149312.0,
+        -16480.0
+      ],
+      "width": 160.0,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 29,
+      "point_a": [
+        157962.0,
+        -55130.0
+      ],
+      "point_b": [
+        157962.0,
+        -55320.0
+      ],
+      "width": 190.0,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 30,
+      "point_a": [
+        169302.0,
+        -55130.0
+      ],
+      "point_b": [
+        169302.0,
+        -55320.0
+      ],
+      "width": 190.0,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 31,
+      "point_a": [
+        154882.0,
+        -8630.0
+      ],
+      "point_b": [
+        154882.5,
+        -8825.0
+      ],
+      "width": 195.0,
+      "classification": "auto_closed",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 32,
+      "point_a": [
+        182322.0,
+        -32745.0
+      ],
+      "point_b": [
+        182172.0,
+        -32895.0
+      ],
+      "width": 212.1,
+      "classification": "auto_closed",
+      "has_door_nearby": true,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 33,
+      "point_a": [
+        181791.71,
+        -12590.0
+      ],
+      "point_b": [
+        181791.71,
+        -12210.0
+      ],
+      "width": 380.0,
+      "classification": "auto_closed",
+      "has_door_nearby": true,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 34,
+      "point_a": [
+        189002.0,
+        -32745.0
+      ],
+      "point_b": [
+        189002.0,
+        -33350.0
+      ],
+      "width": 605.0,
+      "classification": "auto_closed_no_door_evidence",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 35,
+      "point_a": [
+        137226.54,
+        -56700.0
+      ],
+      "point_b": [
+        136982.0,
+        -57480.0
+      ],
+      "width": 817.4,
+      "classification": "auto_closed_no_door_evidence",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 36,
+      "point_a": [
+        163202.0,
+        -53970.0
+      ],
+      "point_b": [
+        164062.0,
+        -53970.0
+      ],
+      "width": 860.0,
+      "classification": "auto_closed_no_door_evidence",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 37,
+      "point_a": [
+        164062.0,
+        -35030.0
+      ],
+      "point_b": [
+        163202.0,
+        -35030.0
+      ],
+      "width": 860.0,
+      "classification": "auto_closed_no_door_evidence",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 38,
+      "point_a": [
+        138262.0,
+        -20930.0
+      ],
+      "point_b": [
+        138262.0,
+        -20070.0
+      ],
+      "width": 860.0,
+      "classification": "auto_closed_no_door_evidence",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 39,
+      "point_a": [
+        172262.0,
+        -20930.0
+      ],
+      "point_b": [
+        172262.0,
+        -20070.0
+      ],
+      "width": 860.0,
+      "classification": "auto_closed_no_door_evidence",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 40,
+      "point_a": [
+        189002.0,
+        -20930.0
+      ],
+      "point_b": [
+        189002.0,
+        -20070.0
+      ],
+      "width": 860.0,
+      "classification": "auto_closed_no_door_evidence",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 41,
+      "point_a": [
+        155002.0,
+        -16830.0
+      ],
+      "point_b": [
+        155002.0,
+        -15970.0
+      ],
+      "width": 860.0,
+      "classification": "auto_closed_no_door_evidence",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 42,
+      "point_a": [
+        189002.0,
+        -16830.0
+      ],
+      "point_b": [
+        189002.0,
+        -15970.0
+      ],
+      "width": 860.0,
+      "classification": "auto_closed_no_door_evidence",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 43,
+      "point_a": [
+        155002.0,
+        -20930.0
+      ],
+      "point_b": [
+        155002.0,
+        -20070.0
+      ],
+      "width": 860.0,
+      "classification": "auto_closed_no_door_evidence",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 44,
+      "point_a": [
+        138262.0,
+        -24170.0
+      ],
+      "point_b": [
+        138262.0,
+        -25030.0
+      ],
+      "width": 860.0,
+      "classification": "auto_closed_no_door_evidence",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 45,
+      "point_a": [
+        155002.0,
+        -25030.0
+      ],
+      "point_b": [
+        155002.0,
+        -24170.0
+      ],
+      "width": 860.0,
+      "classification": "auto_closed_no_door_evidence",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 46,
+      "point_a": [
+        172262.0,
+        -24170.0
+      ],
+      "point_b": [
+        172262.0,
+        -25030.0
+      ],
+      "width": 860.0,
+      "classification": "auto_closed_no_door_evidence",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 47,
+      "point_a": [
+        189002.0,
+        -25030.0
+      ],
+      "point_b": [
+        189002.0,
+        -24170.0
+      ],
+      "width": 860.0,
+      "classification": "auto_closed_no_door_evidence",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 48,
+      "point_a": [
+        138262.0,
+        -15970.0
+      ],
+      "point_b": [
+        138262.0,
+        -16830.0
+      ],
+      "width": 860.0,
+      "classification": "auto_closed_no_door_evidence",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 49,
+      "point_a": [
+        190926.6,
+        -28660.0
+      ],
+      "point_b": [
+        191866.6,
+        -28660.0
+      ],
+      "width": 940.0,
+      "classification": "auto_closed_no_door_evidence",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 50,
+      "point_a": [
+        135397.4,
+        -28660.0
+      ],
+      "point_b": [
+        136337.4,
+        -28660.0
+      ],
+      "width": 940.0,
+      "classification": "auto_closed_no_door_evidence",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 51,
+      "point_a": [
+        172832.0,
+        -45140.0
+      ],
+      "point_b": [
+        171852.0,
+        -45140.0
+      ],
+      "width": 980.0,
+      "classification": "door_present",
+      "has_door_nearby": true,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 52,
+      "point_a": [
+        136982.0,
+        -49380.0
+      ],
+      "point_b": [
+        136982.0,
+        -48330.0
+      ],
+      "width": 1050.0,
+      "classification": "auto_closed_no_door_evidence",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 53,
+      "point_a": [
+        190282.0,
+        -41160.0
+      ],
+      "point_b": [
+        189152.0,
+        -41160.0
+      ],
+      "width": 1130.0,
+      "classification": "auto_closed_no_door_evidence",
+      "has_door_nearby": false,
+      "auto_closed": true
+    },
+    {
+      "gap_id": 54,
+      "point_a": [
+        172382.0,
+        -23305.45
+      ],
+      "point_b": [
+        172382.0,
+        -21794.55
+      ],
+      "width": 1510.9,
+      "classification": "needs_review",
+      "has_door_nearby": false,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 55,
+      "point_a": [
+        188882.0,
+        -19205.45
+      ],
+      "point_b": [
+        188882.0,
+        -17694.55
+      ],
+      "width": 1510.9,
+      "classification": "needs_review",
+      "has_door_nearby": false,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 56,
+      "point_a": [
+        188862.0,
+        -31515.0
+      ],
+      "point_b": [
+        188882.0,
+        -29985.0
+      ],
+      "width": 1530.1,
+      "classification": "needs_review",
+      "has_door_nearby": true,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 57,
+      "point_a": [
+        138402.0,
+        -31525.0
+      ],
+      "point_b": [
+        138402.0,
+        -29975.0
+      ],
+      "width": 1550.0,
+      "classification": "needs_review",
+      "has_door_nearby": true,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 58,
+      "point_a": [
+        162307.0,
+        -53850.5
+      ],
+      "point_b": [
+        160657.0,
+        -53850.5
+      ],
+      "width": 1650.0,
+      "classification": "needs_review",
+      "has_door_nearby": true,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 59,
+      "point_a": [
+        162307.0,
+        -35149.5
+      ],
+      "point_b": [
+        160657.0,
+        -35149.5
+      ],
+      "width": 1650.0,
+      "classification": "needs_review",
+      "has_door_nearby": true,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 60,
+      "point_a": [
+        164957.0,
+        -53850.5
+      ],
+      "point_b": [
+        166607.0,
+        -53850.5
+      ],
+      "width": 1650.0,
+      "classification": "needs_review",
+      "has_door_nearby": true,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 61,
+      "point_a": [
+        164957.0,
+        -35149.5
+      ],
+      "point_b": [
+        166607.0,
+        -35149.5
+      ],
+      "width": 1650.0,
+      "classification": "needs_review",
+      "has_door_nearby": true,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 62,
+      "point_a": [
+        148912.0,
+        -26800.0
+      ],
+      "point_b": [
+        148292.0,
+        -28600.0
+      ],
+      "width": 1903.8,
+      "classification": "needs_review",
+      "has_door_nearby": true,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 63,
+      "point_a": [
+        170962.0,
+        -26810.0
+      ],
+      "point_b": [
+        171942.0,
+        -28560.0
+      ],
+      "width": 2005.7,
+      "classification": "needs_review",
+      "has_door_nearby": false,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 64,
+      "point_a": [
+        155322.0,
+        -28560.0
+      ],
+      "point_b": [
+        156302.0,
+        -26810.0
+      ],
+      "width": 2005.7,
+      "classification": "needs_review",
+      "has_door_nearby": false,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 65,
+      "point_a": [
+        172382.0,
+        -11070.0
+      ],
+      "point_b": [
+        172381.5,
+        -8800.0
+      ],
+      "width": 2270.0,
+      "classification": "needs_review",
+      "has_door_nearby": true,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 66,
+      "point_a": [
+        145472.29,
+        -8100.0
+      ],
+      "point_b": [
+        144852.29,
+        -10510.0
+      ],
+      "width": 2488.5,
+      "classification": "needs_review",
+      "has_door_nearby": true,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 67,
+      "point_a": [
+        154882.0,
+        -34630.0
+      ],
+      "point_b": [
+        157722.0,
+        -34750.0
+      ],
+      "width": 2842.5,
+      "classification": "ignored_large_opening",
+      "has_door_nearby": true,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 68,
+      "point_a": [
+        144732.0,
+        -150.0
+      ],
+      "point_b": [
+        148532.0,
+        -150.0
+      ],
+      "width": 3800.0,
+      "classification": "ignored_large_opening",
+      "has_door_nearby": false,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 69,
+      "point_a": [
+        148912.0,
+        -18600.0
+      ],
+      "point_b": [
+        148912.0,
+        -22400.0
+      ],
+      "width": 3800.0,
+      "classification": "ignored_large_opening",
+      "has_door_nearby": true,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 70,
+      "point_a": [
+        172172.0,
+        -49050.0
+      ],
+      "point_b": [
+        170852.0,
+        -45140.0
+      ],
+      "width": 4126.8,
+      "classification": "ignored_large_opening",
+      "has_door_nearby": true,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 71,
+      "point_a": [
+        157722.0,
+        -54250.0
+      ],
+      "point_b": [
+        155282.0,
+        -57630.0
+      ],
+      "width": 4168.7,
+      "classification": "ignored_large_opening",
+      "has_door_nearby": false,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 72,
+      "point_a": [
+        169542.0,
+        -54250.0
+      ],
+      "point_b": [
+        171982.0,
+        -57630.0
+      ],
+      "width": 4168.7,
+      "classification": "ignored_large_opening",
+      "has_door_nearby": false,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 73,
+      "point_a": [
+        148532.0,
+        -57250.0
+      ],
+      "point_b": [
+        144052.0,
+        -57750.0
+      ],
+      "width": 4507.8,
+      "classification": "ignored_large_opening",
+      "has_door_nearby": false,
+      "auto_closed": false
+    },
+    {
+      "gap_id": 74,
+      "point_a": [
+        182772.0,
+        -41440.0
+      ],
+      "point_b": [
+        182172.0,
+        -36460.0
+      ],
+      "width": 5016.0,
+      "classification": "ignored_large_opening",
+      "has_door_nearby": true,
+      "auto_closed": false
+    }
+  ]
+}
