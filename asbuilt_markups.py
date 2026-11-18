@@ -19,9 +19,10 @@ def detect_markups(image):
     height, width = image.shape[:2]
     hue, sat, val = hsv[:, :, 0], hsv[:, :, 1], hsv[:, :, 2]
     masks = {
-        'orange': ((hue >= 6) & (hue <= 22) & (sat >= 95) & (val >= 150)),
-        'yellow': ((hue >= 23) & (hue <= 38) & (sat >= 95) & (val >= 150)),
-        'green': ((hue >= 40) & (hue <= 90) & (sat >= 95) & (val >= 150)),
+        'orange': ((hue >= 6) & (hue <= 23) & (sat >= 95) & (val >= 150)),
+        # yellow highlighter measures hue 24-35; lime/teal highlighters (36-95) mean "done"
+        'yellow': ((hue >= 24) & (hue <= 35) & (sat >= 95) & (val >= 150)),
+        'green': ((hue >= 36) & (hue <= 95) & (sat >= 95) & (val >= 150)),
         'pink': (((hue >= 160) | (hue <= 5)) & (sat >= 95) & (val >= 150)),
     }
     # blob size limits scale with the page (tuned on ~2300 px wide scans)

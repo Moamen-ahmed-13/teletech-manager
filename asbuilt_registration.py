@@ -328,6 +328,18 @@ def _sift_homography(photo_ink, cad_img, photo_long, nfeat=9000, ratio=0.80, thr
     dst = np.float32([kb[g.trainIdx].pt for g in good])
     method = getattr(cv2, 'USAC_MAGSAC', cv2.RANSAC)
     Hm, mask = cv2.findHomography(src, dst, method, thr, maxIters=10000, confidence=0.999)
+    # Repeated structure (two near-identical wings, grids) can collapse the projective fit
+    # to a degenerate matrix.  A similarity (rotation+scale+shift) is a much safer model for a
+    # flat scanned sheet, so fall back to it when the homography is degenerate or no better.
+    degenerate = (Hm is None or not np.all(np.isfinite(Hm)) or
+                  abs(float(np.linalg.det(Hm[:2, :2]))) < 1e-9 or abs(float(np.linalg.cond(Hm))) > 1e8)
+    if degenerate or mask is None or int(mask.sum()) < 40:
+        A, m2 = cv2.estimateAffinePartial2D(src, dst, method=cv2.RANSAC, ransacReprojThreshold=thr * 1.5,
+                                            maxIters=20000, confidence=0.999)
+        if A is not None and m2 is not None and (Hm is None or degenerate or int(m2.sum()) > int(mask.sum())):
+            Hm = np.vstack([A, [0.0, 0.0, 1.0]])
+            mask = m2
+            stats['model'] = 'similarity'
     if Hm is None or mask is None:
         return None, stats
     mask = mask.ravel().astype(bool)
@@ -489,11 +501,20 @@ def register_page_to_dxf(page_bgr, geom, extra_world_points=None, attempts=None,
             attempts = [(1600, 1700), (2200, 2400), (1100, 1200), (2600, 3000)]
         best = None
         tried = []
-        for photo_long, cad_long in attempts:
+        # A symmetric building (two near-identical wings) makes whole-sheet SIFT collapse
+        # onto repeated structure.  If the full extent does not register, try each half.
+        x0b, x1b, y0b, y1b = bbox
+        xm, pad = (x0b + x1b) / 2.0, 0.08 * (x1b - x0b)
+        windows = [('full', bbox), ('left', (x0b, xm + pad, y0b, y1b)), ('right', (xm - pad, x1b, y0b, y1b))]
+        jobs = [(wn, wb, pl, cl) for wn, wb in windows for pl, cl in attempts]
+        for wname, wbox, photo_long, cad_long in jobs:
+            if wname != 'full' and best is not None and best['ok']:
+                break
+            longest = max(wbox[1] - wbox[0], wbox[3] - wbox[2])
             mm = longest / float(cad_long)
-            cad_img, cinfo = render_cad_raster(geom, bbox, mm, 1)
+            cad_img, cinfo = render_cad_raster(geom, wbox, mm, 1)
             H_p2r, st = _sift_homography(ink, cad_img, photo_long)
-            rec = {'photo_long': photo_long, 'cad_long': cad_long, 'mm_per_px': round(mm, 2),
+            rec = {'window': wname, 'photo_long': photo_long, 'cad_long': cad_long, 'mm_per_px': round(mm, 2),
                    **{k: v for k, v in st.items() if k != 'inlier_pts_photo'}}
             tried.append(rec)
             if H_p2r is None:
@@ -501,7 +522,17 @@ def register_page_to_dxf(page_bgr, geom, extra_world_points=None, attempts=None,
                 continue
             # photo native px -> world
             Hp2w = cinfo['raster_to_world'] @ H_p2r
-            cand = _validate(ink, colored, geom, Hp2w, st, mm, h, w)
+            # a degenerate / non-invertible homography is just a failed attempt, not a crash
+            if (not np.all(np.isfinite(Hp2w)) or abs(float(np.linalg.det(Hp2w[:2, :2]))) < 1e-12
+                    or abs(float(np.linalg.cond(Hp2w))) > 1e13):
+                rec['rejected'] = 'degenerate homography'
+                log('attempt', rec, 'degenerate homography')
+                continue
+            try:
+                cand = _validate(ink, colored, geom, Hp2w, st, mm, h, w)
+            except np.linalg.LinAlgError:
+                rec['rejected'] = 'singular matrix'
+                continue
             cand['attempt'] = rec
             log('attempt', rec, 'score', cand['score'], 'ok', cand['ok'])
             if best is None or cand['score'] > best['score']:
@@ -518,6 +549,8 @@ def register_page_to_dxf(page_bgr, geom, extra_world_points=None, attempts=None,
                             Hp2w=best['Hp2w'], size=(w, h), plan_mask=best.get('plan_mask'),
                             local_quality_img=best.get('lq'), warnings=best.get('warnings'))
     except Exception as e:  # pragma: no cover - defensive
+        import traceback, sys
+        print(traceback.format_exc(), file=sys.stderr)
         return _failed([f'Registration crashed: {type(e).__name__}: {e}'])
 
 

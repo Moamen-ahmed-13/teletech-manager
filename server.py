@@ -7155,9 +7155,11 @@ def _asbuilt_cv_color_inventory(image_path, legend_path=None):
 
         masks={
             'pink':(((hsv[:,:,0]>=155)&(hsv[:,:,0]<=179)&(hsv[:,:,1]>=70)&(hsv[:,:,2]>=100))|((hsv[:,:,0]>=0)&(hsv[:,:,0]<=4)&(hsv[:,:,1]>=70)&(hsv[:,:,2]>=100))),
-            'yellow':((hsv[:,:,0]>=20)&(hsv[:,:,0]<=40)&(hsv[:,:,1]>=60)&(hsv[:,:,2]>=100)),
-            'orange':((hsv[:,:,0]>=5)&(hsv[:,:,0]<=20)&(hsv[:,:,1]>=80)&(hsv[:,:,2]>=100)),
-            'green':((hsv[:,:,0]>=40)&(hsv[:,:,0]<=90)&(hsv[:,:,1]>=55)&(hsv[:,:,2]>=70)),
+            # Hue bands (OpenCV 0-179) measured on real scans: legend/real yellow highlighter 24-35,
+            # lime and teal-green highlighters 36-95 (both mean "done" -> never deleted).
+            'yellow':((hsv[:,:,0]>=24)&(hsv[:,:,0]<=35)&(hsv[:,:,1]>=60)&(hsv[:,:,2]>=100)),
+            'orange':((hsv[:,:,0]>=5)&(hsv[:,:,0]<=23)&(hsv[:,:,1]>=80)&(hsv[:,:,2]>=100)),
+            'green':((hsv[:,:,0]>=36)&(hsv[:,:,0]<=95)&(hsv[:,:,1]>=55)&(hsv[:,:,2]>=70)),
         }
         mins={'pink':pink_min,'yellow':yellow_min,'orange':orange_min,'green':green_min}
 
